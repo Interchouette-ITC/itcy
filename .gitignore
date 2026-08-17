@@ -1,0 +1,75 @@
+.linkedin
+.twitter
+.github_credentials
+
+# Secrets
+.env
+.env.*
+
+# Nested Cursor / operator config (private itc-cursor clone)
+.cursor/
+
+# Writer prompts live in operator kitchen, not this tree
+/prompts/
+
+# Local overnight exercises (private itc-cursor)
+/piscine/
+
+# Local SQLite runtime files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# ITCy Tor enrich sidecar state
+/sql/tor-data/
+/sql/tor.pid
+/sql/enrich-linkedin-urls.pid
+
+# Rust
+/target/
+**/target/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Nested sibling git checkouts (own remotes; not part of this tree)
+/tui/
+/publications/
+
+# Official LinkedIn data export (never commit)
+/linkedin-export/
+/Basic_LinkedInDataExport_*/
+/Complete_LinkedInDataExport_*/
+/data/linkedin-export/
+
+# Local LinkedIn enrich evidence
+/sql/screenshots/
+/sql/backup/
+/sql/enrich-loop.log
+/sql/enrich-wall-streak.txt
+/sql/enrich-wall-stop.txt
+/sql/enrich-linkedin-urls.pid
+
+# Browser profile and scrape working dirs
+/pw/mcp/
+/sql/pw-mcp/
+/pw/screenshots/
+/sql/pw-screenshots/
+/sql/pw-debug/
+/pw/profile/
+/pw/profile-chromium/
+/pw/profile-brave/
+/pw/profile-x/
+/pw/profile-x-run/
+/sql/pw-profile/
+/sql/pw-profile-chromium/
+/sql/pw-profile-brave/
+/sql/pw-profile-x/
+/backend/.playwright-mcp/
+/itcy-*.png
+/pw/llm-logs/
+/sql/piscine/

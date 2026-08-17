@@ -1,0 +1,10 @@
+# ITCy Tor daemon (binary from ITCY_TOR_BIN; own DataDirectory).
+# SOCKS 9050 / Control 9051 - does not fight Tor Browser GUI on 9150/9151.
+# Log to file: RunAsDaemon cannot use Log … stdout (Tor warns and drops it).
+
+DataDirectory ROOT_PLACEHOLDER/sql/tor-data
+SocksPort 9050
+ControlPort 9051
+CookieAuthentication 0
+AvoidDiskWrites 1
+Log notice file ROOT_PLACEHOLDER/sql/tor-data/notice.log

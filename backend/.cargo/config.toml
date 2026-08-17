@@ -1,0 +1,3 @@
+# Classic per-crate "Compiling …" lines instead of the aggregated progress bar.
+[term]
+progress = { when = "never" }

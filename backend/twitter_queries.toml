@@ -1,0 +1,112 @@
+# Twitter/X search pool for /daily_digest (English; pulse appends lang:en).
+# Not corpus storage - ephemeral discovery only.
+#
+# Scale: each digest runs at most 20 individual searches (no OR-batching).
+# Picks are spaced across the ranked pool; the phase rotates daily so a
+# large keyword list gets fair coverage over time.
+# Curate here only (do not auto-pull from other checkouts).
+#
+# weight: ranking preference (higher tends to appear earlier in the ranked list).
+# exclude: appended as -term to rust-ish queries when planning searches.
+
+exclude = ["RustGame", "RustClips", "GamingYT"]
+
+[[query]]
+q = "#rustlang"
+weight = 10
+
+[[query]]
+q = "#rust"
+weight = 10
+
+[[query]]
+q = "casper network"
+weight = 9
+
+[[query]]
+q = "casper blockchain"
+weight = 8
+
+[[query]]
+q = "casper x402"
+weight = 8
+
+[[query]]
+q = "$CSPR"
+weight = 8
+
+[[query]]
+q = "MCP rust"
+weight = 9
+
+[[query]]
+q = "model context protocol rust"
+weight = 8
+
+[[query]]
+q = "agentic rust"
+weight = 7
+
+[[query]]
+q = "open source rust"
+weight = 8
+
+[[query]]
+q = "rust crate"
+weight = 8
+
+[[query]]
+q = "rust github"
+weight = 7
+
+[[query]]
+q = "blockchain rust"
+weight = 7
+
+[[query]]
+q = "rustlang release"
+weight = 8
+
+[[query]]
+q = "@ratatui_rs"
+weight = 9
+
+[[query]]
+q = "ratatui"
+weight = 9
+
+[[query]]
+q = "rust FFI"
+weight = 6
+
+[[query]]
+q = "rust async"
+weight = 6
+
+[[query]]
+q = "wasm rust"
+weight = 7
+
+[[query]]
+q = "open source AI rust"
+weight = 7
+
+[[query]]
+q = "systems programming rust"
+weight = 7
+
+[[query]]
+q = "tokio rust"
+weight = 6
+
+[[query]]
+q = "axum rust"
+weight = 6
+
+[[query]]
+q = "rust lsp"
+weight = 5
+
+[[query]]
+q = "x402 crypto"
+weight = 6

@@ -1,0 +1,47 @@
+# ITCy always-on server config (committed defaults).
+# Override bind with env ITCY_BIND or path with ITCY_CONFIG.
+# Slack secrets live in gitignored `.env`.
+
+[server]
+bind = "127.0.0.1:4700"
+
+[slack]
+events_transport = "socket"
+channel_env = "SLACK_ITCY_CHANNEL_ID"
+daily_digest_channel_env = "SLACK_DAILY_DIGEST_CHANNEL_ID"
+bot_token_env = "SLACK_BOT_TOKEN"
+app_token_env = "SLACK_APP_TOKEN"
+
+[runtime]
+max_context_messages = 20
+# Relative to cwd when running `make run` (backend/).
+state_db_path = "../sql/runtime.db"
+# Official LinkedIn data export (zip or unzipped). Never commit contents.
+linkedin_export_dir = "../linkedin-export"
+
+# Failover routes: provider:model, ordered left → right (commas preferred).
+# Override with LLM_FREEFORM_ROUTE / LLM_LOAD_ROUTE / LLM_DRAFT_ROUTE.
+# Pool = providers named in any route. Future: LLM_BALANCER_ROUTE (elect writer).
+[llm]
+# Freeform = independent Slack chat. Load = research pack. Draft = LinkedIn writer.
+freeform_route = [
+  "ollama:llama3.1:8b",
+  "ollama:gemma3:4b",
+]
+load_route = [
+  "ollama:llama3.1:8b",
+  "ollama:qwen3.5:9b",
+]
+draft_route = [
+  "ollama:llama3.1:8b",
+  "ollama:qwen3.5:9b",
+  "ollama:gemma4:12b",
+]
+
+# After BAT. playground = fork + soft ship. production = org + real channel.
+# Live override in `.env`: ITCY_LINKEDIN_PUBLISH_MODE / ITCY_X_PUBLISH_MODE.
+[linkedin]
+publish_mode = "playground"
+
+[x]
+publish_mode = "production"

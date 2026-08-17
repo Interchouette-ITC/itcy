@@ -1,0 +1,89 @@
+# Authorized live hubs for /daily_digest (not a corpus).
+# Prefer syndication feeds or article indexes over marketing homepages:
+# feeds list real stories; home pages often mix nav / topic hubs into PRESS.
+# weight: integer ponderation when ranking candidates (higher = prefer).
+
+[[site]]
+url = "https://rustler.in/api/newsletter/archive?page=1&limit=12"
+weight = 10
+note = "Rustler Weekly archive JSON (Read Edition articles)"
+
+[[site]]
+url = "https://www.infoworld.com/feed/"
+weight = 7
+note = "dev / languages / enterprise RSS"
+
+# [[site]]
+# url = "https://www.zdnet.com/"
+# weight = 5
+# note = "tech news; homepage is dense /article/ links"
+
+[[site]]
+url = "https://cryptoactu.com/feed/"
+weight = 6
+note = "FR crypto RSS"
+
+[[site]]
+url = "https://journalducoin.com/feed/"
+weight = 5
+note = "FR crypto RSS (journalducoin.com; HTML index /news/)"
+
+[[site]]
+url = "https://cryptoast.fr/feed/"
+weight = 4
+note = "FR crypto RSS"
+
+[[site]]
+url = "https://www.coindesk.com/arc/outboundfeeds/rss/"
+weight = 5
+note = "EN crypto RSS (article URLs, not topic hubs)"
+
+[[site]]
+url = "https://this-week-in-rust.org/rss.xml"
+weight = 7
+note = "Rust weekly RSS"
+
+[[site]]
+url = "https://blog.rust-lang.org/feed.xml"
+weight = 8
+note = "official Rust blog Atom feed"
+
+[[site]]
+url = "https://blog.rust-lang.org/inside-rust/feed.xml"
+weight = 7
+note = "Inside Rust (team process / RFCs / policy)"
+
+[[site]]
+url = "https://readrust.net/all/feed.rss"
+weight = 8
+note = "curated Rust article aggregator"
+
+[[site]]
+url = "https://www.infoq.com/feed/"
+weight = 6
+note = "architecture / languages RSS"
+
+[[site]]
+url = "https://openai.com/news/rss.xml"
+weight = 5
+note = "OpenAI news RSS (HTML /blog is Cloudflare 403)"
+
+[[site]]
+url = "https://decrypt.co/feed"
+weight = 3
+note = "EN crypto RSS (/id/slug articles)"
+
+[[site]]
+url = "https://cointelegraph.com/rss"
+weight = 3
+note = "EN crypto wire RSS"
+
+[[site]]
+url = "https://www.cryptobreaking.com/feed/"
+weight = 5
+note = "EN crypto RSS"
+
+[[site]]
+url = "https://www.cointribune.com/feed/"
+weight = 4
+note = "FR crypto RSS"

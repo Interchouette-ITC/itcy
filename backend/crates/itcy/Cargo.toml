@@ -1,0 +1,42 @@
+[package]
+name = "itcy"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "ITCy always-on binary"
+default-run = "itcy"
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+base64.workspace = true
+chrono.workspace = true
+csv.workspace = true
+dotenvy.workspace = true
+emojis.workspace = true
+futures-util.workspace = true
+hex.workspace = true
+hmac.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+rmcp.workspace = true
+rusqlite.workspace = true
+rustls.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1 = "0.11"
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-tungstenite.workspace = true
+toml.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+tower.workspace = true
+axum.workspace = true
+tempfile.workspace = true
