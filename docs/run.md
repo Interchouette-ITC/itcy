@@ -13,6 +13,8 @@ make build   # release: itcy + linkedin-itcy-gr-mcp
 
 `GET /health` returns `ok` when the process is up. `GET /status` is JSON (routes, Tor, enrich queue, webhook wake).
 
+The terminal UI is a separate repo: [itcy-tui](https://github.com/Interchouette-ITC/itcy-tui). It lists publications from GitHub and, when this binary is up, shows live health and saved drafts.
+
 Writer prompts are not in this tree. The build copies operator prompt files when present; otherwise it embeds short stubs so `cargo` still succeeds.
 
 ## Config

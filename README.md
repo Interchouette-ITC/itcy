@@ -9,7 +9,7 @@ ITCy drafts posts and tweets, opens a publications pull request, and ships only 
 | | |
 | --- | --- |
 | Product | [Interchouette-ITC/itcy](https://github.com/Interchouette-ITC/itcy) |
-| Status UI | [Interchouette-ITC/itcy-tui](https://github.com/Interchouette-ITC/itcy-tui) |
+| Terminal | [Interchouette-ITC/itcy-tui](https://github.com/Interchouette-ITC/itcy-tui) (publications browser and live status) |
 | Publications | [Interchouette-ITC/itcy-publications](https://github.com/Interchouette-ITC/itcy-publications) |
 | Run | [docs/run.md](docs/run.md) |
 | Principles | [docs/principles.md](docs/principles.md) |
