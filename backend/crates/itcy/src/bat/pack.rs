@@ -101,10 +101,7 @@ pub fn draft_post_ids(id: &str) -> Option<(String, String)> {
 /// Paths for an XPOST on `tweets`.
 #[must_use]
 pub fn xpost_paths(xpost_id: &str) -> (String, String) {
-    (
-        format!("{xpost_id}/body.md"),
-        format!("{xpost_id}/meta.toml"),
-    )
+    sharded_artefact_paths(xpost_id, "XPOST-")
 }
 
 /// Rewrite Tweet body header to XPOST ID.
@@ -265,13 +262,41 @@ pub fn pack_tweet_files(draft: &PendingDraft) -> DraftFiles {
         cite: &cite,
         quote_tweet_id: &quote,
     });
+    let (body_path, meta_path) = tweet_paths(&tweet_id);
     DraftFiles {
-        body_path: format!("{tweet_id}/body.md"),
-        meta_path: format!("{tweet_id}/meta.toml"),
+        body_path,
+        meta_path,
         body_md: draft.body.clone(),
         meta_toml,
         draft_id: tweet_id,
     }
+}
+
+/// Paths for a Tweet on `drafts_tweet`.
+#[must_use]
+pub fn tweet_paths(tweet_id: &str) -> (String, String) {
+    sharded_artefact_paths(tweet_id, "TWEET-")
+}
+
+fn sharded_artefact_paths(id: &str, prefix: &str) -> (String, String) {
+    shard_prefix_from_id(id, prefix).map_or_else(
+        || (format!("{id}/body.md"), format!("{id}/meta.toml")),
+        |shard| {
+            (
+                format!("{shard}/{id}/body.md"),
+                format!("{shard}/{id}/meta.toml"),
+            )
+        },
+    )
+}
+
+fn shard_prefix_from_id(id: &str, prefix: &str) -> Option<String> {
+    let rest = id.strip_prefix(prefix)?;
+    let date = rest.split('-').next()?;
+    if date.len() < 8 || !date.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    Some(format!("{}/{}", &date[0..4], &date[4..6]))
 }
 
 /// Tweet `meta.toml` (`kind = tweet`).
@@ -395,12 +420,9 @@ pub fn is_draft_body_path(path: &str) -> bool {
 #[must_use]
 pub fn tweet_id_from_path(path: &str) -> Option<String> {
     let name = path.replace('\\', "/");
-    let id = name.split('/').next()?;
-    if id.starts_with("TWEET-") {
-        Some(id.to_string())
-    } else {
-        None
-    }
+    name.split('/')
+        .find(|seg| seg.starts_with("TWEET-"))
+        .map(std::string::ToString::to_string)
 }
 
 /// True when `path` is a Tweet `body.md`.
@@ -525,7 +547,8 @@ mod tests {
             fork_pr_url: String::new(),
         };
         let files = pack_tweet_files(&draft);
-        assert_eq!(files.body_path, "TWEET-20260813-000001/body.md");
+        assert_eq!(files.body_path, "2026/08/TWEET-20260813-000001/body.md");
+        assert_eq!(files.meta_path, "2026/08/TWEET-20260813-000001/meta.toml");
         assert!(files.meta_toml.contains("kind = \"tweet\""));
         assert!(files.meta_toml.contains("quote_tweet_id = \"99\""));
         assert_eq!(
@@ -535,6 +558,22 @@ mod tests {
         let xbody = body_as_xpost(&draft.body, "XPOST-20260813-000001");
         assert!(xbody.starts_with("XPOST ID: XPOST-20260813-000001\n"));
         assert!(is_tweet_body_path("TWEET-20260813-000001/body.md"));
+        assert!(is_tweet_body_path("2026/08/TWEET-20260813-000001/body.md"));
+        assert_eq!(
+            tweet_id_from_path("2026/08/TWEET-20260813-000001/meta.toml").as_deref(),
+            Some("TWEET-20260813-000001")
+        );
+        assert_eq!(
+            xpost_paths("XPOST-20260813-000001"),
+            (
+                "2026/08/XPOST-20260813-000001/body.md".into(),
+                "2026/08/XPOST-20260813-000001/meta.toml".into()
+            )
+        );
         assert!(!is_tweet_body_path("DRAFT-20260813-000001/body.md"));
+        assert_eq!(
+            tweet_paths("TWEET-1"),
+            ("TWEET-1/body.md".into(), "TWEET-1/meta.toml".into())
+        );
     }
 }

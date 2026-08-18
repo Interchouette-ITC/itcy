@@ -1214,6 +1214,8 @@ pub fn tweet_pr_body(subject: &str, tweet_id: &str) -> String {
     } else {
         ("production", "org Interchouette-ITC")
     };
+    let (body_path, _) = crate::bat::pack::tweet_paths(tweet_id);
+    let tweet_dir = body_path.trim_end_matches("/body.md");
     format!(
         "## Tweet checklist\n\
 \n\
@@ -1225,12 +1227,12 @@ pub fn tweet_pr_body(subject: &str, tweet_id: &str) -> String {
 \n\
 ## Summary\n\
 \n\
-Tweet `{tweet_id}` for subject `{subject}` as `{tweet_id}/` on the **drafts_tweet** branch.\n\
+Tweet `{tweet_id}` for subject `{subject}` as `{tweet_dir}/` on the **drafts_tweet** branch.\n\
 \n\
 ## Notes\n\
 \n\
 Opened by ITCy. X **{mode}** → {host} (`drafts_tweet` + `tweets`). \
-On Approve, ITCy writes `<XPOST-…>/` on that remote and ships to X.\n"
+On Approve, ITCy writes a date-sharded `<XPOST-…>/` on `tweets` of that remote and ships to X.\n"
     )
 }
 
@@ -1347,6 +1349,7 @@ mod tests {
         let prod = tweet_pr_body("rust", "TWEET-20260801-000001");
         assert!(prod.contains("production"));
         assert!(prod.contains("org Interchouette-ITC"));
+        assert!(prod.contains("`2026/08/TWEET-20260801-000001/`"));
         unsafe {
             std::env::set_var("ITCY_X_PUBLISH_MODE", "playground");
         }
