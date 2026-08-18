@@ -221,7 +221,7 @@ impl SlackRuntime {
         reply
     }
 
-    /// Inject a slash command (localhost `POST /e2e/slash` only). Logs as inject, not Slack.
+    /// Inject a slash command (localhost `POST /entrypoint/slash` only). Logs as inject, not Slack.
     pub async fn handle_operator_slash(&self, command: &str, text: &str) -> SlashCommandOutcome {
         crate::sources::rag::log_pipeline_banner("inject slash");
         info!(command = %command, text = %text.chars().take(200).collect::<String>(), "inject: slash command");
