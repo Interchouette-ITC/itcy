@@ -222,7 +222,7 @@ async fn main() -> Result<()> {
         .context("read listener local address")?;
     info!(
         %addr,
-        "itcy listening (GET /health, GET /status, POST /e2e/message, POST /hooks/github)"
+        "itcy listening (GET /health, GET /status, POST /entrypoint/slash, POST /e2e/message, POST /hooks/github)"
     );
 
     if let Some(runtime) = operator.as_ref() {

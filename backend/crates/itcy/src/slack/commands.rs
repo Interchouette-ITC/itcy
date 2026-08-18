@@ -181,7 +181,7 @@ pub fn slash_immediate_ack(cmd: &OperatorCommand) -> Option<String> {
 /// Ordered channel posts for one slash: optional ack first, then final reply.
 ///
 /// Regression contract: ack is never after the reply. Socket Mode must post in this order
-/// (ack before `dispatch_command`; reply after). Inject `/e2e/slash` returns both in JSON
+/// (ack before `dispatch_command`; reply after). Inject `/entrypoint/slash` returns both in JSON
 /// and does not post to Slack.
 #[must_use]
 pub fn slash_channel_post_sequence(ack: Option<String>, reply: String) -> Vec<String> {

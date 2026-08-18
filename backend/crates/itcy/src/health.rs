@@ -207,7 +207,7 @@ pub struct E2eMessageRequest {
     pub text: String,
 }
 
-/// Localhost inject: simulate a slash command intent (agents / e2e only; not Slack).
+/// Localhost inject: simulate a slash command intent (TUI / scripts; not Slack).
 #[derive(Debug, Deserialize)]
 pub struct E2eSlashRequest {
     pub command: String,
@@ -291,17 +291,17 @@ pub async fn e2e_message(
     }))
 }
 
-/// `POST /e2e/slash` - inject slash command intent (localhost agents / e2e only).
+/// `POST /entrypoint/slash` - inject slash command intent (localhost TUI / scripts).
 ///
 /// Runs the same `dispatch_command` path as Socket Mode. Returns `{ack, reply}` in JSON.
 /// Does **not** call Slack `chat.postMessage` (no channel posts, no production noise).
 /// Live Socket Mode posts ack **before** work via `handle_slash_in_channel`; inject returns
-/// both fields after work for agents/scripts to assert.
+/// both fields after work for the TUI and scripts to assert.
 ///
 /// # Errors
 ///
 /// Returns a non-success [`StatusCode`] when the inject path rejects the request.
-pub async fn e2e_slash(
+pub async fn entrypoint_slash(
     State(state): State<AppState>,
     Json(body): Json<E2eSlashRequest>,
 ) -> Result<Json<E2eSlashResponse>, StatusCode> {
@@ -426,7 +426,7 @@ pub fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/status", get(status))
         .route("/e2e/message", post(e2e_message))
-        .route("/e2e/slash", post(e2e_slash))
+        .route("/entrypoint/slash", post(entrypoint_slash))
         .route("/e2e/publish", post(e2e_publish))
         .with_state(state)
         .merge(
@@ -479,13 +479,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn e2e_slash_empty_command_is_400() {
+    async fn entrypoint_slash_empty_command_is_400() {
         let app = router(AppState::empty());
         let response = app
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/e2e/slash")
+                    .uri("/entrypoint/slash")
                     .header("content-type", "application/json")
                     .body(Body::from(r#"{"command":"  ","text":""}"#))
                     .expect("request"),
@@ -496,13 +496,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn e2e_slash_without_operator_is_503() {
+    async fn entrypoint_slash_without_operator_is_503() {
         let app = router(AppState::empty());
         let response = app
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/e2e/slash")
+                    .uri("/entrypoint/slash")
                     .header("content-type", "application/json")
                     .body(Body::from(r#"{"command":"/status_itcy","text":""}"#))
                     .expect("request"),
