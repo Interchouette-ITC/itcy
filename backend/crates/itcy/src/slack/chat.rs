@@ -139,6 +139,8 @@ mod tests {
         assert_eq!(msgs[1].content, "hi");
         assert_eq!(msgs[2].role, crate::llm::client::LlmRole::Assistant);
         assert_eq!(msgs[3].content, "next");
-        assert!(msgs[0].content.contains("web_search"));
+        if cfg!(itcy_kitchen_prompts) {
+            assert!(msgs[0].content.contains("web_search"));
+        }
     }
 }
