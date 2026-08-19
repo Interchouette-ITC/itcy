@@ -19,11 +19,6 @@ linkedin = "@rust-foundation"
 x = "@rustlang"
 
 [[handle]]
-name = "Anthropic"
-linkedin = "@anthropic"
-x = "@AnthropicAI"
-
-[[handle]]
 name = "OpenAI"
 linkedin = "@openai"
 x = "@OpenAI"
@@ -75,10 +70,45 @@ x = "@MistralAI"
 
 [[handle]]
 name = "Casper Network"
-linkedin = "@casper-association"
+linkedin = "@casper-network"
 x = "@Casper_Network"
 
 [[handle]]
 name = "Casper Association"
 linkedin = "@casper-association"
 x = "@Casper_Network"
+
+[[handle]]
+name = "Proton VPN"
+x = "@ProtonVPN"
+
+[[handle]]
+name = "Proton"
+linkedin = "@protonag"
+x = "@ProtonPrivacy"
+
+[[handle]]
+name = "Sogeti Labs"
+x = "@sogetilabs"
+
+[[handle]]
+name = "Sogeti"
+linkedin = "@sogeti"
+x = "@sogetilabs"
+
+[[handle]]
+name = "Cursor"
+x = "@cursor_ai"
+
+[[handle]]
+name = "SpaceX"
+linkedin = "@spacex"
+x = "@SpaceX"
+
+[[handle]]
+name = "patrick_rtk_"
+x = "@patrick_rtk_"
+
+[[handle]]
+name = "AstraKernel"
+x = "@AstraKernel"
