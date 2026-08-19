@@ -70,6 +70,12 @@ const TWEET_PACK_NOTE_NORMAL: &str = prompt!("tweet_pack_note_normal.md");
 const DRAFT_PACK_NOTE_EMPTY: &str = prompt!("draft_pack_note_empty.md");
 const DRAFT_PACK_NOTE_NORMAL: &str = prompt!("draft_pack_note_normal.md");
 
+/// Self-introduction writer system core (date line prepended at runtime).
+pub const SELF_SYSTEM_CORE: &str = prompt!("self_system.md");
+pub const DRAFT_REWORK_SYSTEM_CORE: &str = prompt!("draft_rework_system.md");
+
+const SELF_USER_TMPL: &str = prompt!("self_user.md");
+
 fn fill(tmpl: &str, key: &str, value: &str) -> String {
     tmpl.replace(&format!("{{{key}}}"), value)
 }
@@ -107,6 +113,14 @@ pub fn tweet_farce_user_message(theme: &str) -> String {
         theme.trim()
     };
     TWEET_FARCE_USER_TMPL.replace(concat!("{", "theme", "}"), theme)
+}
+
+/// Self-introduction user turn (`surface` is `"linkedin"` or `"x"`; `instructions` may be empty).
+#[must_use]
+pub fn self_user_message(surface: &str, instructions: &str) -> String {
+    let mut s = fill(SELF_USER_TMPL, "surface", surface);
+    s = fill(&s, "instructions", instructions.trim());
+    s
 }
 
 /// Subject-locked fallback when the writer returns thin / scratchpad text.

@@ -194,6 +194,83 @@ Next:\n\n\
         }
     }
 
+    pub(crate) async fn tweet_about_itcy_reply(&self, instructions: &str) -> String {
+        use crate::sources::self_intro::build_itcy_self_tweet;
+
+        let subject = "ITCy self-introduction";
+        let tweet_id = crate::sources::tweet_footer::next_tweet_id(&self.config.state_db_path)
+            .unwrap_or_else(|e| {
+                warn!(error = %e, "slack: tweet id allocate failed; using fallback");
+                format!("TWEET-{}-UNKNOWN", chrono::Local::now().format("%Y%m%d"))
+            });
+        if let Err(e) = DraftStore::open(&self.config.state_db_path)
+            .and_then(|s| s.upsert(&stored_building_stub(&tweet_id, subject)))
+        {
+            warn!(error = %e, tweet_id = %tweet_id, "slack: self-intro tweet building stub persist failed");
+        }
+        match self.tools.begin_research_session(subject, &tweet_id).await {
+            Ok(dir) => {
+                crate::logging::append_session_log_note(&format!(
+                    "slack: /tweet_about_itcy\ntweet_id: {tweet_id}\ninstructions: {instructions}\nsession: {}\n",
+                    dir.display()
+                ));
+                info!(
+                    dir = %dir.display(),
+                    tweet_id = %tweet_id,
+                    "slack: itcy self-intro tweet session"
+                );
+            }
+            Err(e) => warn!(error = %e, "slack: could not start self-intro tweet session log"),
+        }
+        match build_itcy_self_tweet(
+            &self.llm,
+            &self.config.state_db_path,
+            instructions,
+            Some(self.tools.as_ref()),
+        )
+        .await
+        {
+            Ok(mut draft) => {
+                draft.subject = subject.to_string();
+                if let Err(e) = self.persist_grounded_draft(&draft) {
+                    error!(error = %e, "slack self-intro tweet store failed");
+                }
+                format!(
+                    "{body}\n\n\
+Saved as open tweet. Ref `{id}`.\n\n\
+Next:\n\n\
+/rework {id}\n\n\
+/accept {id}",
+                    body = draft.body,
+                    id = draft.draft_id
+                )
+            }
+            Err(RagError::NotATweet) => {
+                let _ = DraftStore::open(&self.config.state_db_path)
+                    .ok()
+                    .and_then(|st| {
+                        st.mark_status_from(&tweet_id, status::BUILDING, status::FAILED)
+                            .ok()
+                    });
+                format!(
+                    "ITCy self-intro writer dumped an essay instead of a tweet. Tweet `{tweet_id}` marked failed. Try `/tweet_about_itcy` again."
+                )
+            }
+            Err(e) => {
+                let _ = DraftStore::open(&self.config.state_db_path)
+                    .ok()
+                    .and_then(|st| {
+                        st.mark_status_from(&tweet_id, status::BUILDING, status::FAILED)
+                            .ok()
+                    });
+                error!(error = %e, "slack itcy self-intro tweet failed");
+                format!(
+                    "ITCy could not build a self-introduction tweet ({e}). Tweet `{tweet_id}` marked failed."
+                )
+            }
+        }
+    }
+
     pub(crate) async fn tweet_reply(&self, topic: &str, instructions: &str) -> String {
         let operator_brief = compose_operator_brief(topic, instructions);
         let tweet_id = crate::sources::tweet_footer::next_tweet_id(&self.config.state_db_path)

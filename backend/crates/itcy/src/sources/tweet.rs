@@ -264,7 +264,7 @@ async fn run_tweet_phase(
     Ok((body, trace))
 }
 
-fn attach_tweet_cites(
+pub(crate) fn attach_tweet_cites(
     body: &str,
     pack_urls: &[String],
     tweet_id: &str,
@@ -294,7 +294,7 @@ fn attach_tweet_cites(
     )
 }
 
-fn scrub_tweet_body(raw: &str) -> String {
+pub(crate) fn scrub_tweet_body(raw: &str) -> String {
     let raw = crate::llm::sanitize_itcy_text(raw);
     let raw = crate::sources::draft_url::strip_sources_section(&raw);
     crate::sources::tweet_footer::strip_own_x_handle(&raw)

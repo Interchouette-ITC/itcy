@@ -146,6 +146,16 @@ pub fn compose_draft_message(body: &str, draft_id: &str, links: &[String]) -> St
     out.trim_end().to_string()
 }
 
+/// Simplified draft message for self-introduction commands: Draft ID + body only, no link picker.
+///
+/// The URL is already baked into the body by the self-intro writer. Storing `link_options`
+/// separately still allows `/accept` and `/rework` to work correctly.
+#[must_use]
+pub fn compose_self_intro_draft_message(body: &str, draft_id: &str) -> String {
+    let body = crate::sources::draft_url::strip_sources_section(body);
+    format!("Draft ID: {draft_id}\n\n{}", body.trim())
+}
+
 /// Prose only from a stored Slack draft (drop Draft ID, Link footer, disclosure).
 #[must_use]
 pub fn draft_prose_for_rework(body: &str) -> String {

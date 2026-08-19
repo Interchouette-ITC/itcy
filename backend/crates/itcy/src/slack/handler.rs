@@ -474,6 +474,12 @@ impl SlackRuntime {
                 self.draft_tweet_about_itc_reply(&subject, &instructions)
                     .await
             }
+            OperatorCommand::DraftAboutItcy { instructions } => {
+                self.draft_about_itcy_reply(&instructions).await
+            }
+            OperatorCommand::TweetAboutItcy { instructions } => {
+                self.tweet_about_itcy_reply(&instructions).await
+            }
             OperatorCommand::ProposeTweet { digest_id, indices } => {
                 if digest_id.is_none() && indices.is_empty() {
                     self.tweet_reply(
@@ -753,6 +759,73 @@ Next:\n\n\
                 error!(error = %e, "slack itc grounded draft failed");
                 format!(
                     "ITCy could not build an Interchouette draft ({e}). Draft `{draft_id}` marked failed."
+                )
+            }
+        }
+    }
+
+    async fn draft_about_itcy_reply(&self, instructions: &str) -> String {
+        use crate::sources::self_intro::build_itcy_self_draft;
+
+        let subject = "ITCy self-introduction";
+        let draft_id = crate::sources::draft_footer::next_draft_id(&self.config.state_db_path)
+            .unwrap_or_else(|e| {
+                warn!(error = %e, "slack: draft id allocate failed; using fallback");
+                format!("DRAFT-{}-UNKNOWN", chrono::Local::now().format("%Y%m%d"))
+            });
+        if let Err(e) = DraftStore::open(&self.config.state_db_path)
+            .and_then(|s| s.upsert(&stored_building_stub(&draft_id, subject)))
+        {
+            warn!(error = %e, draft_id = %draft_id, "slack: self-intro building stub persist failed");
+        }
+        match self.tools.begin_research_session(subject, &draft_id).await {
+            Ok(dir) => {
+                crate::logging::append_session_log_note(&format!(
+                    "slack: /draft_about_itcy\ndraft_id: {draft_id}\ninstructions: {instructions}\nsession: {}\n",
+                    dir.display()
+                ));
+                info!(
+                    dir = %dir.display(),
+                    draft_id = %draft_id,
+                    "slack: itcy self-intro draft session"
+                );
+            }
+            Err(e) => warn!(error = %e, "slack: could not start self-intro session log"),
+        }
+        match build_itcy_self_draft(
+            &self.llm,
+            &self.config.state_db_path,
+            instructions,
+            Some(self.tools.as_ref()),
+        )
+        .await
+        {
+            Ok(mut draft) => {
+                draft.subject = subject.to_string();
+                if let Err(e) = self.persist_grounded_draft(&draft) {
+                    error!(error = %e, "slack self-intro draft store failed");
+                }
+                format!(
+                    "{body}\n\n\
+Saved as open draft. Ref `{id}`.\n\n\
+Next:\n\n\
+/rework {id}\n\n\
+/change_url {id} 1\n\n\
+/accept {id}",
+                    body = draft.body,
+                    id = draft.draft_id
+                )
+            }
+            Err(e) => {
+                let _ = DraftStore::open(&self.config.state_db_path)
+                    .ok()
+                    .and_then(|st| {
+                        st.mark_status_from(&draft_id, status::BUILDING, status::FAILED)
+                            .ok()
+                    });
+                error!(error = %e, "slack itcy self-intro draft failed");
+                format!(
+                    "ITCy could not build a self-introduction draft ({e}). Draft `{draft_id}` marked failed."
                 )
             }
         }

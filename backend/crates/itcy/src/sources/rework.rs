@@ -13,8 +13,8 @@ use crate::llm::LlmError;
 use crate::prompts::{
     draft_rework_user_message, rework_empty_pack, tweet_rework_commentary_empty,
     tweet_rework_commentary_exploded, tweet_rework_previous_omitted, tweet_rework_user_message,
-    TweetReworkUserArgs, AI_CMO, CREATIVE_LINKEDIN, DRAFT_SYSTEM_CORE, FORM_CRAFT_LINKEDIN,
-    TWEET_FARCE_SYSTEM_CORE, TWEET_REWORK_SYSTEM_CORE, WHO_IS_WHO,
+    TweetReworkUserArgs, DRAFT_REWORK_SYSTEM_CORE, TWEET_FARCE_SYSTEM_CORE,
+    TWEET_REWORK_SYSTEM_CORE, WHO_IS_WHO,
 };
 use crate::sources::draft_footer::{
     compose_draft_message, ensure_primary_link_line, pick_link_options,
@@ -29,14 +29,13 @@ use thiserror::Error;
 use tracing::{info, warn};
 
 fn rework_system_prompt() -> String {
+    // Slim system on purpose: the full Creative/Form/write curriculum drowned operator
+    // instructions and froze digest subject facts. Rework needs override first.
     format!(
-        "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}",
+        "{}\n\n{}\n\n{}",
         today_context_line(),
         WHO_IS_WHO,
-        AI_CMO,
-        CREATIVE_LINKEDIN,
-        FORM_CRAFT_LINKEDIN,
-        DRAFT_SYSTEM_CORE
+        DRAFT_REWORK_SYSTEM_CORE
     )
 }
 
@@ -420,7 +419,7 @@ fn strip_leading_tweet_id(body: &str) -> String {
 #[cfg(all(test, itcy_kitchen_prompts))]
 mod tests {
     use super::*;
-    use crate::prompts::FORM_CRAFT_X;
+    use crate::prompts::{AI_CMO, FORM_CRAFT_X};
 
     #[test]
     fn substantive_rework_omits_previous_tweet_so_model_cannot_copy_it() {

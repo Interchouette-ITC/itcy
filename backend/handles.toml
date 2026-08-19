@@ -1,0 +1,3682 @@
+# Social media handles for known entities.
+# Loaded at startup into an in-memory index (~instant at 2K entries).
+# The writer calls lookup_handles(name) during a draft/tweet turn; only the
+# matching rows are returned - this file is never injected into a prompt.
+#
+# Fields:
+#   name     - canonical entity name used for lookup (case-insensitive substring match)
+#   linkedin - LinkedIn handle (@company-slug) or omit when unknown
+#   x        - X / Twitter handle (@handle) or omit when unknown
+
+[[handle]]
+name = "Interchouette ITC"
+linkedin = "@interchouette-itc"
+x = "@Interchouette"
+
+[[handle]]
+name = "Rust Foundation"
+linkedin = "@rust-foundation"
+x = "@rustlang"
+
+[[handle]]
+name = "OpenAI"
+linkedin = "@openai"
+x = "@OpenAI"
+
+[[handle]]
+name = "Google DeepMind"
+linkedin = "@deepmind"
+x = "@GoogleDeepMind"
+
+[[handle]]
+name = "DeepMind"
+linkedin = "@deepmind"
+x = "@GoogleDeepMind"
+
+[[handle]]
+name = "Meta AI"
+linkedin = "@meta"
+x = "@Meta_AI"
+
+[[handle]]
+name = "Microsoft"
+linkedin = "@microsoft"
+x = "@Microsoft"
+
+[[handle]]
+name = "GitHub"
+linkedin = "@github"
+x = "@github"
+
+[[handle]]
+name = "Cloudflare"
+linkedin = "@cloudflare"
+x = "@Cloudflare"
+
+[[handle]]
+name = "HashiCorp"
+linkedin = "@hashicorp"
+x = "@HashiCorp"
+
+[[handle]]
+name = "Hugging Face"
+linkedin = "@huggingface"
+x = "@huggingface"
+
+[[handle]]
+name = "Mistral AI"
+linkedin = "@mistral-ai"
+x = "@MistralAI"
+
+[[handle]]
+name = "Casper Network"
+linkedin = "@casper-network"
+x = "@Casper_Network"
+
+[[handle]]
+name = "Casper Association"
+linkedin = "@casper-association"
+x = "@Casper_Network"
+
+[[handle]]
+name = "Proton VPN"
+x = "@ProtonVPN"
+
+[[handle]]
+name = "Proton"
+linkedin = "@protonag"
+x = "@ProtonPrivacy"
+
+[[handle]]
+name = "Sogeti Labs"
+x = "@sogetilabs"
+
+[[handle]]
+name = "Sogeti"
+linkedin = "@sogeti"
+x = "@sogetilabs"
+
+[[handle]]
+name = "Cursor"
+x = "@cursor_ai"
+
+[[handle]]
+name = "SpaceX"
+linkedin = "@spacex"
+x = "@SpaceX"
+
+[[handle]]
+name = "patrick_rtk_"
+x = "@patrick_rtk_"
+
+[[handle]]
+name = "AstraKernel"
+x = "@AstraKernel"
+
+[[handle]]
+name = "PeurAvion"
+x = "@PeurAvion"
+
+[[handle]]
+name = "ihedn"
+x = "@ihedn"
+
+[[handle]]
+name = "enacfrance"
+x = "@enacfrance"
+
+[[handle]]
+name = "dimforge"
+x = "@dimforge"
+
+[[handle]]
+name = "valigo"
+x = "@valigo"
+
+[[handle]]
+name = "valigo_ru"
+x = "@valigo_ru"
+
+[[handle]]
+name = "leha_moryak"
+x = "@leha_moryak"
+
+[[handle]]
+name = "Ayushmaanp67922"
+x = "@Ayushmaanp67922"
+
+[[handle]]
+name = "KHESPA_"
+x = "@KHESPA_"
+
+[[handle]]
+name = "poteto"
+x = "@poteto"
+
+[[handle]]
+name = "Bot"
+x = "@Bot"
+
+[[handle]]
+name = "SpaceXAI"
+x = "@SpaceXAI"
+
+[[handle]]
+name = "meta"
+x = "@meta"
+
+[[handle]]
+name = "netflix"
+x = "@netflix"
+
+[[handle]]
+name = "ThePurpleBTC"
+x = "@ThePurpleBTC"
+
+[[handle]]
+name = "Bitcoin"
+x = "@Bitcoin"
+
+[[handle]]
+name = "ethereum"
+x = "@ethereum"
+
+[[handle]]
+name = "opentensor"
+x = "@opentensor"
+
+[[handle]]
+name = "peaq"
+x = "@peaq"
+
+[[handle]]
+name = "OndoFinance"
+x = "@OndoFinance"
+
+[[handle]]
+name = "Fetch_ai"
+x = "@Fetch_ai"
+
+[[handle]]
+name = "hedera"
+x = "@hedera"
+
+[[handle]]
+name = "FabricFND"
+x = "@FabricFND"
+
+[[handle]]
+name = "_Felipe"
+x = "@_Felipe"
+
+[[handle]]
+name = "ApacheArrow"
+x = "@ApacheArrow"
+
+[[handle]]
+name = "SDFLabs"
+x = "@SDFLabs"
+
+[[handle]]
+name = "Spotify"
+x = "@Spotify"
+
+[[handle]]
+name = "IsaacKing314"
+x = "@IsaacKing314"
+
+[[handle]]
+name = "Seltaa_"
+x = "@Seltaa_"
+
+[[handle]]
+name = "david_dossett"
+x = "@david_dossett"
+
+[[handle]]
+name = "code"
+x = "@code"
+
+[[handle]]
+name = "sudoingX"
+x = "@sudoingX"
+
+[[handle]]
+name = "XOpenSource"
+x = "@XOpenSource"
+
+[[handle]]
+name = "herdrdev"
+x = "@herdrdev"
+
+[[handle]]
+name = "Theheatagenda"
+x = "@Theheatagenda"
+
+[[handle]]
+name = "Alibaba_Qwen"
+x = "@Alibaba_Qwen"
+
+[[handle]]
+name = "AstraiaAI"
+x = "@AstraiaAI"
+
+[[handle]]
+name = "typememetics"
+x = "@typememetics"
+
+[[handle]]
+name = "jayapapaya"
+x = "@jayapapaya"
+
+[[handle]]
+name = "blockblanc"
+x = "@blockblanc"
+
+[[handle]]
+name = "CryptoCanal"
+x = "@CryptoCanal"
+
+[[handle]]
+name = "iximiuz"
+x = "@iximiuz"
+
+[[handle]]
+name = "domenkozar"
+x = "@domenkozar"
+
+[[handle]]
+name = "cachix_org"
+x = "@cachix_org"
+
+[[handle]]
+name = "AlexFinn"
+x = "@AlexFinn"
+
+[[handle]]
+name = "SoftwareSeni"
+x = "@SoftwareSeni"
+
+[[handle]]
+name = "sgl_project"
+x = "@sgl_project"
+
+[[handle]]
+name = "lmsysorg"
+x = "@lmsysorg"
+
+[[handle]]
+name = "heyfebin"
+x = "@heyfebin"
+
+[[handle]]
+name = "CoinpediaNews"
+x = "@CoinpediaNews"
+
+[[handle]]
+name = "css"
+x = "@css"
+
+[[handle]]
+name = "hoffmang"
+x = "@hoffmang"
+
+[[handle]]
+name = "mo_alani_yes"
+x = "@mo_alani_yes"
+
+[[handle]]
+name = "Testbirds"
+x = "@Testbirds"
+
+[[handle]]
+name = "kscottz"
+x = "@kscottz"
+
+[[handle]]
+name = "OpenRoboticsOrg"
+x = "@OpenRoboticsOrg"
+
+[[handle]]
+name = "rosorg"
+x = "@rosorg"
+
+[[handle]]
+name = "ohsummit"
+x = "@ohsummit"
+
+[[handle]]
+name = "alouane_med"
+x = "@alouane_med"
+
+[[handle]]
+name = "BenjChastanier"
+x = "@BenjChastanier"
+
+[[handle]]
+name = "Qovery_"
+x = "@Qovery_"
+
+[[handle]]
+name = "kristofleroux"
+x = "@kristofleroux"
+
+[[handle]]
+name = "patrick_tarnaud"
+x = "@patrick_tarnaud"
+
+[[handle]]
+name = "israeljrs"
+x = "@israeljrs"
+
+[[handle]]
+name = "topheman"
+x = "@topheman"
+
+[[handle]]
+name = "Hamzeml"
+x = "@Hamzeml"
+
+[[handle]]
+name = "FrancoisBernabe"
+x = "@FrancoisBernabe"
+
+[[handle]]
+name = "danmugh"
+x = "@danmugh"
+
+[[handle]]
+name = "noreplydev"
+x = "@noreplydev"
+
+[[handle]]
+name = "bcnrust"
+x = "@bcnrust"
+
+[[handle]]
+name = "Daibai"
+x = "@Daibai"
+
+[[handle]]
+name = "MyEvidenZ"
+x = "@MyEvidenZ"
+
+[[handle]]
+name = "Nodal_asymmetry"
+x = "@Nodal_asymmetry"
+
+[[handle]]
+name = "tassiovirginio"
+x = "@tassiovirginio"
+
+[[handle]]
+name = "szabgab"
+x = "@szabgab"
+
+[[handle]]
+name = "Plangora"
+x = "@Plangora"
+
+[[handle]]
+name = "rustconf"
+x = "@rustconf"
+
+[[handle]]
+name = "euro_rust"
+x = "@euro_rust"
+
+[[handle]]
+name = "mainmatter"
+x = "@mainmatter"
+
+[[handle]]
+name = "BhosalePratim"
+x = "@BhosalePratim"
+
+[[handle]]
+name = "GradiumAI"
+x = "@GradiumAI"
+
+[[handle]]
+name = "spokira"
+x = "@spokira"
+
+[[handle]]
+name = "sachaarbonel"
+x = "@sachaarbonel"
+
+[[handle]]
+name = "LizzieJHolmes"
+x = "@LizzieJHolmes"
+
+[[handle]]
+name = "DEBUTclassical"
+x = "@DEBUTclassical"
+
+[[handle]]
+name = "jaimemh"
+x = "@jaimemh"
+
+[[handle]]
+name = "SurrealDB"
+x = "@SurrealDB"
+
+[[handle]]
+name = "grhmc"
+x = "@grhmc"
+
+[[handle]]
+name = "DeterminateSys"
+x = "@DeterminateSys"
+
+[[handle]]
+name = "zeddotdev"
+x = "@zeddotdev"
+
+[[handle]]
+name = "almostMike"
+x = "@almostMike"
+
+[[handle]]
+name = "sqlservian"
+x = "@sqlservian"
+
+[[handle]]
+name = "Aodto"
+x = "@Aodto"
+
+[[handle]]
+name = "ejstembler"
+x = "@ejstembler"
+
+[[handle]]
+name = "_iVishalJoshi"
+x = "@_iVishalJoshi"
+
+[[handle]]
+name = "webbedfeet"
+x = "@webbedfeet"
+
+[[handle]]
+name = "jeremy_mcgibbon"
+x = "@jeremy_mcgibbon"
+
+[[handle]]
+name = "sfchaos"
+x = "@sfchaos"
+
+[[handle]]
+name = "guilhermejd1"
+x = "@guilhermejd1"
+
+[[handle]]
+name = "Harvard"
+x = "@Harvard"
+
+[[handle]]
+name = "Wharton"
+x = "@Wharton"
+
+[[handle]]
+name = "Penn"
+x = "@Penn"
+
+[[handle]]
+name = "shadimoadad"
+x = "@shadimoadad"
+
+[[handle]]
+name = "andrebalg"
+x = "@andrebalg"
+
+[[handle]]
+name = "AnthropicAI"
+x = "@AnthropicAI"
+
+[[handle]]
+name = "SnorkelAI"
+x = "@SnorkelAI"
+
+[[handle]]
+name = "datarobot"
+x = "@datarobot"
+
+[[handle]]
+name = "tylerneylon"
+x = "@tylerneylon"
+
+[[handle]]
+name = "unboxresearch"
+x = "@unboxresearch"
+
+[[handle]]
+name = "agramfort"
+x = "@agramfort"
+
+[[handle]]
+name = "michael_erasmus"
+x = "@michael_erasmus"
+
+[[handle]]
+name = "chesscom"
+x = "@chesscom"
+
+[[handle]]
+name = "buffer"
+x = "@buffer"
+
+[[handle]]
+name = "DonorsChoose"
+x = "@DonorsChoose"
+
+[[handle]]
+name = "TerryTangYuan"
+x = "@TerryTangYuan"
+
+[[handle]]
+name = "RedHat_AI"
+x = "@RedHat_AI"
+
+[[handle]]
+name = "argoproj"
+x = "@argoproj"
+
+[[handle]]
+name = "kubeflow"
+x = "@kubeflow"
+
+[[handle]]
+name = "kubernetesio"
+x = "@kubernetesio"
+
+[[handle]]
+name = "CloudNativeFdn"
+x = "@CloudNativeFdn"
+
+[[handle]]
+name = "moreisdifferent"
+x = "@moreisdifferent"
+
+[[handle]]
+name = "MetascienceObs"
+x = "@MetascienceObs"
+
+[[handle]]
+name = "RADVACProject"
+x = "@RADVACProject"
+
+[[handle]]
+name = "GeneWizardX"
+x = "@GeneWizardX"
+
+[[handle]]
+name = "benmurraybruce"
+x = "@benmurraybruce"
+
+[[handle]]
+name = "ageitgey"
+x = "@ageitgey"
+
+[[handle]]
+name = "TurquoiseHC"
+x = "@TurquoiseHC"
+
+[[handle]]
+name = "wesmckinn"
+x = "@wesmckinn"
+
+[[handle]]
+name = "kennsoftware"
+x = "@kennsoftware"
+
+[[handle]]
+name = "ComposedVC"
+x = "@ComposedVC"
+
+[[handle]]
+name = "posit_pbc"
+x = "@posit_pbc"
+
+[[handle]]
+name = "nielsgl"
+x = "@nielsgl"
+
+[[handle]]
+name = "fchollet"
+x = "@fchollet"
+
+[[handle]]
+name = "ndea"
+x = "@ndea"
+
+[[handle]]
+name = "arcprize"
+x = "@arcprize"
+
+[[handle]]
+name = "amuellerml"
+x = "@amuellerml"
+
+[[handle]]
+name = "AzureData"
+x = "@AzureData"
+
+[[handle]]
+name = "chrisalbon"
+x = "@chrisalbon"
+
+[[handle]]
+name = "Wikimedia"
+x = "@Wikimedia"
+
+[[handle]]
+name = "bugraa"
+x = "@bugraa"
+
+[[handle]]
+name = "jsci"
+x = "@jsci"
+
+[[handle]]
+name = "proteinqure"
+x = "@proteinqure"
+
+[[handle]]
+name = "UofT"
+x = "@UofT"
+
+[[handle]]
+name = "UWaterloo"
+x = "@UWaterloo"
+
+[[handle]]
+name = "jessfraz"
+x = "@jessfraz"
+
+[[handle]]
+name = "zoodotdev"
+x = "@zoodotdev"
+
+[[handle]]
+name = "oxidecomputer"
+x = "@oxidecomputer"
+
+[[handle]]
+name = "ACMQueue"
+x = "@ACMQueue"
+
+[[handle]]
+name = "left_pad"
+x = "@left_pad"
+
+[[handle]]
+name = "babeljs"
+x = "@babeljs"
+
+[[handle]]
+name = "jerrykur"
+x = "@jerrykur"
+
+[[handle]]
+name = "Pluralsight"
+x = "@Pluralsight"
+
+[[handle]]
+name = "moul"
+x = "@moul"
+
+[[handle]]
+name = "bobguns"
+x = "@bobguns"
+
+[[handle]]
+name = "RTindex"
+x = "@RTindex"
+
+[[handle]]
+name = "mert"
+x = "@mert"
+
+[[handle]]
+name = "helius"
+x = "@helius"
+
+[[handle]]
+name = "Delphi_Digital"
+x = "@Delphi_Digital"
+
+[[handle]]
+name = "LinkedIn"
+x = "@LinkedIn"
+
+[[handle]]
+name = "LinkedInHelp"
+x = "@LinkedInHelp"
+
+[[handle]]
+name = "thedefdone"
+x = "@thedefdone"
+
+[[handle]]
+name = "JanPodleski"
+x = "@JanPodleski"
+
+[[handle]]
+name = "jan_defdone"
+x = "@jan_defdone"
+
+[[handle]]
+name = "defdone"
+x = "@defdone"
+
+[[handle]]
+name = "StephaneTrebel"
+x = "@StephaneTrebel"
+
+[[handle]]
+name = "AlexAsteure"
+x = "@AlexAsteure"
+
+[[handle]]
+name = "Saptarshi108"
+x = "@Saptarshi108"
+
+[[handle]]
+name = "block_ach"
+x = "@block_ach"
+
+[[handle]]
+name = "Ferno_ag"
+x = "@Ferno_ag"
+
+[[handle]]
+name = "blockzilla_sol"
+x = "@blockzilla_sol"
+
+[[handle]]
+name = "EncodePanda"
+x = "@EncodePanda"
+
+[[handle]]
+name = "ThibautMelen"
+x = "@ThibautMelen"
+
+[[handle]]
+name = "benjilegnard"
+x = "@benjilegnard"
+
+[[handle]]
+name = "BnJ25"
+x = "@BnJ25"
+
+[[handle]]
+name = "supabase"
+x = "@supabase"
+
+[[handle]]
+name = "apollographql"
+x = "@apollographql"
+
+[[handle]]
+name = "rust_analyzer"
+x = "@rust_analyzer"
+
+[[handle]]
+name = "imperioworld_"
+x = "@imperioworld_"
+
+[[handle]]
+name = "rust_foundation"
+x = "@rust_foundation"
+
+[[handle]]
+name = "RustTrending"
+x = "@RustTrending"
+
+[[handle]]
+name = "pbzweihander_rs"
+x = "@pbzweihander_rs"
+
+[[handle]]
+name = "zero2prod"
+x = "@zero2prod"
+
+[[handle]]
+name = "algo_luca"
+x = "@algo_luca"
+
+[[handle]]
+name = "FerrousSystems"
+x = "@FerrousSystems"
+
+[[handle]]
+name = "rustlab_conf"
+x = "@rustlab_conf"
+
+[[handle]]
+name = "develer"
+x = "@develer"
+
+[[handle]]
+name = "spastorino"
+x = "@spastorino"
+
+[[handle]]
+name = "wyeworks"
+x = "@wyeworks"
+
+[[handle]]
+name = "COGoldRust"
+x = "@COGoldRust"
+
+[[handle]]
+name = "crablang"
+x = "@crablang"
+
+[[handle]]
+name = "rustlang_fr"
+x = "@rustlang_fr"
+
+[[handle]]
+name = "rustparis"
+x = "@rustparis"
+
+[[handle]]
+name = "rust_amsterdam"
+x = "@rust_amsterdam"
+
+[[handle]]
+name = "rustjobs_dev"
+x = "@rustjobs_dev"
+
+[[handle]]
+name = "OCamlPro"
+x = "@OCamlPro"
+
+[[handle]]
+name = "xperhub"
+x = "@xperhub"
+
+[[handle]]
+name = "adservioacademy"
+x = "@adservioacademy"
+
+[[handle]]
+name = "MtpRust"
+x = "@MtpRust"
+
+[[handle]]
+name = "dcastelltort"
+x = "@dcastelltort"
+
+[[handle]]
+name = "TeadsInnovation"
+x = "@TeadsInnovation"
+
+[[handle]]
+name = "ludwigABAP"
+x = "@ludwigABAP"
+
+[[handle]]
+name = "sckull_"
+x = "@sckull_"
+
+[[handle]]
+name = "DeSciBot"
+x = "@DeSciBot"
+
+[[handle]]
+name = "Muhamma08098384"
+x = "@Muhamma08098384"
+
+[[handle]]
+name = "DaFiLabs"
+x = "@DaFiLabs"
+
+[[handle]]
+name = "nicolas_gadeyne"
+x = "@nicolas_gadeyne"
+
+[[handle]]
+name = "gadeyne_nicolas"
+x = "@gadeyne_nicolas"
+
+[[handle]]
+name = "nicolas_gadenne"
+x = "@nicolas_gadenne"
+
+[[handle]]
+name = "collioupierre"
+x = "@collioupierre"
+
+[[handle]]
+name = "rustafariandev"
+x = "@rustafariandev"
+
+[[handle]]
+name = "OpenTrading_AI"
+x = "@OpenTrading_AI"
+
+[[handle]]
+name = "nym"
+x = "@nym"
+
+[[handle]]
+name = "harryhalpin"
+x = "@harryhalpin"
+
+[[handle]]
+name = "mit"
+x = "@mit"
+
+[[handle]]
+name = "VUBrussel"
+x = "@VUBrussel"
+
+[[handle]]
+name = "w3c"
+x = "@w3c"
+
+[[handle]]
+name = "inria"
+x = "@inria"
+
+[[handle]]
+name = "AUB_Lebanon"
+x = "@AUB_Lebanon"
+
+[[handle]]
+name = "acevail_"
+x = "@acevail_"
+
+[[handle]]
+name = "MintGarden_io"
+x = "@MintGarden_io"
+
+[[handle]]
+name = "XCHPay"
+x = "@XCHPay"
+
+[[handle]]
+name = "chia_project"
+x = "@chia_project"
+
+[[handle]]
+name = "MarvelMarmots"
+x = "@MarvelMarmots"
+
+[[handle]]
+name = "0xdevshm"
+x = "@0xdevshm"
+
+[[handle]]
+name = "kiyov09"
+x = "@kiyov09"
+
+[[handle]]
+name = "aryj2288"
+x = "@aryj2288"
+
+[[handle]]
+name = "nexxeln"
+x = "@nexxeln"
+
+[[handle]]
+name = "opencode"
+x = "@opencode"
+
+[[handle]]
+name = "grok"
+x = "@grok"
+
+[[handle]]
+name = "_coenen"
+x = "@_coenen"
+
+[[handle]]
+name = "BitcoinComfy"
+x = "@BitcoinComfy"
+
+[[handle]]
+name = "ForrestPKnight"
+x = "@ForrestPKnight"
+
+[[handle]]
+name = "dmythro"
+x = "@dmythro"
+
+[[handle]]
+name = "rustaceans_rs"
+x = "@rustaceans_rs"
+
+[[handle]]
+name = "Itsfoss"
+x = "@Itsfoss"
+
+[[handle]]
+name = "devvmichael"
+x = "@devvmichael"
+
+[[handle]]
+name = "web3bridge"
+x = "@web3bridge"
+
+[[handle]]
+name = "toddo"
+x = "@toddo"
+
+[[handle]]
+name = "BuySellAds"
+x = "@BuySellAds"
+
+[[handle]]
+name = "GAMdotAI"
+x = "@GAMdotAI"
+
+[[handle]]
+name = "loadingalias"
+x = "@loadingalias"
+
+[[handle]]
+name = "haipingfu"
+x = "@haipingfu"
+
+[[handle]]
+name = "ProtonMail"
+x = "@ProtonMail"
+
+[[handle]]
+name = "jskalc"
+x = "@jskalc"
+
+[[handle]]
+name = "ayushagarwal027"
+x = "@ayushagarwal027"
+
+[[handle]]
+name = "IhorBurlachenko"
+x = "@IhorBurlachenko"
+
+[[handle]]
+name = "WeAreTeamMAKE"
+x = "@WeAreTeamMAKE"
+
+[[handle]]
+name = "unsheepd"
+x = "@unsheepd"
+
+[[handle]]
+name = "rtk"
+x = "@rtk"
+
+[[handle]]
+name = "Ron_Acord"
+x = "@Ron_Acord"
+
+[[handle]]
+name = "matty_charts"
+x = "@matty_charts"
+
+[[handle]]
+name = "devendranmkm"
+x = "@devendranmkm"
+
+[[handle]]
+name = "KochainTech"
+x = "@KochainTech"
+
+[[handle]]
+name = "david_sab"
+x = "@david_sab"
+
+[[handle]]
+name = "penaltyblog"
+x = "@penaltyblog"
+
+[[handle]]
+name = "EHuizenga"
+x = "@EHuizenga"
+
+[[handle]]
+name = "google"
+x = "@google"
+
+[[handle]]
+name = "DeepLearningAI"
+x = "@DeepLearningAI"
+
+[[handle]]
+name = "vmirly"
+x = "@vmirly"
+
+[[handle]]
+name = "rasbt"
+x = "@rasbt"
+
+[[handle]]
+name = "CoreCoder"
+x = "@CoreCoder"
+
+[[handle]]
+name = "BastiaanSjardin"
+x = "@BastiaanSjardin"
+
+[[handle]]
+name = "InfoWorld"
+x = "@InfoWorld"
+
+[[handle]]
+name = "sjwhitworth"
+x = "@sjwhitworth"
+
+[[handle]]
+name = "karpathy"
+x = "@karpathy"
+
+[[handle]]
+name = "rudyagovic"
+x = "@rudyagovic"
+
+[[handle]]
+name = "AriyaHidayat"
+x = "@AriyaHidayat"
+
+[[handle]]
+name = "tijmenschep"
+x = "@tijmenschep"
+
+[[handle]]
+name = "hswolff"
+x = "@hswolff"
+
+[[handle]]
+name = "MongoDB"
+x = "@MongoDB"
+
+[[handle]]
+name = "MetaOpenSource"
+x = "@MetaOpenSource"
+
+[[handle]]
+name = "Slasherio"
+x = "@Slasherio"
+
+[[handle]]
+name = "jlaffaye"
+x = "@jlaffaye"
+
+[[handle]]
+name = "raphaelhertzog"
+x = "@raphaelhertzog"
+
+[[handle]]
+name = "dutchhackathon"
+x = "@dutchhackathon"
+
+[[handle]]
+name = "anthonygaulay"
+x = "@anthonygaulay"
+
+[[handle]]
+name = "orange"
+x = "@orange"
+
+[[handle]]
+name = "orangebusiness"
+x = "@orangebusiness"
+
+[[handle]]
+name = "IgorMinar"
+x = "@IgorMinar"
+
+[[handle]]
+name = "vscodetips"
+x = "@vscodetips"
+
+[[handle]]
+name = "nickytonline"
+x = "@nickytonline"
+
+[[handle]]
+name = "AClerbois"
+x = "@AClerbois"
+
+[[handle]]
+name = "BenjaminPasero"
+x = "@BenjaminPasero"
+
+[[handle]]
+name = "DevToolsCommits"
+x = "@DevToolsCommits"
+
+[[handle]]
+name = "SanderMeester"
+x = "@SanderMeester"
+
+[[handle]]
+name = "pbakaus"
+x = "@pbakaus"
+
+[[handle]]
+name = "impeccable_ai"
+x = "@impeccable_ai"
+
+[[handle]]
+name = "radiant_shaders"
+x = "@radiant_shaders"
+
+[[handle]]
+name = "jqueryui"
+x = "@jqueryui"
+
+[[handle]]
+name = "zynga"
+x = "@zynga"
+
+[[handle]]
+name = "richturn_ms"
+x = "@richturn_ms"
+
+[[handle]]
+name = "bitcrazed"
+x = "@bitcrazed"
+
+[[handle]]
+name = "liamchampton"
+x = "@liamchampton"
+
+[[handle]]
+name = "paul_irish"
+x = "@paul_irish"
+
+[[handle]]
+name = "unixterminal"
+x = "@unixterminal"
+
+[[handle]]
+name = "HeroDevs"
+x = "@HeroDevs"
+
+[[handle]]
+name = "MVPAward"
+x = "@MVPAward"
+
+[[handle]]
+name = "Arm"
+x = "@Arm"
+
+[[handle]]
+name = "HPE"
+x = "@HPE"
+
+[[handle]]
+name = "Rancher_Labs"
+x = "@Rancher_Labs"
+
+[[handle]]
+name = "Ubuntu"
+x = "@Ubuntu"
+
+[[handle]]
+name = "PengwinLinux"
+x = "@PengwinLinux"
+
+[[handle]]
+name = "taviso"
+x = "@taviso"
+
+[[handle]]
+name = "jimthecoop"
+x = "@jimthecoop"
+
+[[handle]]
+name = "fuolpit"
+x = "@fuolpit"
+
+[[handle]]
+name = "rcaferati"
+x = "@rcaferati"
+
+[[handle]]
+name = "opengql"
+x = "@opengql"
+
+[[handle]]
+name = "GeertvdC"
+x = "@GeertvdC"
+
+[[handle]]
+name = "Xpiritbv"
+x = "@Xpiritbv"
+
+[[handle]]
+name = "Azure"
+x = "@Azure"
+
+[[handle]]
+name = "AzureDevOps"
+x = "@AzureDevOps"
+
+[[handle]]
+name = "alexthissen"
+x = "@alexthissen"
+
+[[handle]]
+name = "jeffreystrauss"
+x = "@jeffreystrauss"
+
+[[handle]]
+name = "chef"
+x = "@chef"
+
+[[handle]]
+name = "kc_dc"
+x = "@kc_dc"
+
+[[handle]]
+name = "dotnetfdn"
+x = "@dotnetfdn"
+
+[[handle]]
+name = "davidortinau"
+x = "@davidortinau"
+
+[[handle]]
+name = "guyroyse"
+x = "@guyroyse"
+
+[[handle]]
+name = "rstropek"
+x = "@rstropek"
+
+[[handle]]
+name = "OpenAtMicrosoft"
+x = "@OpenAtMicrosoft"
+
+[[handle]]
+name = "frontend_mike"
+x = "@frontend_mike"
+
+[[handle]]
+name = "jestjs_"
+x = "@jestjs_"
+
+[[handle]]
+name = "debamax"
+x = "@debamax"
+
+[[handle]]
+name = "Debian"
+x = "@Debian"
+
+[[handle]]
+name = "CyrilBrulebois"
+x = "@CyrilBrulebois"
+
+[[handle]]
+name = "nledez"
+x = "@nledez"
+
+[[handle]]
+name = "RayedBenbrahim"
+x = "@RayedBenbrahim"
+
+[[handle]]
+name = "isro_me"
+x = "@isro_me"
+
+[[handle]]
+name = "filip_hric"
+x = "@filip_hric"
+
+[[handle]]
+name = "QodoAI"
+x = "@QodoAI"
+
+[[handle]]
+name = "eggheadio"
+x = "@eggheadio"
+
+[[handle]]
+name = "TestAutomationU"
+x = "@TestAutomationU"
+
+[[handle]]
+name = "skillmea_sk"
+x = "@skillmea_sk"
+
+[[handle]]
+name = "sansecio"
+x = "@sansecio"
+
+[[handle]]
+name = "tabnine"
+x = "@tabnine"
+
+[[handle]]
+name = "yahave"
+x = "@yahave"
+
+[[handle]]
+name = "TechnionLive"
+x = "@TechnionLive"
+
+[[handle]]
+name = "Daniel_Landau"
+x = "@Daniel_Landau"
+
+[[handle]]
+name = "mushketyk"
+x = "@mushketyk"
+
+[[handle]]
+name = "stripe"
+x = "@stripe"
+
+[[handle]]
+name = "mackaaij@mastodon.nl"
+x = "@mackaaij@mastodon.nl"
+
+[[handle]]
+name = "mackaaij"
+x = "@mackaaij"
+
+[[handle]]
+name = "gtd"
+x = "@gtd"
+
+[[handle]]
+name = "asana"
+x = "@asana"
+
+[[handle]]
+name = "apple"
+x = "@apple"
+
+[[handle]]
+name = "pocket"
+x = "@pocket"
+
+[[handle]]
+name = "bitwarden"
+x = "@bitwarden"
+
+[[handle]]
+name = "OverSoftNL"
+x = "@OverSoftNL"
+
+[[handle]]
+name = "wesleyneelen"
+x = "@wesleyneelen"
+
+[[handle]]
+name = "zolderio"
+x = "@zolderio"
+
+[[handle]]
+name = "attic_security"
+x = "@attic_security"
+
+[[handle]]
+name = "dscm_security"
+x = "@dscm_security"
+
+[[handle]]
+name = "kkomelin"
+x = "@kkomelin"
+
+[[handle]]
+name = "seynaeve"
+x = "@seynaeve"
+
+[[handle]]
+name = "jengelberg"
+x = "@jengelberg"
+
+[[handle]]
+name = "charliehelps"
+x = "@charliehelps"
+
+[[handle]]
+name = "Codecov"
+x = "@Codecov"
+
+[[handle]]
+name = "Sentry"
+x = "@Sentry"
+
+[[handle]]
+name = "hootener"
+x = "@hootener"
+
+[[handle]]
+name = "getsentry"
+x = "@getsentry"
+
+[[handle]]
+name = "render"
+x = "@render"
+
+[[handle]]
+name = "Enea_Jahollari"
+x = "@Enea_Jahollari"
+
+[[handle]]
+name = "ollama"
+x = "@ollama"
+
+[[handle]]
+name = "burkeholland"
+x = "@burkeholland"
+
+[[handle]]
+name = "alexdaubois"
+x = "@alexdaubois"
+
+[[handle]]
+name = "coopTilleuls"
+x = "@coopTilleuls"
+
+[[handle]]
+name = "thephpf"
+x = "@thephpf"
+
+[[handle]]
+name = "symfony"
+x = "@symfony"
+
+[[handle]]
+name = "VincentChabot"
+x = "@VincentChabot"
+
+[[handle]]
+name = "_PrestaSafe"
+x = "@_PrestaSafe"
+
+[[handle]]
+name = "CecileDubouis"
+x = "@CecileDubouis"
+
+[[handle]]
+name = "OpenClassrooms"
+x = "@OpenClassrooms"
+
+[[handle]]
+name = "PrestaShop"
+x = "@PrestaShop"
+
+[[handle]]
+name = "_AnneP_"
+x = "@_AnneP_"
+
+[[handle]]
+name = "sebastienhouzet"
+x = "@sebastienhouzet"
+
+[[handle]]
+name = "webbax_ch"
+x = "@webbax_ch"
+
+[[handle]]
+name = "kucoincom"
+x = "@kucoincom"
+
+[[handle]]
+name = "KuCoinUpdates"
+x = "@KuCoinUpdates"
+
+[[handle]]
+name = "KuCoin_UK"
+x = "@KuCoin_UK"
+
+[[handle]]
+name = "kucoinaustralia"
+x = "@kucoinaustralia"
+
+[[handle]]
+name = "PrestaKit"
+x = "@PrestaKit"
+
+[[handle]]
+name = "NeoFramework"
+x = "@NeoFramework"
+
+[[handle]]
+name = "SEO_mercari"
+x = "@SEO_mercari"
+
+[[handle]]
+name = "passerel_fr"
+x = "@passerel_fr"
+
+[[handle]]
+name = "magentofeeds"
+x = "@magentofeeds"
+
+[[handle]]
+name = "gxjansen"
+x = "@gxjansen"
+
+[[handle]]
+name = "Metibiane"
+x = "@Metibiane"
+
+[[handle]]
+name = "cibles_fr"
+x = "@cibles_fr"
+
+[[handle]]
+name = "BrunoTRITSCH"
+x = "@BrunoTRITSCH"
+
+[[handle]]
+name = "petitkiwibe"
+x = "@petitkiwibe"
+
+[[handle]]
+name = "ZIMOiTS"
+x = "@ZIMOiTS"
+
+[[handle]]
+name = "AgenceKalixo"
+x = "@AgenceKalixo"
+
+[[handle]]
+name = "arnaud_genty"
+x = "@arnaud_genty"
+
+[[handle]]
+name = "altern_it"
+x = "@altern_it"
+
+[[handle]]
+name = "rusalinalilova"
+x = "@rusalinalilova"
+
+[[handle]]
+name = "LaurentG2evolve"
+x = "@LaurentG2evolve"
+
+[[handle]]
+name = "loictortelier"
+x = "@loictortelier"
+
+[[handle]]
+name = "bandimancho"
+x = "@bandimancho"
+
+[[handle]]
+name = "laurentplenet"
+x = "@laurentplenet"
+
+[[handle]]
+name = "SlipSoftware"
+x = "@SlipSoftware"
+
+[[handle]]
+name = "monatelierweb"
+x = "@monatelierweb"
+
+[[handle]]
+name = "turza_ondrej"
+x = "@turza_ondrej"
+
+[[handle]]
+name = "orhundev"
+x = "@orhundev"
+
+[[handle]]
+name = "ratatui_rs"
+x = "@ratatui_rs"
+
+[[handle]]
+name = "jetbrains"
+x = "@jetbrains"
+
+[[handle]]
+name = "archlinux"
+x = "@archlinux"
+
+[[handle]]
+name = "PHPTutorials2"
+x = "@PHPTutorials2"
+
+[[handle]]
+name = "euroblaze"
+x = "@euroblaze"
+
+[[handle]]
+name = "Hopdevis"
+x = "@Hopdevis"
+
+[[handle]]
+name = "aboobox"
+x = "@aboobox"
+
+[[handle]]
+name = "rueduwebmaster"
+x = "@rueduwebmaster"
+
+[[handle]]
+name = "Ellegiance"
+x = "@Ellegiance"
+
+[[handle]]
+name = "laurentsimony"
+x = "@laurentsimony"
+
+[[handle]]
+name = "Agence23Mobile"
+x = "@Agence23Mobile"
+
+[[handle]]
+name = "GH_DimitriROUS"
+x = "@GH_DimitriROUS"
+
+[[handle]]
+name = "growthhackingfr"
+x = "@growthhackingfr"
+
+[[handle]]
+name = "martin_leni"
+x = "@martin_leni"
+
+[[handle]]
+name = "bluzzinblog"
+x = "@bluzzinblog"
+
+[[handle]]
+name = "francesurf"
+x = "@francesurf"
+
+[[handle]]
+name = "romainbuche"
+x = "@romainbuche"
+
+[[handle]]
+name = "FloFgrs"
+x = "@FloFgrs"
+
+[[handle]]
+name = "VeilleWordpress"
+x = "@VeilleWordpress"
+
+[[handle]]
+name = "TimeIsMoneyHQ"
+x = "@TimeIsMoneyHQ"
+
+[[handle]]
+name = "samCSPR"
+x = "@samCSPR"
+
+[[handle]]
+name = "XDevelopers"
+x = "@XDevelopers"
+
+[[handle]]
+name = "XFrance"
+x = "@XFrance"
+
+[[handle]]
+name = "X"
+x = "@X"
+
+[[handle]]
+name = "MichelBalineau"
+x = "@MichelBalineau"
+
+[[handle]]
+name = "TrendingGithub"
+x = "@TrendingGithub"
+
+[[handle]]
+name = "andygrunwald"
+x = "@andygrunwald"
+
+[[handle]]
+name = "VosFactures"
+x = "@VosFactures"
+
+[[handle]]
+name = "whoaloic"
+x = "@whoaloic"
+
+[[handle]]
+name = "seboseo"
+x = "@seboseo"
+
+[[handle]]
+name = "MireilleChollet"
+x = "@MireilleChollet"
+
+[[handle]]
+name = "PascalGuillerm"
+x = "@PascalGuillerm"
+
+[[handle]]
+name = "tegarrizki171"
+x = "@tegarrizki171"
+
+[[handle]]
+name = "Stetasm181394"
+x = "@Stetasm181394"
+
+[[handle]]
+name = "DaveNeal35"
+x = "@DaveNeal35"
+
+[[handle]]
+name = "parcl"
+x = "@parcl"
+
+[[handle]]
+name = "parcllabs"
+x = "@parcllabs"
+
+[[handle]]
+name = "parcldevco"
+x = "@parcldevco"
+
+[[handle]]
+name = "wendyo66k"
+x = "@wendyo66k"
+
+[[handle]]
+name = "Aurel1enm"
+x = "@Aurel1enm"
+
+[[handle]]
+name = "andrewbrogdan"
+x = "@andrewbrogdan"
+
+[[handle]]
+name = "kissfmuk"
+x = "@kissfmuk"
+
+[[handle]]
+name = "Nikhil_Ag09"
+x = "@Nikhil_Ag09"
+
+[[handle]]
+name = "fmmzV0d23KP94i7"
+x = "@fmmzV0d23KP94i7"
+
+[[handle]]
+name = "wael93186"
+x = "@wael93186"
+
+[[handle]]
+name = "valoryag"
+x = "@valoryag"
+
+[[handle]]
+name = "autonolas"
+x = "@autonolas"
+
+[[handle]]
+name = "kupermind"
+x = "@kupermind"
+
+[[handle]]
+name = "Ta_da_io"
+x = "@Ta_da_io"
+
+[[handle]]
+name = "mtolmacs"
+x = "@mtolmacs"
+
+[[handle]]
+name = "Veykril"
+x = "@Veykril"
+
+[[handle]]
+name = "Toro66Qnt"
+x = "@Toro66Qnt"
+
+[[handle]]
+name = "speedystaking"
+x = "@speedystaking"
+
+[[handle]]
+name = "ZBCN_STACKER"
+x = "@ZBCN_STACKER"
+
+[[handle]]
+name = "OrangeBFree"
+x = "@OrangeBFree"
+
+[[handle]]
+name = "toncommunity"
+x = "@toncommunity"
+
+[[handle]]
+name = "ton_blockchain"
+x = "@ton_blockchain"
+
+[[handle]]
+name = "cowl_network"
+x = "@cowl_network"
+
+[[handle]]
+name = "benbybit"
+x = "@benbybit"
+
+[[handle]]
+name = "Cracking_Crypto"
+x = "@Cracking_Crypto"
+
+[[handle]]
+name = "andrew_Tas"
+x = "@andrew_Tas"
+
+[[handle]]
+name = "Repub_Crypto"
+x = "@Repub_Crypto"
+
+[[handle]]
+name = "PythonCrafted"
+x = "@PythonCrafted"
+
+[[handle]]
+name = "alizee_inboston"
+x = "@alizee_inboston"
+
+[[handle]]
+name = "investasi_coin"
+x = "@investasi_coin"
+
+[[handle]]
+name = "cryptolupone"
+x = "@cryptolupone"
+
+[[handle]]
+name = "JV07MS"
+x = "@JV07MS"
+
+[[handle]]
+name = "RyanDevaer"
+x = "@RyanDevaer"
+
+[[handle]]
+name = "trucker_toots"
+x = "@trucker_toots"
+
+[[handle]]
+name = "guiltygyoza"
+x = "@guiltygyoza"
+
+[[handle]]
+name = "KubrickShining"
+x = "@KubrickShining"
+
+[[handle]]
+name = "TheNode_Network"
+x = "@TheNode_Network"
+
+[[handle]]
+name = "odradev"
+x = "@odradev"
+
+[[handle]]
+name = "TommyCSPR"
+x = "@TommyCSPR"
+
+[[handle]]
+name = "CsprNews"
+x = "@CsprNews"
+
+[[handle]]
+name = "Axedna"
+x = "@Axedna"
+
+[[handle]]
+name = "Kevin_Cage_"
+x = "@Kevin_Cage_"
+
+[[handle]]
+name = "ProveAI"
+x = "@ProveAI"
+
+[[handle]]
+name = "crypto_caesar1"
+x = "@crypto_caesar1"
+
+[[handle]]
+name = "CC__Capital"
+x = "@CC__Capital"
+
+[[handle]]
+name = "joshkeil13"
+x = "@joshkeil13"
+
+[[handle]]
+name = "KalebDawson333"
+x = "@KalebDawson333"
+
+[[handle]]
+name = "GillisRobby"
+x = "@GillisRobby"
+
+[[handle]]
+name = "tomaka17"
+x = "@tomaka17"
+
+[[handle]]
+name = "gregberge_"
+x = "@gregberge_"
+
+[[handle]]
+name = "argos_ci"
+x = "@argos_ci"
+
+[[handle]]
+name = "gitbookio"
+x = "@gitbookio"
+
+[[handle]]
+name = "doctolib"
+x = "@doctolib"
+
+[[handle]]
+name = "SebasP49474734"
+x = "@SebasP49474734"
+
+[[handle]]
+name = "ChartHistorian"
+x = "@ChartHistorian"
+
+[[handle]]
+name = "willkpringle"
+x = "@willkpringle"
+
+[[handle]]
+name = "nilslice"
+x = "@nilslice"
+
+[[handle]]
+name = "dylibso"
+x = "@dylibso"
+
+[[handle]]
+name = "extism"
+x = "@extism"
+
+[[handle]]
+name = "ag_dubs"
+x = "@ag_dubs"
+
+[[handle]]
+name = "shopify"
+x = "@shopify"
+
+[[handle]]
+name = "rustwasm"
+x = "@rustwasm"
+
+[[handle]]
+name = "Indy_Rottier"
+x = "@Indy_Rottier"
+
+[[handle]]
+name = "BybitNL"
+x = "@BybitNL"
+
+[[handle]]
+name = "nodar_d"
+x = "@nodar_d"
+
+[[handle]]
+name = "ByteBender007"
+x = "@ByteBender007"
+
+[[handle]]
+name = "cryptojosh4114"
+x = "@cryptojosh4114"
+
+[[handle]]
+name = "casperecosystem"
+x = "@casperecosystem"
+
+[[handle]]
+name = "razo7575"
+x = "@razo7575"
+
+[[handle]]
+name = "0xVixello"
+x = "@0xVixello"
+
+[[handle]]
+name = "squintero89"
+x = "@squintero89"
+
+[[handle]]
+name = "Shelby2320"
+x = "@Shelby2320"
+
+[[handle]]
+name = "EraGuardian"
+x = "@EraGuardian"
+
+[[handle]]
+name = "ShahidArshad85"
+x = "@ShahidArshad85"
+
+[[handle]]
+name = "OriginStake"
+x = "@OriginStake"
+
+[[handle]]
+name = "wadlix"
+x = "@wadlix"
+
+[[handle]]
+name = "Breeron"
+x = "@Breeron"
+
+[[handle]]
+name = "midnightfdn"
+x = "@midnightfdn"
+
+[[handle]]
+name = "DissonantCat"
+x = "@DissonantCat"
+
+[[handle]]
+name = "CryptoRizon"
+x = "@CryptoRizon"
+
+[[handle]]
+name = "melpadden"
+x = "@melpadden"
+
+[[handle]]
+name = "infomaniak"
+x = "@infomaniak"
+
+[[handle]]
+name = "Starknet"
+x = "@Starknet"
+
+[[handle]]
+name = "StarknetFndn"
+x = "@StarknetFndn"
+
+[[handle]]
+name = "higher_labs"
+x = "@higher_labs"
+
+[[handle]]
+name = "johnaldinioh89"
+x = "@johnaldinioh89"
+
+[[handle]]
+name = "CryptoMichNL"
+x = "@CryptoMichNL"
+
+[[handle]]
+name = "MNFund_"
+x = "@MNFund_"
+
+[[handle]]
+name = "MNCapital_vc"
+x = "@MNCapital_vc"
+
+[[handle]]
+name = "new_era_finance"
+x = "@new_era_finance"
+
+[[handle]]
+name = "marcoieni"
+x = "@marcoieni"
+
+[[handle]]
+name = "release_plz_dev"
+x = "@release_plz_dev"
+
+[[handle]]
+name = "knaken_eu"
+x = "@knaken_eu"
+
+[[handle]]
+name = "knaken_nl"
+x = "@knaken_nl"
+
+[[handle]]
+name = "EIBarbas89"
+x = "@EIBarbas89"
+
+[[handle]]
+name = "playbithotel"
+x = "@playbithotel"
+
+[[handle]]
+name = "SkaleNetwork"
+x = "@SkaleNetwork"
+
+[[handle]]
+name = "SeedifyFund"
+x = "@SeedifyFund"
+
+[[handle]]
+name = "Cryptocreamy"
+x = "@Cryptocreamy"
+
+[[handle]]
+name = "elias_era"
+x = "@elias_era"
+
+[[handle]]
+name = "DarthB86"
+x = "@DarthB86"
+
+[[handle]]
+name = "willemvermeer"
+x = "@willemvermeer"
+
+[[handle]]
+name = "maxwellflitton"
+x = "@maxwellflitton"
+
+[[handle]]
+name = "jonhoo"
+x = "@jonhoo"
+
+[[handle]]
+name = "HelsingAI"
+x = "@HelsingAI"
+
+[[handle]]
+name = "readysetio"
+x = "@readysetio"
+
+[[handle]]
+name = "RustDiscussions"
+x = "@RustDiscussions"
+
+[[handle]]
+name = "Automated by @XojocXojoc"
+x = "@XojocXojoc"
+
+[[handle]]
+name = "mkenzo_8"
+x = "@mkenzo_8"
+
+[[handle]]
+name = "dioxuslabs"
+x = "@dioxuslabs"
+
+[[handle]]
+name = "davidwalschots"
+x = "@davidwalschots"
+
+[[handle]]
+name = "rikarends"
+x = "@rikarends"
+
+[[handle]]
+name = "m_ou_se"
+x = "@m_ou_se"
+
+[[handle]]
+name = "jonkers_erik"
+x = "@jonkers_erik"
+
+[[handle]]
+name = "tweedegolfbv"
+x = "@tweedegolfbv"
+
+[[handle]]
+name = "Rust_NL"
+x = "@Rust_NL"
+
+[[handle]]
+name = "0xSnoW"
+x = "@0xSnoW"
+
+[[handle]]
+name = "WeareAllfeat"
+x = "@WeareAllfeat"
+
+[[handle]]
+name = "seanmonstar"
+x = "@seanmonstar"
+
+[[handle]]
+name = "hyperium_rs"
+x = "@hyperium_rs"
+
+[[handle]]
+name = "nicolodavis"
+x = "@nicolodavis"
+
+[[handle]]
+name = "boardgamelabapp"
+x = "@boardgamelabapp"
+
+[[handle]]
+name = "Codizlow"
+x = "@Codizlow"
+
+[[handle]]
+name = "GothamSenator"
+x = "@GothamSenator"
+
+[[handle]]
+name = "gregory_raymond"
+x = "@gregory_raymond"
+
+[[handle]]
+name = "TheBigWhale_"
+x = "@TheBigWhale_"
+
+[[handle]]
+name = "RRKUBLI"
+x = "@RRKUBLI"
+
+[[handle]]
+name = "_cv_vc_"
+x = "@_cv_vc_"
+
+[[handle]]
+name = "DCOutlawdogs"
+x = "@DCOutlawdogs"
+
+[[handle]]
+name = "Web3xParis"
+x = "@Web3xParis"
+
+[[handle]]
+name = "ParisBlockWeek"
+x = "@ParisBlockWeek"
+
+[[handle]]
+name = "massachain"
+x = "@massachain"
+
+[[handle]]
+name = "Reecepbcups_"
+x = "@Reecepbcups_"
+
+[[handle]]
+name = "StrangeLoveLabs"
+x = "@StrangeLoveLabs"
+
+[[handle]]
+name = "Ondo"
+x = "@Ondo"
+
+[[handle]]
+name = "JunoNetwork"
+x = "@JunoNetwork"
+
+[[handle]]
+name = "JooDiogoSilva2"
+x = "@JooDiogoSilva2"
+
+[[handle]]
+name = "mystra_io"
+x = "@mystra_io"
+
+[[handle]]
+name = "orkunkl_"
+x = "@orkunkl_"
+
+[[handle]]
+name = "keplrwallet"
+x = "@keplrwallet"
+
+[[handle]]
+name = "keplr_infra"
+x = "@keplr_infra"
+
+[[handle]]
+name = "cosmosibc"
+x = "@cosmosibc"
+
+[[handle]]
+name = "ibcprotocol"
+x = "@ibcprotocol"
+
+[[handle]]
+name = "wynddao"
+x = "@wynddao"
+
+[[handle]]
+name = "ueco_jb"
+x = "@ueco_jb"
+
+[[handle]]
+name = "confio_tech"
+x = "@confio_tech"
+
+[[handle]]
+name = "misangmadrid"
+x = "@misangmadrid"
+
+[[handle]]
+name = "dsrvlabs"
+x = "@dsrvlabs"
+
+[[handle]]
+name = "AllThatNode"
+x = "@AllThatNode"
+
+[[handle]]
+name = "WelldoneStudio_"
+x = "@WelldoneStudio_"
+
+[[handle]]
+name = "osmosis"
+x = "@osmosis"
+
+[[handle]]
+name = "CosmWasm"
+x = "@CosmWasm"
+
+[[handle]]
+name = "casperswap"
+x = "@casperswap"
+
+[[handle]]
+name = "link3to"
+x = "@link3to"
+
+[[handle]]
+name = "BuildOnCyber"
+x = "@BuildOnCyber"
+
+[[handle]]
+name = "raymond2454"
+x = "@raymond2454"
+
+[[handle]]
+name = "Charlie85270R"
+x = "@Charlie85270R"
+
+[[handle]]
+name = "OctavFi"
+x = "@OctavFi"
+
+[[handle]]
+name = "RyanCarniato"
+x = "@RyanCarniato"
+
+[[handle]]
+name = "solid_js"
+x = "@solid_js"
+
+[[handle]]
+name = "RunningZ98577"
+x = "@RunningZ98577"
+
+[[handle]]
+name = "lesecteurfr"
+x = "@lesecteurfr"
+
+[[handle]]
+name = "NEARProtocol"
+x = "@NEARProtocol"
+
+[[handle]]
+name = "HalbornSecurity"
+x = "@HalbornSecurity"
+
+[[handle]]
+name = "herberticus"
+x = "@herberticus"
+
+[[handle]]
+name = "ardanlabs"
+x = "@ardanlabs"
+
+[[handle]]
+name = "getbeanstock"
+x = "@getbeanstock"
+
+[[handle]]
+name = "codeur"
+x = "@codeur"
+
+[[handle]]
+name = "projets_codeur"
+x = "@projets_codeur"
+
+[[handle]]
+name = "crobox"
+x = "@crobox"
+
+[[handle]]
+name = "SteveCareaga"
+x = "@SteveCareaga"
+
+[[handle]]
+name = "MrGoat3D"
+x = "@MrGoat3D"
+
+[[handle]]
+name = "cryptovers3_"
+x = "@cryptovers3_"
+
+[[handle]]
+name = "casperdash_io"
+x = "@casperdash_io"
+
+[[handle]]
+name = "EggForceNFT"
+x = "@EggForceNFT"
+
+[[handle]]
+name = "SoubranneQ"
+x = "@SoubranneQ"
+
+[[handle]]
+name = "InvestirFr"
+x = "@InvestirFr"
+
+[[handle]]
+name = "casperpunks_"
+x = "@casperpunks_"
+
+[[handle]]
+name = "hodlshark"
+x = "@hodlshark"
+
+[[handle]]
+name = "RaffleRobotAI"
+x = "@RaffleRobotAI"
+
+[[handle]]
+name = "CasperProjects"
+x = "@CasperProjects"
+
+[[handle]]
+name = "scottwalker99"
+x = "@scottwalker99"
+
+[[handle]]
+name = "Casper_Pad"
+x = "@Casper_Pad"
+
+[[handle]]
+name = "mssteuer"
+x = "@mssteuer"
+
+[[handle]]
+name = "piotrdz"
+x = "@piotrdz"
+
+[[handle]]
+name = "casper_wallet"
+x = "@casper_wallet"
+
+[[handle]]
+name = "_JunoMint"
+x = "@_JunoMint"
+
+[[handle]]
+name = "EZStaking"
+x = "@EZStaking"
+
+[[handle]]
+name = "zakarialounes"
+x = "@zakarialounes"
+
+[[handle]]
+name = "webacademie"
+x = "@webacademie"
+
+[[handle]]
+name = "epitech"
+x = "@epitech"
+
+[[handle]]
+name = "etna_io"
+x = "@etna_io"
+
+[[handle]]
+name = "jonesteban_"
+x = "@jonesteban_"
+
+[[handle]]
+name = "ZKSnarkA"
+x = "@ZKSnarkA"
+
+[[handle]]
+name = "chainswatch"
+x = "@chainswatch"
+
+[[handle]]
+name = "adrienlepert"
+x = "@adrienlepert"
+
+[[handle]]
+name = "sfroment42"
+x = "@sfroment42"
+
+[[handle]]
+name = "gwillem"
+x = "@gwillem"
+
+[[handle]]
+name = "greg_devlab"
+x = "@greg_devlab"
+
+[[handle]]
+name = "lorrainelejan"
+x = "@lorrainelejan"
+
+[[handle]]
+name = "Onchain_Degen"
+x = "@Onchain_Degen"
+
+[[handle]]
+name = "casperalerts"
+x = "@casperalerts"
+
+[[handle]]
+name = "CasperHolders"
+x = "@CasperHolders"
+
+[[handle]]
+name = "Div3_App"
+x = "@Div3_App"
+
+[[handle]]
+name = "KillianOnWeb"
+x = "@KillianOnWeb"
+
+[[handle]]
+name = "killianonpv"
+x = "@killianonpv"
+
+[[handle]]
+name = "enapnee"
+x = "@enapnee"
+
+[[handle]]
+name = "CasperCSPR_com"
+x = "@CasperCSPR_com"
+
+[[handle]]
+name = "CasperFrance_io"
+x = "@CasperFrance_io"
+
+[[handle]]
+name = "sacherjj"
+x = "@sacherjj"
+
+[[handle]]
+name = "MParlikar"
+x = "@MParlikar"
+
+[[handle]]
+name = "Sfund_community"
+x = "@Sfund_community"
+
+[[handle]]
+name = "samberrrry"
+x = "@samberrrry"
+
+[[handle]]
+name = "QuentinAu"
+x = "@QuentinAu"
+
+[[handle]]
+name = "WeAreYemanja"
+x = "@WeAreYemanja"
+
+[[handle]]
+name = "Griveau"
+x = "@Griveau"
+
+[[handle]]
+name = "linear"
+x = "@linear"
+
+[[handle]]
+name = "syswarren"
+x = "@syswarren"
+
+[[handle]]
+name = "ProductHunt"
+x = "@ProductHunt"
+
+[[handle]]
+name = "AngelList"
+x = "@AngelList"
+
+[[handle]]
+name = "deezer"
+x = "@deezer"
+
+[[handle]]
+name = "gobelins_paris"
+x = "@gobelins_paris"
+
+[[handle]]
+name = "PatrickWeil1"
+x = "@PatrickWeil1"
+
+[[handle]]
+name = "AdrienDomoison"
+x = "@AdrienDomoison"
+
+[[handle]]
+name = "codowl"
+x = "@codowl"
+
+[[handle]]
+name = "Shipow"
+x = "@Shipow"
+
+[[handle]]
+name = "algolia"
+x = "@algolia"
+
+[[handle]]
+name = "coderbits"
+x = "@coderbits"
+
+[[handle]]
+name = "GuideduCloud"
+x = "@GuideduCloud"
+
+[[handle]]
+name = "Cloudwatt"
+x = "@Cloudwatt"
+
+[[handle]]
+name = "jmfontaine"
+x = "@jmfontaine"
+
+[[handle]]
+name = "JobProd_PHP"
+x = "@JobProd_PHP"
+
+[[handle]]
+name = "welovedevs"
+x = "@welovedevs"
+
+[[handle]]
+name = "HCJphp"
+x = "@HCJphp"
+
+[[handle]]
+name = "HCNphp"
+x = "@HCNphp"
+
+[[handle]]
+name = "HumanCoders"
+x = "@HumanCoders"
+
+[[handle]]
+name = "prediseo"
+x = "@prediseo"
+
+[[handle]]
+name = "peggy_andre"
+x = "@peggy_andre"
+
+[[handle]]
+name = "elseviermasson"
+x = "@elseviermasson"
+
+[[handle]]
+name = "PCParisSeine"
+x = "@PCParisSeine"
+
+[[handle]]
+name = "shoppingfeedcom"
+x = "@shoppingfeedcom"
+
+[[handle]]
+name = "matetlicher"
+x = "@matetlicher"
+
+[[handle]]
+name = "jesuismika"
+x = "@jesuismika"
+
+[[handle]]
+name = "GroupeSmile"
+x = "@GroupeSmile"
+
+[[handle]]
+name = "NUMAparis"
+x = "@NUMAparis"
+
+[[handle]]
+name = "afup"
+x = "@afup"
+
+[[handle]]
+name = "AccrochePatte"
+x = "@AccrochePatte"
+
+[[handle]]
+name = "silverebreton"
+x = "@silverebreton"
+
+[[handle]]
+name = "duboutdesyeux"
+x = "@duboutdesyeux"
+
+[[handle]]
+name = "f4hwn"
+x = "@f4hwn"
+
+[[handle]]
+name = "sraymond38"
+x = "@sraymond38"
+
+[[handle]]
+name = "tifanou"
+x = "@tifanou"
+
+[[handle]]
+name = "AgenceGardeners"
+x = "@AgenceGardeners"
+
+[[handle]]
+name = "PrestashopBlog"
+x = "@PrestashopBlog"
+
+[[handle]]
+name = "SophieStickay"
+x = "@SophieStickay"
+
+[[handle]]
+name = "_dabims"
+x = "@_dabims"
+
+[[handle]]
+name = "arnaudmerigeau"
+x = "@arnaudmerigeau"
+
+[[handle]]
+name = "emploidunet"
+x = "@emploidunet"
+
+[[handle]]
+name = "e_commercant"
+x = "@e_commercant"
+
+[[handle]]
+name = "Mathilde"
+x = "@Mathilde"
+
+[[handle]]
+name = "lessushicodeurs"
+x = "@lessushicodeurs"
+
+[[handle]]
+name = "Iloveecommerce"
+x = "@Iloveecommerce"
+
+[[handle]]
+name = "arteestfrance"
+x = "@arteestfrance"
+
+[[handle]]
+name = "agencelunaweb"
+x = "@agencelunaweb"
+
+[[handle]]
+name = "PourBebeCom"
+x = "@PourBebeCom"
+
+[[handle]]
+name = "rhooocom"
+x = "@rhooocom"
+
+[[handle]]
+name = "prestochangeo1"
+x = "@prestochangeo1"
+
+[[handle]]
+name = "fenom"
+x = "@fenom"
+
+[[handle]]
+name = "i0n1c"
+x = "@i0n1c"
+
+[[handle]]
+name = "Antid0tecom"
+x = "@Antid0tecom"
+
+[[handle]]
+name = "SektionEins"
+x = "@SektionEins"
+
+[[handle]]
+name = "marcosteinhaeus"
+x = "@marcosteinhaeus"
+
+[[handle]]
+name = "NTIFormation"
+x = "@NTIFormation"
+
+[[handle]]
+name = "ABhFormation"
+x = "@ABhFormation"
+
+[[handle]]
+name = "hetic"
+x = "@hetic"
+
+[[handle]]
+name = "nilecode"
+x = "@nilecode"
+
+[[handle]]
+name = "nginxorg"
+x = "@nginxorg"
+
+[[handle]]
+name = "F5"
+x = "@F5"
+
+[[handle]]
+name = "philippe_humeau"
+x = "@philippe_humeau"
+
+[[handle]]
+name = "dotdeb"
+x = "@dotdeb"
+
+[[handle]]
+name = "ddtraceweb"
+x = "@ddtraceweb"
+
+[[handle]]
+name = "sliceApp"
+x = "@sliceApp"
+
+[[handle]]
+name = "o2sources"
+x = "@o2sources"
+
+[[handle]]
+name = "SamyRabih"
+x = "@SamyRabih"
+
+[[handle]]
+name = "WM_Jerome"
+x = "@WM_Jerome"
+
+[[handle]]
+name = "AWFormation"
+x = "@AWFormation"
+
+[[handle]]
+name = "jni__"
+x = "@jni__"
+
+[[handle]]
+name = "webdealFR"
+x = "@webdealFR"
+
+[[handle]]
+name = "lucieasmar"
+x = "@lucieasmar"
+
+[[handle]]
+name = "Sparta_Conseils"
+x = "@Sparta_Conseils"
+
+[[handle]]
+name = "topups"
+x = "@topups"
+
+[[handle]]
+name = "odmtech"
+x = "@odmtech"
+
+[[handle]]
+name = "framasoft"
+x = "@framasoft"
+
+[[handle]]
+name = "fragento"
+x = "@fragento"
+
+[[handle]]
+name = "twenga"
+x = "@twenga"
+
+[[handle]]
+name = "Baobaz"
+x = "@Baobaz"
+
+[[handle]]
+name = "PHPSolutions1"
+x = "@PHPSolutions1"
+
+[[handle]]
+name = "MoKaDev"
+x = "@MoKaDev"
+
+[[handle]]
+name = "mickal"
+x = "@mickal"
+
+[[handle]]
+name = "ternoa_"
+x = "@ternoa_"
+
+[[handle]]
+name = "OXID_eSales"
+x = "@OXID_eSales"
+
+[[handle]]
+name = "prestatraining"
+x = "@prestatraining"
+
+[[handle]]
+name = "zend"
+x = "@zend"
+
+[[handle]]
+name = "Perforce"
+x = "@Perforce"
+
+[[handle]]
+name = "isoskele_fa"
+x = "@isoskele_fa"
+
+[[handle]]
+name = "SmartFocusFRA"
+x = "@SmartFocusFRA"
+
+[[handle]]
+name = "synolia"
+x = "@synolia"
+
+[[handle]]
+name = "OXIDeSalesFr"
+x = "@OXIDeSalesFr"
+
+[[handle]]
+name = "PickCity_Shop"
+x = "@PickCity_Shop"
+
+[[handle]]
+name = "nbs_system"
+x = "@nbs_system"
+
+[[handle]]
+name = "jscouvert"
+x = "@jscouvert"
+
+[[handle]]
+name = "shopymind"
+x = "@shopymind"
+
+[[handle]]
+name = "webAgencyFAIL"
+x = "@webAgencyFAIL"
+
+[[handle]]
+name = "Mezcalito_Scop"
+x = "@Mezcalito_Scop"
+
+[[handle]]
+name = "JulioPotier"
+x = "@JulioPotier"
+
+[[handle]]
+name = "SecuPress"
+x = "@SecuPress"
+
+[[handle]]
+name = "wpmarmite"
+x = "@wpmarmite"
+
+[[handle]]
+name = "wpmarmite_en"
+x = "@wpmarmite_en"
+
+[[handle]]
+name = "GeekPressFR"
+x = "@GeekPressFR"
+
+[[handle]]
+name = "get_gustav"
+x = "@get_gustav"
+
+[[handle]]
+name = "wp_rocket"
+x = "@wp_rocket"
+
+[[handle]]
+name = "imagify"
+x = "@imagify"
+
+[[handle]]
+name = "rocketcdn"
+x = "@rocketcdn"
+
+[[handle]]
+name = "af83"
+x = "@af83"
+
+[[handle]]
+name = "buddypress"
+x = "@buddypress"
+
+[[handle]]
+name = "WordPress"
+x = "@WordPress"
+
+[[handle]]
+name = "bbpress"
+x = "@bbpress"
+
+[[handle]]
+name = "fabpot"
+x = "@fabpot"
+
+[[handle]]
+name = "upsundotcom"
+x = "@upsundotcom"
+
+[[handle]]
+name = "meyerweb@mastodon.social"
+x = "@meyerweb@mastodon.social"
+
+[[handle]]
+name = "meyerweb"
+x = "@meyerweb"
+
+[[handle]]
+name = "eaxfr"
+x = "@eaxfr"
+
+[[handle]]
+name = "Ecommercemag_fr"
+x = "@Ecommercemag_fr"
+
+[[handle]]
+name = "blogecommerce"
+x = "@blogecommerce"
+
+[[handle]]
+name = "Prestashelp"
+x = "@Prestashelp"
+
+[[handle]]
+name = "ProgOnline"
+x = "@ProgOnline"
+
+[[handle]]
+name = "worketer"
+x = "@worketer"
+
+[[handle]]
+name = "123PRESTA"
+x = "@123PRESTA"
+
+[[handle]]
+name = "123_PRESTA"
+x = "@123_PRESTA"
+
+[[handle]]
+name = "jvieilledent"
+x = "@jvieilledent"
+
+[[handle]]
+name = "MartY_NiM"
+x = "@MartY_NiM"
+
+[[handle]]
+name = "nimeops"
+x = "@nimeops"
+
+[[handle]]
+name = "layerops"
+x = "@layerops"
+
+[[handle]]
+name = "FWmediaEurope"
+x = "@FWmediaEurope"
+
+[[handle]]
+name = "ifocop"
+x = "@ifocop"
+
+[[handle]]
+name = "digitalcampusdc"
+x = "@digitalcampusdc"
+
+[[handle]]
+name = "Ouark"
+x = "@Ouark"
+
+[[handle]]
+name = "Activinnov"
+x = "@Activinnov"
+
+[[handle]]
+name = "LaFermeduWeb"
+x = "@LaFermeduWeb"
+
+[[handle]]
+name = "Ressourcesduweb"
+x = "@Ressourcesduweb"
+
+[[handle]]
+name = "fabienberthoux"
+x = "@fabienberthoux"
+
+[[handle]]
+name = "webrankinfo"
+x = "@webrankinfo"
+
+[[handle]]
+name = "ubuntufr"
+x = "@ubuntufr"
+
+[[handle]]
+name = "themeforests"
+x = "@themeforests"
+
+[[handle]]
+name = "WooThemes"
+x = "@WooThemes"
+
+[[handle]]
+name = "WooCommerce"
+x = "@WooCommerce"
+
+[[handle]]
+name = "wordpressdotcom"
+x = "@wordpressdotcom"
+
+[[handle]]
+name = "Automattic"
+x = "@Automattic"
+
+[[handle]]
+name = "__marcin_"
+x = "@__marcin_"
+
+[[handle]]
+name = "chcremer"
+x = "@chcremer"
+
+[[handle]]
+name = "l4mnath"
+x = "@l4mnath"
+
+[[handle]]
+name = "PizzaBonne"
+x = "@PizzaBonne"
+
+[[handle]]
+name = "prismicio"
+x = "@prismicio"
+
+[[handle]]
+name = "_businesstech_"
+x = "@_businesstech_"
+
+[[handle]]
+name = "love_radius"
+x = "@love_radius"
+
+[[handle]]
+name = "CroissanceNet"
+x = "@CroissanceNet"
+
+[[handle]]
+name = "Nebojsa31"
+x = "@Nebojsa31"
+
+[[handle]]
+name = "BenjaminNiess"
+x = "@BenjaminNiess"
+
+[[handle]]
+name = "webIDfr"
+x = "@webIDfr"
+
+[[handle]]
+name = "herewithme"
+x = "@herewithme"
+
+[[handle]]
+name = "be_api"
+x = "@be_api"
+
+[[handle]]
+name = "WordPressVIP"
+x = "@WordPressVIP"
+
+[[handle]]
+name = "Pomme__T"
+x = "@Pomme__T"
+
+[[handle]]
+name = "rachelandrew"
+x = "@rachelandrew"
+
+[[handle]]
+name = "smashingmag"
+x = "@smashingmag"
+
+[[handle]]
+name = "SmashingSupport"
+x = "@SmashingSupport"
+
+[[handle]]
+name = "SmashingConf"
+x = "@SmashingConf"
+
+[[handle]]
+name = "html5gallery"
+x = "@html5gallery"
+
+[[handle]]
+name = "html5doctor"
+x = "@html5doctor"
+
+[[handle]]
+name = "bdc"
+x = "@bdc"
+
+[[handle]]
+name = "csswg"
+x = "@csswg"
+
+[[handle]]
+name = "html5"
+x = "@html5"
+
+[[handle]]
+name = "CSS3"
+x = "@CSS3"
+
+[[handle]]
+name = "glazou"
+x = "@glazou"
+
+[[handle]]
+name = "goetter"
+x = "@goetter"
+
+[[handle]]
+name = "alsacreation"
+x = "@alsacreation"
+
+[[handle]]
+name = "alsacreations"
+x = "@alsacreations"
+
+[[handle]]
+name = "LaurentBrieu"
+x = "@LaurentBrieu"
+
+[[handle]]
+name = "KNPLabs"
+x = "@KNPLabs"
+
+[[handle]]
+name = "JulienBreux"
+x = "@JulienBreux"
+
+[[handle]]
+name = "golang"
+x = "@golang"
+
+[[handle]]
+name = "antigravity"
+x = "@antigravity"
+
+[[handle]]
+name = "Presta_acdmy"
+x = "@Presta_acdmy"
+
+[[handle]]
+name = "StephaneChonez"
+x = "@StephaneChonez"
+
+[[handle]]
+name = "restobarbershop"
+x = "@restobarbershop"
+
+[[handle]]
+name = "ecommerce_acdmy"
+x = "@ecommerce_acdmy"
+
+[[handle]]
+name = "GouZ"
+x = "@GouZ"
+
+[[handle]]
+name = "FabienSerny"
+x = "@FabienSerny"
+
+[[handle]]
+name = "xpoitau"
+x = "@xpoitau"
+
+[[handle]]
+name = "axome"
+x = "@axome"
+
+[[handle]]
+name = "misterchibi"
+x = "@misterchibi"
+
+[[handle]]
+name = "julienPauli"
+x = "@julienPauli"
+
+[[handle]]
+name = "prestamodule"
+x = "@prestamodule"
+
+[[handle]]
+name = "eComEdmonde"
+x = "@eComEdmonde"
+
+[[handle]]
+name = "prestaVincent"
+x = "@prestaVincent"
+
+[[handle]]
+name = "profileo"
+x = "@profileo"
+
+[[handle]]
+name = "AlainFolletete"
+x = "@AlainFolletete"
+
+[[handle]]
+name = "MotoTrip"
+x = "@MotoTrip"
+
+[[handle]]
+name = "combo_hr"
+x = "@combo_hr"
+
+[[handle]]
+name = "Les_Habitues"
+x = "@Les_Habitues"
+
+[[handle]]
+name = "23Prod"
+x = "@23Prod"
+
+[[handle]]
+name = "mobula75"
+x = "@mobula75"
+
+[[handle]]
+name = "wordpress_fr"
+x = "@wordpress_fr"
+
+[[handle]]
+name = "thierrycreation"
+x = "@thierrycreation"
+
+[[handle]]
+name = "BadiBouteraa"
+x = "@BadiBouteraa"
+
+[[handle]]
+name = "eKreasite"
+x = "@eKreasite"
+
+[[handle]]
+name = "MyThemeShop"
+x = "@MyThemeShop"
+
+[[handle]]
+name = "kidsdressing"
+x = "@kidsdressing"
+
+[[handle]]
+name = "cyrilchotard"
+x = "@cyrilchotard"
+
+[[handle]]
+name = "JoelGaujard"
+x = "@JoelGaujard"
+
+[[handle]]
+name = "DrySsHD"
+x = "@DrySsHD"
+
+[[handle]]
+name = "gui"
+x = "@gui"
+
+[[handle]]
+name = "headjs"
+x = "@headjs"
+
+[[handle]]
+name = "SMALLable"
+x = "@SMALLable"
+
+[[handle]]
+name = "julienalart"
+x = "@julienalart"
+
+[[handle]]
+name = "lumm_io"
+x = "@lumm_io"
+
+[[handle]]
+name = "Twitter"
+x = "@Twitter"
+
+[[handle]]
+name = "benedilux"
+x = "@benedilux"
+
+[[handle]]
+name = "ChezSuz"
+x = "@ChezSuz"
+
+[[handle]]
+name = "Rose_Indigo"
+x = "@Rose_Indigo"
+
+[[handle]]
+name = "infonel"
+x = "@infonel"
+
+[[handle]]
+name = "royrubin"
+x = "@royrubin"
+
+[[handle]]
+name = "magento_acdmy"
+x = "@magento_acdmy"
+
+[[handle]]
+name = "expert_magento"
+x = "@expert_magento"
+
+[[handle]]
+name = "OpenGento"
+x = "@OpenGento"
+
+[[handle]]
+name = "lineachic"
+x = "@lineachic"
+
+[[handle]]
+name = "Bargento"
+x = "@Bargento"
+
+[[handle]]
+name = "timefy"
+x = "@timefy"
+
+[[handle]]
+name = "UpFactory"
+x = "@UpFactory"
+
+[[handle]]
+name = "WiziShop_fr"
+x = "@WiziShop_fr"
+
+[[handle]]
+name = "fubiz"
+x = "@fubiz"
+
+[[handle]]
+name = "romaincolin"
+x = "@romaincolin"
+
+[[handle]]
+name = "magentomobile"
+x = "@magentomobile"
+
+[[handle]]
+name = "AdobeCommerce"
+x = "@AdobeCommerce"
+
+[[handle]]
+name = "Adobe"
+x = "@Adobe"
+
+[[handle]]
+name = "templatemonster"
+x = "@templatemonster"
+
+[[handle]]
+name = "Consonaute"
+x = "@Consonaute"
+
+[[handle]]
+name = "brunofridl"
+x = "@brunofridl"
+
+[[handle]]
+name = "DamienMtz"
+x = "@DamienMtz"
+
+[[handle]]
+name = "jolidragon"
+x = "@jolidragon"
+
+[[handle]]
+name = "PShopAddons"
+x = "@PShopAddons"
+
+[[handle]]
+name = "Capitaine"
+x = "@Capitaine"
+
+[[handle]]
+name = "patricecassard"
+x = "@patricecassard"
+
+[[handle]]
+name = "xtaz07"
+x = "@xtaz07"

@@ -295,6 +295,30 @@ notes: Cite ONLY URLs listed in candidates. No press hubs. No LinkedIn. No priva
     Ok((pack, urls))
 }
 
+/// Builds a static self-introduction `ResearchPack` for `/draft_about_itcy` and `/tweet_about_itcy`.
+///
+/// No HTTP fetches. Pack is deterministic and describes `ITCy` itself: stack, role, BAT gate.
+/// Update when the product stack changes.
+#[must_use]
+pub fn build_itcy_self_pack() -> (String, Vec<String>) {
+    let repo_url = "https://github.com/Interchouette-ITC/itcy";
+    let site_url = "https://interchouette.net";
+    let pack = format!(
+        "## ResearchPack\n\
+subject: ITCy self-introduction\n\
+summary: ITCy is the disclosed AI CMO for Interchouette ITC. \
+Stack: Rust binary, local Ollama models, SQLite corpus (LinkedIn export), Slack operator channel, ratatui TUI, \
+BAT publish gate (Build - Approve on GitHub PR - Test). \
+Voice is first-person AI owl mascot. Brand name is a French pun (internet, c'est chouette). \
+Public repo and source of truth: {repo_url}\n\
+candidates:\n\
+- final_url={repo_url} | title=ITCy public repo | why=primary cite\n\
+- final_url={site_url} | title=interchouette.net | why=brand site\n\
+notes: This is a self-introduction pack. Do not search for external news. Write from the facts above.\n",
+    );
+    (pack, vec![repo_url.to_string()])
+}
+
 fn pick_entry_for_subject<'a>(
     entries: &'a [ItcCatalogEntry],
     subject: &str,

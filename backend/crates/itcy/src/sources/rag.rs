@@ -463,7 +463,7 @@ pub(crate) async fn checkpoint_building_pack(
     let _ = store.upsert(&row);
 }
 
-fn scrub_and_validate_writer_body(
+pub(crate) fn scrub_and_validate_writer_body(
     body_raw: &str,
     pack_urls: &[String],
     subject: &str,
