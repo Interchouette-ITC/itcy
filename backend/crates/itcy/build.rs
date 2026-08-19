@@ -41,6 +41,10 @@ const PROMPT_FILES: &[&str] = &[
     "tweet_pack_note_normal.md",
     "draft_pack_note_empty.md",
     "draft_pack_note_normal.md",
+    "self_system.md",
+    "self_user.md",
+    "draft_rework_system.md",
+    "handle_registry.md",
 ];
 
 fn main() {
@@ -96,6 +100,7 @@ fn stub_body(name: &str) -> &'static str {
             "{instructions}\n{id}\n{subject}\n{commentary}\n{cite}\n{pack}\n"
         }
         "tweet_rework_user_farce.md" => "{instructions}\n{id}\n{subject}\n{commentary}\n",
+        "self_user.md" => "{surface}\n{instructions}\n",
         _ => "stub\n",
     }
 }

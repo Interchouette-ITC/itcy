@@ -36,7 +36,7 @@ pub(crate) fn log_pipeline_step(step: &str) {
 
 pub use crate::prompts::{
     AI_CMO, CREATIVE_LINKEDIN, DRAFT_SYSTEM, DRAFT_SYSTEM_CORE, FORM_CRAFT_LINKEDIN,
-    LOAD_SYSTEM_CORE, WHO_IS_WHO,
+    HANDLE_REGISTRY, LOAD_SYSTEM_CORE, WHO_IS_WHO,
 };
 
 use crate::prompts::{draft_pack_note, draft_user_message, fallback_commentary, load_user_message};
@@ -56,13 +56,14 @@ pub fn load_system_prompt() -> String {
 #[must_use]
 pub fn draft_system_prompt() -> String {
     format!(
-        "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}",
+        "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}",
         today_context_line(),
         WHO_IS_WHO,
         AI_CMO,
         CREATIVE_LINKEDIN,
         FORM_CRAFT_LINKEDIN,
-        DRAFT_SYSTEM_CORE
+        DRAFT_SYSTEM_CORE,
+        HANDLE_REGISTRY
     )
 }
 
@@ -463,7 +464,7 @@ pub(crate) async fn checkpoint_building_pack(
     let _ = store.upsert(&row);
 }
 
-fn scrub_and_validate_writer_body(
+pub(crate) fn scrub_and_validate_writer_body(
     body_raw: &str,
     pack_urls: &[String],
     subject: &str,

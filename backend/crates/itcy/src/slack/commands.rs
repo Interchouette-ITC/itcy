@@ -71,6 +71,14 @@ pub enum OperatorCommand {
         subject: String,
         instructions: String,
     },
+    /// `LinkedIn` self-introduction post as `ITCy` (first-person voice, stack disclosure).
+    DraftAboutItcy {
+        instructions: String,
+    },
+    /// X self-introduction tweet as `ITCy` (first-person voice, stack disclosure).
+    TweetAboutItcy {
+        instructions: String,
+    },
     ProposeTweet {
         digest_id: Option<String>,
         indices: Vec<i32>,
@@ -115,6 +123,8 @@ pub const fn slash_command_name(cmd: &OperatorCommand) -> &'static str {
         OperatorCommand::TweetAbout { .. } => "/tweet_about",
         OperatorCommand::TweetFarce { .. } => "/tweet_farce",
         OperatorCommand::DraftTweetAboutItc { .. } => "/draft_tweet_about_itc",
+        OperatorCommand::DraftAboutItcy { .. } => "/draft_about_itcy",
+        OperatorCommand::TweetAboutItcy { .. } => "/tweet_about_itcy",
         OperatorCommand::ProposeTweet { .. } => "/propose_tweet",
         OperatorCommand::List => "/list",
         OperatorCommand::Show { .. } => "/show",
@@ -141,7 +151,9 @@ pub const KNOWN_SLASH_COMMANDS: &[&str] = &[
     "propose_tweet",
     "draft_about",
     "draft_about_itc",
+    "draft_about_itcy",
     "draft_tweet_about_itc",
+    "tweet_about_itcy",
     "tweet_about",
     "tweet_farce",
     "retry_bat",
@@ -265,6 +277,20 @@ pub fn command_ack_text(cmd: &OperatorCommand) -> String {
             subject,
             instructions,
         } => ack_itc_subject("/draft_tweet_about_itc", subject, instructions),
+        OperatorCommand::DraftAboutItcy { instructions } => {
+            if instructions.is_empty() {
+                "Received `/draft_about_itcy`".into()
+            } else {
+                format!("Received `/draft_about_itcy` | {instructions}")
+            }
+        }
+        OperatorCommand::TweetAboutItcy { instructions } => {
+            if instructions.is_empty() {
+                "Received `/tweet_about_itcy`".into()
+            } else {
+                format!("Received `/tweet_about_itcy` | {instructions}")
+            }
+        }
         OperatorCommand::ProposeTweet { digest_id, indices } => {
             ack_propose("/propose_tweet", digest_id.as_deref(), indices)
         }
@@ -592,18 +618,28 @@ fn parse_lifecycle_slash(cmd: &str, args: &str) -> Option<Result<OperatorCommand
 }
 
 fn parse_itc_draft_slash(cmd: &str, args: &str) -> Option<Result<OperatorCommand, String>> {
-    if cmd != "draft_about_itc" {
-        return None;
+    match cmd {
+        "draft_about_itc" => {
+            let (subject, instructions) = if args.is_empty() {
+                (String::new(), String::new())
+            } else {
+                parse_draft_about_args(args)
+            };
+            Some(Ok(OperatorCommand::DraftAboutItc {
+                subject,
+                instructions,
+            }))
+        }
+        "draft_about_itcy" => {
+            let instructions = args.trim().to_string();
+            Some(Ok(OperatorCommand::DraftAboutItcy { instructions }))
+        }
+        "tweet_about_itcy" => {
+            let instructions = args.trim().to_string();
+            Some(Ok(OperatorCommand::TweetAboutItcy { instructions }))
+        }
+        _ => None,
     }
-    let (subject, instructions) = if args.is_empty() {
-        (String::new(), String::new())
-    } else {
-        parse_draft_about_args(args)
-    };
-    Some(Ok(OperatorCommand::DraftAboutItc {
-        subject,
-        instructions,
-    }))
 }
 
 fn parse_tweet_slash(cmd: &str, args: &str) -> Option<Result<OperatorCommand, String>> {
@@ -895,6 +931,7 @@ pub const fn help_text() -> &'static str {
      *Slash workflows:*\n\
      • `/draft_about <subject>, <instructions>` - draft; a https in instructions is the in-post cite\n\
      • `/draft_about_itc` or `/draft_about_itc <subject>, <instructions>` - LinkedIn draft about Interchouette / our projects\n\
+     • `/draft_about_itcy` or `/draft_about_itcy <instructions>` - LinkedIn self-introduction post as ITCy (first-person, stack disclosure)\n\
      • `/rework <Draft-ID|Tweet-ID> <instructions>` - rewrite saved draft or tweet (until Post / XPOST)\n\
      • `/change_url <Draft-ID|Tweet-ID> <0|1|2|3|https://…>` - set the link (`1`/`2`/`3` or URL); `0` = no link\n\
      • `/accept <Draft-ID|Tweet-ID>` - open/update BAT PR (LinkedIn `drafts` or X `drafts_tweet`; safe to re-run; publishes if Approve is on GitHub but webhook missed)\n\
@@ -910,6 +947,7 @@ pub const fn help_text() -> &'static str {
      • `/tweet_about <subject>, <instructions>` - tweet; a https in instructions locks the quote (X status) or the link (publisher)\n\
      • `/tweet_farce` or `/tweet_farce <theme hint>` - dad-joke / IT wordplay tagging @grok @cursor_ai @elonmusk (no cite)\n\
      • `/draft_tweet_about_itc` or `/draft_tweet_about_itc <subject>, <instructions>` - X tweet about Interchouette / our projects\n\
+     • `/tweet_about_itcy` or `/tweet_about_itcy <instructions>` - X self-introduction tweet as ITCy (first-person, stack disclosure)\n\
      • `/propose_tweet` - new tweet from corpus\n\
      • `/propose_tweet <DIGEST-…>, <1|1,3>` or `/propose_tweet <N>` - new tweets from that digest's propositions\n\
      • `/accept_comment_reply <https://…>` - LinkedIn comment-reply BAT (not wired yet; not a tweet reply)\n\

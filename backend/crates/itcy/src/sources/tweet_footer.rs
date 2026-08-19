@@ -160,6 +160,15 @@ pub fn compose_tweet_message(body: &str, tweet_id: &str, cites: &[String]) -> St
     out.trim_end().to_string()
 }
 
+/// Simplified tweet message for self-introduction commands: Tweet ID + body only, no link picker.
+///
+/// The URL is already baked into the tweet body by the self-intro writer.
+#[must_use]
+pub fn compose_self_intro_tweet_message(body: &str, tweet_id: &str) -> String {
+    let body = crate::sources::draft_url::strip_sources_section(body);
+    format!("Tweet ID: {tweet_id}\n\n{}", body.trim())
+}
+
 /// Apply `/change_tweet_url`: chosen URL becomes option **1** and the https line in the tweet.
 ///
 /// `0` clears the https line (options list unchanged). No special-case lecture.

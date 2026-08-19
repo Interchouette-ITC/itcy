@@ -9,8 +9,8 @@ use crate::llm::clock::today_context_line;
 use crate::llm::disclosure::with_disclosure;
 use crate::llm::router::{FailoverRouter, TaskKind};
 use crate::prompts::{
-    tweet_pack_note, tweet_user_message, AI_CMO, CREATIVE_X, FORM_CRAFT_X, TWEET_SYSTEM_CORE,
-    WHO_IS_WHO,
+    tweet_pack_note, tweet_user_message, AI_CMO, CREATIVE_X, FORM_CRAFT_X, HANDLE_REGISTRY,
+    TWEET_SYSTEM_CORE, WHO_IS_WHO,
 };
 use crate::sources::embed::EmbedClient;
 use crate::sources::rag::{
@@ -29,13 +29,14 @@ use tracing::{info, warn};
 
 fn tweet_system_prompt() -> String {
     format!(
-        "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}",
+        "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}",
         today_context_line(),
         WHO_IS_WHO,
         AI_CMO,
         CREATIVE_X,
         FORM_CRAFT_X,
-        TWEET_SYSTEM_CORE
+        TWEET_SYSTEM_CORE,
+        HANDLE_REGISTRY
     )
 }
 
@@ -264,7 +265,7 @@ async fn run_tweet_phase(
     Ok((body, trace))
 }
 
-fn attach_tweet_cites(
+pub(crate) fn attach_tweet_cites(
     body: &str,
     pack_urls: &[String],
     tweet_id: &str,
@@ -294,7 +295,7 @@ fn attach_tweet_cites(
     )
 }
 
-fn scrub_tweet_body(raw: &str) -> String {
+pub(crate) fn scrub_tweet_body(raw: &str) -> String {
     let raw = crate::llm::sanitize_itcy_text(raw);
     let raw = crate::sources::draft_url::strip_sources_section(&raw);
     crate::sources::tweet_footer::strip_own_x_handle(&raw)

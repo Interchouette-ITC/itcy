@@ -20,6 +20,7 @@ pub mod portability;
 pub mod rag;
 pub mod rework;
 pub mod scrape_cache;
+pub mod self_intro;
 pub mod store;
 pub mod tor_status;
 pub mod tweet;
