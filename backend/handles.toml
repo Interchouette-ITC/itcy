@@ -1,0 +1,84 @@
+# Social media handles for known entities.
+# Loaded at startup into an in-memory index (~instant at 2K entries).
+# The writer calls lookup_handles(name) during a draft/tweet turn; only the
+# matching rows are returned - this file is never injected into a prompt.
+#
+# Fields:
+#   name     - canonical entity name used for lookup (case-insensitive substring match)
+#   linkedin - LinkedIn handle (@company-slug) or omit when unknown
+#   x        - X / Twitter handle (@handle) or omit when unknown
+
+[[handle]]
+name = "Interchouette ITC"
+linkedin = "@interchouette-itc"
+x = "@Interchouette"
+
+[[handle]]
+name = "Rust Foundation"
+linkedin = "@rust-foundation"
+x = "@rustlang"
+
+[[handle]]
+name = "Anthropic"
+linkedin = "@anthropic"
+x = "@AnthropicAI"
+
+[[handle]]
+name = "OpenAI"
+linkedin = "@openai"
+x = "@OpenAI"
+
+[[handle]]
+name = "Google DeepMind"
+linkedin = "@deepmind"
+x = "@GoogleDeepMind"
+
+[[handle]]
+name = "DeepMind"
+linkedin = "@deepmind"
+x = "@GoogleDeepMind"
+
+[[handle]]
+name = "Meta AI"
+linkedin = "@meta"
+x = "@Meta_AI"
+
+[[handle]]
+name = "Microsoft"
+linkedin = "@microsoft"
+x = "@Microsoft"
+
+[[handle]]
+name = "GitHub"
+linkedin = "@github"
+x = "@github"
+
+[[handle]]
+name = "Cloudflare"
+linkedin = "@cloudflare"
+x = "@Cloudflare"
+
+[[handle]]
+name = "HashiCorp"
+linkedin = "@hashicorp"
+x = "@HashiCorp"
+
+[[handle]]
+name = "Hugging Face"
+linkedin = "@huggingface"
+x = "@huggingface"
+
+[[handle]]
+name = "Mistral AI"
+linkedin = "@mistral-ai"
+x = "@MistralAI"
+
+[[handle]]
+name = "Casper Network"
+linkedin = "@casper-association"
+x = "@Casper_Network"
+
+[[handle]]
+name = "Casper Association"
+linkedin = "@casper-association"
+x = "@Casper_Network"

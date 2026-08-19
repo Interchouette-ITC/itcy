@@ -9,6 +9,7 @@ pub mod draft_url;
 pub mod embed;
 pub mod enrich;
 pub mod export;
+pub mod handles;
 pub mod html;
 pub mod ingest;
 pub mod intent;
@@ -47,6 +48,7 @@ pub use enrich::{
     TorSocksFetcher, DEFAULT_TOR_CONTROL, DEFAULT_TOR_SOCKS,
 };
 pub use export::{import_linkedin_export, resolve_export_path, ImportStats};
+pub use handles::{load_handles, HandleEntry, HandlesIndex};
 pub use ingest::{
     ingest_url, resolve_public_fetch_cmd, HttpThenPublicPlaywright, IngestFetchPath, IngestReport,
     PageFetcher, MIN_STORE_CHARS, THIN_TRIGGER_CHARS,

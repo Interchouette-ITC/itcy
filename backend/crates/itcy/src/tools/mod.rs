@@ -20,7 +20,9 @@ pub use session::{draft_writer_policy, ResearchSession, ToolPolicy};
 use crate::llm::agent::ToolProvider;
 use crate::llm::client::{LlmError, LlmToolDef};
 use crate::sources::embed::EmbedClient;
+use crate::sources::handles::HandlesIndex;
 use async_trait::async_trait;
+use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -30,6 +32,7 @@ use tracing::{info, warn};
 pub struct ItcyTools {
     state_db: PathBuf,
     corpus: CorpusSearch,
+    handles: HandlesIndex,
     playwright: Mutex<Option<Arc<PlaywrightMcp>>>,
     playwright_cmd: PathBuf,
     session: Mutex<Option<ResearchSession>>,
@@ -39,9 +42,11 @@ pub struct ItcyTools {
 impl ItcyTools {
     #[must_use]
     pub fn new(db_path: PathBuf, embed: Arc<dyn EmbedClient>, playwright_cmd: PathBuf) -> Self {
+        let handles = crate::sources::handles::load_handles().unwrap_or_default();
         Self {
             state_db: db_path.clone(),
             corpus: CorpusSearch::new(db_path, embed),
+            handles,
             playwright: Mutex::new(None),
             playwright_cmd,
             session: Mutex::new(None),
@@ -324,6 +329,28 @@ Call browse_url on an on-topic publisher link before searching again."
             }
         }
     }
+
+    /// Look up `LinkedIn` and X handles for an entity name from the in-memory registry.
+    fn lookup_handles(&self, arguments: &str) -> String {
+        let Some(name) = parse_name_arg(arguments) else {
+            return "lookup_handles requires {\"name\": \"...\"}".to_string();
+        };
+        let matches = self.handles.search(&name);
+        if matches.is_empty() {
+            return format!("No handles found for \"{name}\" in registry.");
+        }
+        let mut out = format!("lookup_handles result for \"{name}\":\n");
+        for entry in matches {
+            let _ = writeln!(out, "- name: {}", entry.name);
+            if !entry.linkedin.is_empty() {
+                let _ = writeln!(out, "  linkedin: {}", entry.linkedin);
+            }
+            if !entry.x.is_empty() {
+                let _ = writeln!(out, "  x: {}", entry.x);
+            }
+        }
+        out
+    }
 }
 
 fn truncate_for_story(s: &str, max: usize) -> String {
@@ -370,6 +397,16 @@ fn refuse_browse_off_pack(url: &str, allow: &[String]) -> Result<(), LlmError> {
         "browse_url refused: `{url}` is not in the ResearchPack. \
 Browse a pack URL or write the post. Do not open a different story."
     )))
+}
+
+fn parse_name_arg(arguments: &str) -> Option<String> {
+    let v: serde_json::Value =
+        serde_json::from_str(arguments).unwrap_or_else(|_| serde_json::json!({}));
+    v.get("name")
+        .and_then(|n| n.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 fn parse_url_arg(arguments: &str) -> Result<String, LlmError> {
@@ -487,6 +524,25 @@ anything about a DRAFT-… id (pending/open/accepted/published). Never invent st
                 "required": ["draft_id"]
             }),
         },
+        LlmToolDef {
+            name: "lookup_handles".into(),
+            description: "Look up the LinkedIn and X/Twitter handles for a named entity \
+(company, person, project) from a curated registry. \
+Call this when you are about to mention a known entity by name and want its @handle \
+for a LinkedIn post or X tweet. Returns up to 5 matches; empty when not found. \
+Never invent a handle not returned by this tool."
+                .into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Entity name to look up, e.g. \"Anthropic\" or \"Rust Foundation\""
+                    }
+                },
+                "required": ["name"]
+            }),
+        },
     ]
 }
 
@@ -517,6 +573,7 @@ impl ToolProvider for ItcyTools {
                     Err(e)
                 }
             },
+            "lookup_handles" => Ok(self.lookup_handles(arguments)),
             other => Err(LlmError::ToolProvider(format!("unknown tool: {other}"))),
         }
     }
