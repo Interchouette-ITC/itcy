@@ -73,7 +73,6 @@ const DRAFT_PACK_NOTE_NORMAL: &str = prompt!("draft_pack_note_normal.md");
 /// Self-introduction writer system core (date line prepended at runtime).
 pub const SELF_SYSTEM_CORE: &str = prompt!("self_system.md");
 pub const DRAFT_REWORK_SYSTEM_CORE: &str = prompt!("draft_rework_system.md");
-pub const HANDLE_REGISTRY: &str = prompt!("handle_registry.md");
 
 const SELF_USER_TMPL: &str = prompt!("self_user.md");
 

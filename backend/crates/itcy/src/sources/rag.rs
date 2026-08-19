@@ -36,7 +36,7 @@ pub(crate) fn log_pipeline_step(step: &str) {
 
 pub use crate::prompts::{
     AI_CMO, CREATIVE_LINKEDIN, DRAFT_SYSTEM, DRAFT_SYSTEM_CORE, FORM_CRAFT_LINKEDIN,
-    HANDLE_REGISTRY, LOAD_SYSTEM_CORE, WHO_IS_WHO,
+    LOAD_SYSTEM_CORE, WHO_IS_WHO,
 };
 
 use crate::prompts::{draft_pack_note, draft_user_message, fallback_commentary, load_user_message};
@@ -56,14 +56,13 @@ pub fn load_system_prompt() -> String {
 #[must_use]
 pub fn draft_system_prompt() -> String {
     format!(
-        "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}",
+        "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}",
         today_context_line(),
         WHO_IS_WHO,
         AI_CMO,
         CREATIVE_LINKEDIN,
         FORM_CRAFT_LINKEDIN,
-        DRAFT_SYSTEM_CORE,
-        HANDLE_REGISTRY
+        DRAFT_SYSTEM_CORE
     )
 }
 

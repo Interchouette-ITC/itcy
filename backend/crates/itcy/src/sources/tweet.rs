@@ -9,8 +9,8 @@ use crate::llm::clock::today_context_line;
 use crate::llm::disclosure::with_disclosure;
 use crate::llm::router::{FailoverRouter, TaskKind};
 use crate::prompts::{
-    tweet_pack_note, tweet_user_message, AI_CMO, CREATIVE_X, FORM_CRAFT_X, HANDLE_REGISTRY,
-    TWEET_SYSTEM_CORE, WHO_IS_WHO,
+    tweet_pack_note, tweet_user_message, AI_CMO, CREATIVE_X, FORM_CRAFT_X, TWEET_SYSTEM_CORE,
+    WHO_IS_WHO,
 };
 use crate::sources::embed::EmbedClient;
 use crate::sources::rag::{
@@ -29,14 +29,13 @@ use tracing::{info, warn};
 
 fn tweet_system_prompt() -> String {
     format!(
-        "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}",
+        "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}",
         today_context_line(),
         WHO_IS_WHO,
         AI_CMO,
         CREATIVE_X,
         FORM_CRAFT_X,
-        TWEET_SYSTEM_CORE,
-        HANDLE_REGISTRY
+        TWEET_SYSTEM_CORE
     )
 }
 

@@ -13,7 +13,7 @@ use crate::llm::LlmError;
 use crate::prompts::{
     draft_rework_user_message, rework_empty_pack, tweet_rework_commentary_empty,
     tweet_rework_commentary_exploded, tweet_rework_previous_omitted, tweet_rework_user_message,
-    TweetReworkUserArgs, DRAFT_REWORK_SYSTEM_CORE, HANDLE_REGISTRY, TWEET_FARCE_SYSTEM_CORE,
+    TweetReworkUserArgs, DRAFT_REWORK_SYSTEM_CORE, TWEET_FARCE_SYSTEM_CORE,
     TWEET_REWORK_SYSTEM_CORE, WHO_IS_WHO,
 };
 use crate::sources::draft_footer::{
@@ -32,11 +32,10 @@ fn rework_system_prompt() -> String {
     // Slim system on purpose: the full Creative/Form/write curriculum drowned operator
     // instructions and froze digest subject facts. Rework needs override first.
     format!(
-        "{}\n\n{}\n\n{}\n\n{}",
+        "{}\n\n{}\n\n{}",
         today_context_line(),
         WHO_IS_WHO,
-        DRAFT_REWORK_SYSTEM_CORE,
-        HANDLE_REGISTRY
+        DRAFT_REWORK_SYSTEM_CORE
     )
 }
 
@@ -163,20 +162,18 @@ fn tweet_rework_system_prompt(farce: bool) -> String {
     // instructions and froze digest subject facts. Rework needs override first.
     if farce {
         format!(
-            "{}\n\n{}\n\n{}\n\n{}\n\n{}",
-            today_context_line(),
-            WHO_IS_WHO,
-            TWEET_REWORK_SYSTEM_CORE,
-            TWEET_FARCE_SYSTEM_CORE,
-            HANDLE_REGISTRY
-        )
-    } else {
-        format!(
             "{}\n\n{}\n\n{}\n\n{}",
             today_context_line(),
             WHO_IS_WHO,
             TWEET_REWORK_SYSTEM_CORE,
-            HANDLE_REGISTRY
+            TWEET_FARCE_SYSTEM_CORE
+        )
+    } else {
+        format!(
+            "{}\n\n{}\n\n{}",
+            today_context_line(),
+            WHO_IS_WHO,
+            TWEET_REWORK_SYSTEM_CORE
         )
     }
 }

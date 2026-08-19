@@ -44,7 +44,6 @@ const PROMPT_FILES: &[&str] = &[
     "self_system.md",
     "self_user.md",
     "draft_rework_system.md",
-    "handle_registry.md",
 ];
 
 fn main() {

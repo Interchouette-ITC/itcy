@@ -13,7 +13,7 @@ use crate::llm::disclosure::with_disclosure;
 use crate::llm::router::{FailoverRouter, TaskKind};
 use crate::prompts::{
     self_user_message, AI_CMO, CREATIVE_LINKEDIN, CREATIVE_X, FORM_CRAFT_LINKEDIN, FORM_CRAFT_X,
-    HANDLE_REGISTRY, SELF_SYSTEM_CORE, WHO_IS_WHO,
+    SELF_SYSTEM_CORE, WHO_IS_WHO,
 };
 use crate::sources::itc_digest::build_itcy_self_pack;
 use crate::sources::rag::{
@@ -30,27 +30,25 @@ use tracing::warn;
 
 fn self_draft_system_prompt() -> String {
     format!(
-        "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}",
+        "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}",
         today_context_line(),
         WHO_IS_WHO,
         AI_CMO,
         CREATIVE_LINKEDIN,
         FORM_CRAFT_LINKEDIN,
-        SELF_SYSTEM_CORE,
-        HANDLE_REGISTRY
+        SELF_SYSTEM_CORE
     )
 }
 
 fn self_tweet_system_prompt() -> String {
     format!(
-        "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}",
+        "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}",
         today_context_line(),
         WHO_IS_WHO,
         AI_CMO,
         CREATIVE_X,
         FORM_CRAFT_X,
-        SELF_SYSTEM_CORE,
-        HANDLE_REGISTRY
+        SELF_SYSTEM_CORE
     )
 }
 
