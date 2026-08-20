@@ -136,17 +136,28 @@ const BRAND: &str = "Interchouette";
 const BRAND_ITC: &str = "Interchouette ITC";
 const LINKEDIN_BRAND_HANDLE: &str = "@interchouette-itc";
 
-/// When the post already names Interchouette, keep ITC and add `@interchouette-itc`. Does not invent a brand mention.
+/// When the post already names Interchouette, use `@interchouette-itc` as the mention.
+///
+/// Replaces the brand name (does not invent a mention). Collapses verbose
+/// `Interchouette ITC (@interchouette-itc)` forms to the bare handle.
 #[must_use]
 pub fn ensure_linkedin_brand_mention(body: &str) -> String {
+    const VERBOSE_ITC: &str = "Interchouette ITC (@interchouette-itc)";
+    const VERBOSE: &str = "Interchouette (@interchouette-itc)";
+    if let Some((start, end)) = find_phrase_outside_url(body, VERBOSE_ITC) {
+        return replace_range(body, start, end, LINKEDIN_BRAND_HANDLE);
+    }
+    if let Some((start, end)) = find_phrase_outside_url(body, VERBOSE) {
+        return replace_range(body, start, end, LINKEDIN_BRAND_HANDLE);
+    }
     if body.to_ascii_lowercase().contains(LINKEDIN_BRAND_HANDLE) {
         return body.to_string();
     }
-    if let Some((_, end)) = find_phrase_outside_url(body, BRAND_ITC) {
-        return insert_at(body, end, " (@interchouette-itc)");
+    if let Some((start, end)) = find_phrase_outside_url(body, BRAND_ITC) {
+        return replace_range(body, start, end, LINKEDIN_BRAND_HANDLE);
     }
-    if let Some((_, end)) = find_phrase_outside_url(body, BRAND) {
-        return insert_at(body, end, " ITC (@interchouette-itc)");
+    if let Some((start, end)) = find_phrase_outside_url(body, BRAND) {
+        return replace_range(body, start, end, LINKEDIN_BRAND_HANDLE);
     }
     body.to_string()
 }
@@ -165,8 +176,8 @@ pub fn ensure_pack_linkedin_brand_handle(pack: &mut String, brief: &str) {
     *pack = insert_handles_after_subject(pack, "handles: linkedin=@interchouette-itc");
 }
 
-fn insert_at(body: &str, end: usize, insert: &str) -> String {
-    format!("{}{}{}", &body[..end], insert, &body[end..])
+fn replace_range(body: &str, start: usize, end: usize, with: &str) -> String {
+    format!("{}{}{}", &body[..start], with, &body[end..])
 }
 
 fn insert_handles_after_subject(pack: &str, line: &str) -> String {
@@ -278,21 +289,29 @@ mod tests {
     }
 
     #[test]
-    fn linkedin_keeps_itc_and_adds_company_handle() {
+    fn linkedin_replaces_brand_with_company_handle() {
         let out = ensure_linkedin_brand_mention("Interchouette ITC shipped WebMCP on the site.");
-        assert!(out.contains("Interchouette ITC (@interchouette-itc)"));
-        assert!(!out.contains("Interchouette (@interchouette-itc) ITC"));
+        assert_eq!(out, "@interchouette-itc shipped WebMCP on the site.");
     }
 
     #[test]
-    fn linkedin_completes_brand_name_when_itc_missing() {
+    fn linkedin_replaces_bare_brand_name() {
         let out = ensure_linkedin_brand_mention("Interchouette shipped WebMCP.");
-        assert!(out.contains("Interchouette ITC (@interchouette-itc) shipped"));
+        assert_eq!(out, "@interchouette-itc shipped WebMCP.");
+    }
+
+    #[test]
+    fn linkedin_collapses_verbose_handle_form() {
+        let src = "Interchouette ITC (@interchouette-itc) shipped WebMCP.";
+        assert_eq!(
+            ensure_linkedin_brand_mention(src),
+            "@interchouette-itc shipped WebMCP."
+        );
     }
 
     #[test]
     fn linkedin_does_not_double_handle() {
-        let src = "Interchouette ITC (@interchouette-itc) shipped WebMCP.";
+        let src = "@interchouette-itc shipped WebMCP.";
         assert_eq!(ensure_linkedin_brand_mention(src), src);
     }
 

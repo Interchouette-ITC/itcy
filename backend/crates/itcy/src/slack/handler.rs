@@ -25,7 +25,7 @@ use crate::sources::digest::{
     build_daily_digest, digest_slack_post, format_digest_slack, get_digest, latest_open_digest,
     pick_items,
 };
-use crate::sources::draft_footer::compose_draft_message;
+use crate::sources::draft_footer::{compose_draft_message, slack_paste_safe_linkedin_message};
 use crate::sources::draft_url::{
     extract_in_post_url, footer_start, promote_link_option, resolve_url_choice,
     set_single_in_post_url, UrlChoice,
@@ -647,7 +647,7 @@ Next:\n\n\
 /rework {id}\n\n\
 /change_url {id} 1\n\n\
 /accept {id}",
-                    body = draft.body,
+                    body = slack_paste_safe_linkedin_message(&draft.body),
                     id = draft.draft_id
                 )
             }
@@ -745,7 +745,7 @@ Next:\n\n\
 /rework {id}\n\n\
 /change_url {id} 1\n\n\
 /accept {id}",
-                    body = draft.body,
+                    body = slack_paste_safe_linkedin_message(&draft.body),
                     id = draft.draft_id
                 )
             }
@@ -812,7 +812,7 @@ Next:\n\n\
 /rework {id}\n\n\
 /change_url {id} 1\n\n\
 /accept {id}",
-                    body = draft.body,
+                    body = slack_paste_safe_linkedin_message(&draft.body),
                     id = draft.draft_id
                 )
             }
@@ -944,7 +944,7 @@ Reworked draft `{id}` saved (**open**).\n\n\
 Next:\n\n\
 /change_url {id} 1\n\n\
 /accept {id}",
-                    body = rew.body,
+                    body = slack_paste_safe_linkedin_message(&rew.body),
                     id = rew.draft_id
                 )
             }
@@ -994,7 +994,7 @@ Next:\n\n\
                     "{body}\n\n\
 Next:\n\n\
 /accept {id}",
-                    body = stored.body,
+                    body = slack_paste_safe_linkedin_message(&stored.body),
                     id = draft_id,
                 )
             }
@@ -1025,7 +1025,7 @@ Next:\n\n\
                     "{body}\n\n\
 Next:\n\n\
 /accept {id}",
-                    body = stored.body,
+                    body = slack_paste_safe_linkedin_message(&stored.body),
                     id = draft_id,
                 )
             }
