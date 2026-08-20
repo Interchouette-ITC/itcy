@@ -201,7 +201,7 @@ async fn accept_surface(
     })
 }
 
-/// Ensures a draft is **open** for `/rework_draft` / `/change_draft_url`.
+/// Ensures a draft is **open** for `/rework` / `/change_url`.
 /// If status is `accepted` (fork PR waiting BAT), flips back to `open` automatically.
 ///
 /// # Errors

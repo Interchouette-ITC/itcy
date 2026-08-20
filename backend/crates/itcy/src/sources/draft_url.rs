@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Interchouette-ITC
 // SPDX-License-Identifier: BUSL-1.1
 
-//! Deterministic in-post URL swap for `/change_draft_url` / `/change_tweet_url`.
+//! Deterministic in-post URL swap for `/change_url`.
 //!
 //! Drafts and tweets carry **at most one** bare `https://` line (before Link options /
 //! disclosure). Markdown links are stripped. There is no Sources list.
@@ -155,7 +155,7 @@ pub fn set_single_in_post_url(body: &str, new_url: &str) -> String {
     out
 }
 
-/// Outcome of `/change_draft_url` / `/change_tweet_url` choice parsing.
+/// Outcome of `/change_url` choice parsing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UrlChoice {
     /// Operator asked to remove the in-post / cite URL (`0`).

@@ -1442,6 +1442,8 @@ mod tests {
         assert!(!h.contains("/accept_tweet"));
         assert!(!h.contains("/list_tweets"));
         assert!(!h.contains("/rework_draft"));
+        assert!(!h.contains("/change_tweet_url"));
+        assert!(!h.contains("/change_draft_url"));
     }
 
     #[test]

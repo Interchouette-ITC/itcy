@@ -18,19 +18,13 @@ pub fn format_stored_draft_status(d: &StoredDraft) -> String {
     };
     let next = match d.status.as_str() {
         status::PUBLISHED => {
-            "Already a Post. Do not /accept_draft, /rework_draft, or /change_draft_url.".into()
+            "Already a Post. Do not /accept, /rework, or /change_url.".into()
         }
         status::ACCEPTED => {
             "Waiting BAT (gRoussac Approve). /retry_bat if ship failed after BAT, or the webhook missed."
                 .into()
         }
-        status::OPEN => {
-            if d.draft_id.starts_with("TWEET-") {
-                "/rework_tweet, /change_tweet_url, or /accept_tweet when ready.".into()
-            } else {
-                "/rework_draft, /change_draft_url, or /accept_draft when ready.".into()
-            }
-        }
+        status::OPEN => "/rework, /change_url, or /accept when ready.".into(),
         status::BUILDING => {
             "Still building. Wait for Slack, or /draft_about again if stalled.".into()
         }
@@ -54,7 +48,7 @@ pub fn operator_draft_status_reply(d: &StoredDraft) -> String {
     match d.status.as_str() {
         status::PUBLISHED => format!(
             "`{}` is already a **Post** (`published`).\nSubject: {}{pr_line}\n\
-Do not `/accept_draft` or rework.",
+Do not `/accept` or rework.",
             d.draft_id, d.subject
         ),
         status::ACCEPTED => format!(
@@ -65,7 +59,7 @@ Subject: {}{pr_line}\n\
         ),
         status::OPEN => format!(
             "`{}` is **open** (ready for rework / accept).\nSubject: {}{pr_line}\n\
-`/rework_draft`, `/change_draft_url`, or `/accept_draft`.",
+`/rework`, `/change_url`, or `/accept`.",
             d.draft_id, d.subject
         ),
         status::BUILDING => format!(
@@ -155,7 +149,7 @@ mod tests {
         };
         let reply = operator_draft_status_reply(&d);
         assert!(reply.contains("published"));
-        assert!(reply.contains("Do not `/accept_draft`"));
+        assert!(reply.contains("Do not `/accept`"));
         assert!(!reply.to_ascii_lowercase().contains("pending"));
     }
 
@@ -181,6 +175,6 @@ mod tests {
             .unwrap();
         let out = lookup_draft_status(&path, "DRAFT-20990101-000001").unwrap();
         assert!(out.contains("status=published"));
-        assert!(out.contains("Do not /accept_draft"));
+        assert!(out.contains("Do not /accept"));
     }
 }

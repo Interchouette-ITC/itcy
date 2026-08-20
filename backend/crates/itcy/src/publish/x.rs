@@ -645,7 +645,7 @@ That’s the kind of smart engineering that makes embedded systems easier to bui
 https://x.com/AstraKernel/status/2088224406187413962
 
 Link: 1
-0 = no link. /change_tweet_url TWEET-1 <0|1|2|3|url>
+0 = no link. /change_url TWEET-1 <0|1|2|3|url>
 1. https://x.com/AstraKernel/status/2088224406187413962";
         let texts = tweet_texts_for_api(body);
         assert_eq!(texts.len(), 2, "tags+URL push a reply: {texts:?}");
@@ -689,7 +689,7 @@ Link: 1
     #[test]
     fn tweet_text_strips_link_footer() {
         let text = tweet_text_for_api(
-            "Tweet ID: TWEET-1\n\nHello builders\n\nhttps://labs.sogeti.com/a\n\nLink: 1\n0 = no link. /change_tweet_url TWEET-1 <0|1|2|3|url>\n1. https://labs.sogeti.com/a\n",
+            "Tweet ID: TWEET-1\n\nHello builders\n\nhttps://labs.sogeti.com/a\n\nLink: 1\n0 = no link. /change_url TWEET-1 <0|1|2|3|url>\n1. https://labs.sogeti.com/a\n",
         );
         assert!(text.contains("Hello builders"));
         assert!(text.contains("https://labs.sogeti.com/a"));

@@ -17,6 +17,10 @@ use crate::sources::tweet_farce::build_farce_tweet;
 use crate::sources::tweet_footer::apply_change_tweet_url;
 use tracing::{error, info, warn};
 
+fn open_tweet_next(id: &str) -> String {
+    format!("/rework {id}\n\n/change_url {id} 1\n\n/accept {id}")
+}
+
 impl SlackRuntime {
     pub(crate) async fn tweet_farce_reply(&self, theme: &str) -> String {
         let theme = theme.trim();
@@ -61,10 +65,10 @@ impl SlackRuntime {
                     "{body}\n\n\
 Saved as open tweet. Ref `{id}`.\n\n\
 Next:\n\n\
-/rework {id}\n\n\
-/accept {id}",
+{next}",
                     body = draft.body,
-                    id = draft.draft_id
+                    id = draft.draft_id,
+                    next = open_tweet_next(&draft.draft_id)
                 )
             }
             Err(RagError::FarceMissingMentions) => {
@@ -173,10 +177,10 @@ Next:\n\n\
                     "{body}\n\n\
 Saved as open tweet. Ref `{id}`.\n\n\
 Next:\n\n\
-/rework {id}\n\n\
-/accept {id}",
+{next}",
                     body = draft.body,
-                    id = draft.draft_id
+                    id = draft.draft_id,
+                    next = open_tweet_next(&draft.draft_id)
                 )
             }
             Err(e) => {
@@ -239,10 +243,10 @@ Next:\n\n\
                     "{body}\n\n\
 Saved as open tweet. Ref `{id}`.\n\n\
 Next:\n\n\
-/rework {id}\n\n\
-/accept {id}",
+{next}",
                     body = draft.body,
-                    id = draft.draft_id
+                    id = draft.draft_id,
+                    next = open_tweet_next(&draft.draft_id)
                 )
             }
             Err(RagError::NotATweet) => {
@@ -319,10 +323,10 @@ Next:\n\n\
                     "{body}\n\n\
 Saved as open tweet. Ref `{id}`.\n\n\
 Next:\n\n\
-/rework {id}\n\n\
-/accept {id}",
+{next}",
                     body = draft.body,
-                    id = draft.draft_id
+                    id = draft.draft_id,
+                    next = open_tweet_next(&draft.draft_id)
                 )
             }
             Err(RagError::NoSources(s)) => {
@@ -489,9 +493,10 @@ If Approve already landed, or ship failed after BAT:\n\n\
                     "{body}\n\n\
 Reworked tweet `{id}` saved (**open**).\n\n\
 Next:\n\n\
-/accept {id}",
+{next}",
                     body = rew.body,
-                    id = rew.draft_id
+                    id = rew.draft_id,
+                    next = open_tweet_next(&rew.draft_id)
                 )
             }
             Err(e) => format!("Could not rework tweet: {e}"),
@@ -532,9 +537,9 @@ Next:\n\n\
         format!(
             "{body}\n\n\
 Next:\n\n\
-/accept {id}",
+{next}",
             body = stored.body,
-            id = tweet_id,
+            next = open_tweet_next(tweet_id),
         )
     }
 }
