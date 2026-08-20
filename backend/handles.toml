@@ -7,3676 +7,7516 @@
 #   name     - canonical entity name used for lookup (case-insensitive substring match)
 #   linkedin - LinkedIn handle (@company-slug) or omit when unknown
 #   x        - X / Twitter handle (@handle) or omit when unknown
+#   linkedin_url - canonical LinkedIn URL (clickable)
+#   x_url        - canonical X URL (clickable)
 
 [[handle]]
 name = "Interchouette ITC"
 linkedin = "@interchouette-itc"
 x = "@Interchouette"
+linkedin_url = "https://www.linkedin.com/company/interchouette-itc/"
+x_url = "https://x.com/Interchouette"
 
 [[handle]]
 name = "Rust Foundation"
 linkedin = "@rust-foundation"
 x = "@rustlang"
+linkedin_url = "https://www.linkedin.com/company/rust-foundation/"
+x_url = "https://x.com/rustlang"
 
 [[handle]]
 name = "OpenAI"
 linkedin = "@openai"
 x = "@OpenAI"
+linkedin_url = "https://www.linkedin.com/company/openai/"
+x_url = "https://x.com/OpenAI"
 
 [[handle]]
 name = "Google DeepMind"
 linkedin = "@deepmind"
 x = "@GoogleDeepMind"
-
-[[handle]]
-name = "DeepMind"
-linkedin = "@deepmind"
-x = "@GoogleDeepMind"
+linkedin_url = "https://www.linkedin.com/company/deepmind/"
+x_url = "https://x.com/GoogleDeepMind"
 
 [[handle]]
 name = "Meta AI"
 linkedin = "@meta"
 x = "@Meta_AI"
+linkedin_url = "https://www.linkedin.com/company/meta/"
+x_url = "https://x.com/Meta_AI"
 
 [[handle]]
 name = "Microsoft"
 linkedin = "@microsoft"
 x = "@Microsoft"
+linkedin_url = "https://www.linkedin.com/company/microsoft/"
+x_url = "https://x.com/Microsoft"
 
 [[handle]]
 name = "GitHub"
 linkedin = "@github"
 x = "@github"
+linkedin_url = "https://www.linkedin.com/company/github/"
+x_url = "https://x.com/github"
 
 [[handle]]
 name = "Cloudflare"
 linkedin = "@cloudflare"
 x = "@Cloudflare"
+linkedin_url = "https://www.linkedin.com/company/cloudflare/"
+x_url = "https://x.com/Cloudflare"
 
 [[handle]]
 name = "HashiCorp"
 linkedin = "@hashicorp"
 x = "@HashiCorp"
+linkedin_url = "https://www.linkedin.com/company/hashicorp/"
+x_url = "https://x.com/HashiCorp"
 
 [[handle]]
 name = "Hugging Face"
 linkedin = "@huggingface"
 x = "@huggingface"
+linkedin_url = "https://www.linkedin.com/company/huggingface/"
+x_url = "https://x.com/huggingface"
 
 [[handle]]
 name = "Mistral AI"
 linkedin = "@mistral-ai"
 x = "@MistralAI"
-
-[[handle]]
-name = "Casper Network"
-linkedin = "@casper-network"
-x = "@Casper_Network"
+linkedin_url = "https://www.linkedin.com/company/mistral-ai/"
+x_url = "https://x.com/MistralAI"
 
 [[handle]]
 name = "Casper Association"
-linkedin = "@casper-association"
+linkedin = "@casper-network"
 x = "@Casper_Network"
+linkedin_url = "https://www.linkedin.com/company/casper-network/"
+x_url = "https://x.com/Casper_Network"
 
 [[handle]]
 name = "Proton VPN"
 x = "@ProtonVPN"
+x_url = "https://x.com/ProtonVPN"
 
 [[handle]]
 name = "Proton"
 linkedin = "@protonag"
 x = "@ProtonPrivacy"
+linkedin_url = "https://www.linkedin.com/company/protonag/"
+x_url = "https://x.com/ProtonPrivacy"
 
 [[handle]]
 name = "Sogeti Labs"
 x = "@sogetilabs"
-
-[[handle]]
-name = "Sogeti"
 linkedin = "@sogeti"
-x = "@sogetilabs"
+linkedin_url = "https://www.linkedin.com/company/sogeti/"
+x_url = "https://x.com/sogetilabs"
 
 [[handle]]
 name = "Cursor"
 x = "@cursor_ai"
+x_url = "https://x.com/cursor_ai"
 
 [[handle]]
 name = "SpaceX"
 linkedin = "@spacex"
 x = "@SpaceX"
+linkedin_url = "https://www.linkedin.com/company/spacex/"
+x_url = "https://x.com/SpaceX"
 
 [[handle]]
 name = "patrick_rtk_"
 x = "@patrick_rtk_"
+x_url = "https://x.com/patrick_rtk_"
 
 [[handle]]
 name = "AstraKernel"
 x = "@AstraKernel"
+x_url = "https://x.com/AstraKernel"
 
 [[handle]]
 name = "PeurAvion"
 x = "@PeurAvion"
+x_url = "https://x.com/PeurAvion"
 
 [[handle]]
 name = "ihedn"
 x = "@ihedn"
+x_url = "https://x.com/ihedn"
 
 [[handle]]
 name = "enacfrance"
 x = "@enacfrance"
+x_url = "https://x.com/enacfrance"
 
 [[handle]]
 name = "dimforge"
 x = "@dimforge"
+x_url = "https://x.com/dimforge"
 
 [[handle]]
 name = "valigo"
 x = "@valigo"
+x_url = "https://x.com/valigo"
 
 [[handle]]
 name = "valigo_ru"
 x = "@valigo_ru"
+x_url = "https://x.com/valigo_ru"
 
 [[handle]]
 name = "leha_moryak"
 x = "@leha_moryak"
+x_url = "https://x.com/leha_moryak"
 
 [[handle]]
 name = "Ayushmaanp67922"
 x = "@Ayushmaanp67922"
+x_url = "https://x.com/Ayushmaanp67922"
 
 [[handle]]
 name = "KHESPA_"
 x = "@KHESPA_"
+x_url = "https://x.com/KHESPA_"
 
 [[handle]]
 name = "poteto"
 x = "@poteto"
+x_url = "https://x.com/poteto"
 
 [[handle]]
 name = "Bot"
 x = "@Bot"
+x_url = "https://x.com/Bot"
 
 [[handle]]
 name = "SpaceXAI"
 x = "@SpaceXAI"
+x_url = "https://x.com/SpaceXAI"
 
 [[handle]]
 name = "meta"
 x = "@meta"
+x_url = "https://x.com/meta"
 
 [[handle]]
 name = "netflix"
 x = "@netflix"
+x_url = "https://x.com/netflix"
 
 [[handle]]
 name = "ThePurpleBTC"
 x = "@ThePurpleBTC"
+x_url = "https://x.com/ThePurpleBTC"
 
 [[handle]]
 name = "Bitcoin"
 x = "@Bitcoin"
+x_url = "https://x.com/Bitcoin"
 
 [[handle]]
 name = "ethereum"
 x = "@ethereum"
+x_url = "https://x.com/ethereum"
 
 [[handle]]
 name = "opentensor"
 x = "@opentensor"
+x_url = "https://x.com/opentensor"
 
 [[handle]]
 name = "peaq"
 x = "@peaq"
+x_url = "https://x.com/peaq"
 
 [[handle]]
 name = "OndoFinance"
 x = "@OndoFinance"
+x_url = "https://x.com/OndoFinance"
 
 [[handle]]
 name = "Fetch_ai"
 x = "@Fetch_ai"
+x_url = "https://x.com/Fetch_ai"
 
 [[handle]]
 name = "hedera"
 x = "@hedera"
+linkedin = "@hedera"
+linkedin_url = "https://www.linkedin.com/company/hedera/"
+x_url = "https://x.com/hedera"
 
 [[handle]]
 name = "FabricFND"
 x = "@FabricFND"
+x_url = "https://x.com/FabricFND"
 
 [[handle]]
 name = "_Felipe"
 x = "@_Felipe"
+x_url = "https://x.com/_Felipe"
 
 [[handle]]
 name = "ApacheArrow"
 x = "@ApacheArrow"
+x_url = "https://x.com/ApacheArrow"
 
 [[handle]]
 name = "SDFLabs"
 x = "@SDFLabs"
+x_url = "https://x.com/SDFLabs"
 
 [[handle]]
 name = "Spotify"
 x = "@Spotify"
+x_url = "https://x.com/Spotify"
 
 [[handle]]
 name = "IsaacKing314"
 x = "@IsaacKing314"
+x_url = "https://x.com/IsaacKing314"
 
 [[handle]]
 name = "Seltaa_"
 x = "@Seltaa_"
+x_url = "https://x.com/Seltaa_"
 
 [[handle]]
 name = "david_dossett"
 x = "@david_dossett"
+x_url = "https://x.com/david_dossett"
 
 [[handle]]
 name = "code"
 x = "@code"
+x_url = "https://x.com/code"
 
 [[handle]]
 name = "sudoingX"
 x = "@sudoingX"
+x_url = "https://x.com/sudoingX"
 
 [[handle]]
 name = "XOpenSource"
 x = "@XOpenSource"
+x_url = "https://x.com/XOpenSource"
 
 [[handle]]
 name = "herdrdev"
 x = "@herdrdev"
+x_url = "https://x.com/herdrdev"
 
 [[handle]]
 name = "Theheatagenda"
 x = "@Theheatagenda"
+x_url = "https://x.com/Theheatagenda"
 
 [[handle]]
 name = "Alibaba_Qwen"
 x = "@Alibaba_Qwen"
+x_url = "https://x.com/Alibaba_Qwen"
 
 [[handle]]
 name = "AstraiaAI"
 x = "@AstraiaAI"
+x_url = "https://x.com/AstraiaAI"
 
 [[handle]]
 name = "typememetics"
 x = "@typememetics"
+x_url = "https://x.com/typememetics"
 
 [[handle]]
 name = "jayapapaya"
 x = "@jayapapaya"
+x_url = "https://x.com/jayapapaya"
 
 [[handle]]
 name = "blockblanc"
 x = "@blockblanc"
+x_url = "https://x.com/blockblanc"
 
 [[handle]]
 name = "CryptoCanal"
 x = "@CryptoCanal"
+linkedin = "@cryptocanal"
+linkedin_url = "https://www.linkedin.com/company/cryptocanal/"
+x_url = "https://x.com/CryptoCanal"
 
 [[handle]]
 name = "iximiuz"
 x = "@iximiuz"
+x_url = "https://x.com/iximiuz"
 
 [[handle]]
 name = "domenkozar"
 x = "@domenkozar"
+x_url = "https://x.com/domenkozar"
 
 [[handle]]
 name = "cachix_org"
 x = "@cachix_org"
+x_url = "https://x.com/cachix_org"
 
 [[handle]]
 name = "AlexFinn"
 x = "@AlexFinn"
+x_url = "https://x.com/AlexFinn"
 
 [[handle]]
 name = "SoftwareSeni"
 x = "@SoftwareSeni"
+x_url = "https://x.com/SoftwareSeni"
 
 [[handle]]
 name = "sgl_project"
 x = "@sgl_project"
+x_url = "https://x.com/sgl_project"
 
 [[handle]]
 name = "lmsysorg"
 x = "@lmsysorg"
+x_url = "https://x.com/lmsysorg"
 
 [[handle]]
 name = "heyfebin"
 x = "@heyfebin"
+x_url = "https://x.com/heyfebin"
 
 [[handle]]
 name = "CoinpediaNews"
 x = "@CoinpediaNews"
+x_url = "https://x.com/CoinpediaNews"
 
 [[handle]]
 name = "css"
 x = "@css"
+x_url = "https://x.com/css"
 
 [[handle]]
 name = "hoffmang"
 x = "@hoffmang"
+x_url = "https://x.com/hoffmang"
 
 [[handle]]
 name = "mo_alani_yes"
 x = "@mo_alani_yes"
+x_url = "https://x.com/mo_alani_yes"
 
 [[handle]]
 name = "Testbirds"
 x = "@Testbirds"
+x_url = "https://x.com/Testbirds"
 
 [[handle]]
 name = "kscottz"
 x = "@kscottz"
+x_url = "https://x.com/kscottz"
 
 [[handle]]
 name = "OpenRoboticsOrg"
 x = "@OpenRoboticsOrg"
+x_url = "https://x.com/OpenRoboticsOrg"
 
 [[handle]]
 name = "rosorg"
 x = "@rosorg"
+x_url = "https://x.com/rosorg"
 
 [[handle]]
 name = "ohsummit"
 x = "@ohsummit"
+x_url = "https://x.com/ohsummit"
 
 [[handle]]
 name = "alouane_med"
 x = "@alouane_med"
+x_url = "https://x.com/alouane_med"
 
 [[handle]]
 name = "BenjChastanier"
 x = "@BenjChastanier"
+x_url = "https://x.com/BenjChastanier"
 
 [[handle]]
 name = "Qovery_"
 x = "@Qovery_"
+x_url = "https://x.com/Qovery_"
 
 [[handle]]
 name = "kristofleroux"
 x = "@kristofleroux"
+x_url = "https://x.com/kristofleroux"
 
 [[handle]]
 name = "patrick_tarnaud"
 x = "@patrick_tarnaud"
+x_url = "https://x.com/patrick_tarnaud"
 
 [[handle]]
 name = "israeljrs"
 x = "@israeljrs"
+x_url = "https://x.com/israeljrs"
 
 [[handle]]
 name = "topheman"
 x = "@topheman"
+x_url = "https://x.com/topheman"
 
 [[handle]]
 name = "Hamzeml"
 x = "@Hamzeml"
+x_url = "https://x.com/Hamzeml"
 
 [[handle]]
 name = "FrancoisBernabe"
 x = "@FrancoisBernabe"
+x_url = "https://x.com/FrancoisBernabe"
 
 [[handle]]
 name = "danmugh"
 x = "@danmugh"
+x_url = "https://x.com/danmugh"
 
 [[handle]]
 name = "noreplydev"
 x = "@noreplydev"
+x_url = "https://x.com/noreplydev"
 
 [[handle]]
 name = "bcnrust"
 x = "@bcnrust"
+x_url = "https://x.com/bcnrust"
 
 [[handle]]
 name = "Daibai"
 x = "@Daibai"
+x_url = "https://x.com/Daibai"
 
 [[handle]]
 name = "MyEvidenZ"
 x = "@MyEvidenZ"
+x_url = "https://x.com/MyEvidenZ"
 
 [[handle]]
 name = "Nodal_asymmetry"
 x = "@Nodal_asymmetry"
+x_url = "https://x.com/Nodal_asymmetry"
 
 [[handle]]
 name = "tassiovirginio"
 x = "@tassiovirginio"
+x_url = "https://x.com/tassiovirginio"
 
 [[handle]]
 name = "szabgab"
 x = "@szabgab"
+x_url = "https://x.com/szabgab"
 
 [[handle]]
 name = "Plangora"
 x = "@Plangora"
+x_url = "https://x.com/Plangora"
 
 [[handle]]
 name = "rustconf"
 x = "@rustconf"
+x_url = "https://x.com/rustconf"
 
 [[handle]]
 name = "euro_rust"
 x = "@euro_rust"
+x_url = "https://x.com/euro_rust"
 
 [[handle]]
 name = "mainmatter"
 x = "@mainmatter"
+linkedin = "@mainmatter"
+linkedin_url = "https://www.linkedin.com/company/mainmatter/"
+x_url = "https://x.com/mainmatter"
 
 [[handle]]
 name = "BhosalePratim"
 x = "@BhosalePratim"
+x_url = "https://x.com/BhosalePratim"
 
 [[handle]]
 name = "GradiumAI"
 x = "@GradiumAI"
+x_url = "https://x.com/GradiumAI"
 
 [[handle]]
 name = "spokira"
 x = "@spokira"
+x_url = "https://x.com/spokira"
 
 [[handle]]
 name = "sachaarbonel"
 x = "@sachaarbonel"
+x_url = "https://x.com/sachaarbonel"
 
 [[handle]]
 name = "LizzieJHolmes"
 x = "@LizzieJHolmes"
+x_url = "https://x.com/LizzieJHolmes"
 
 [[handle]]
 name = "DEBUTclassical"
 x = "@DEBUTclassical"
+x_url = "https://x.com/DEBUTclassical"
 
 [[handle]]
 name = "jaimemh"
 x = "@jaimemh"
+x_url = "https://x.com/jaimemh"
 
 [[handle]]
 name = "SurrealDB"
 x = "@SurrealDB"
+x_url = "https://x.com/SurrealDB"
 
 [[handle]]
 name = "grhmc"
 x = "@grhmc"
+x_url = "https://x.com/grhmc"
 
 [[handle]]
 name = "DeterminateSys"
 x = "@DeterminateSys"
+x_url = "https://x.com/DeterminateSys"
 
 [[handle]]
 name = "zeddotdev"
 x = "@zeddotdev"
+x_url = "https://x.com/zeddotdev"
 
 [[handle]]
 name = "almostMike"
 x = "@almostMike"
+x_url = "https://x.com/almostMike"
 
 [[handle]]
 name = "sqlservian"
 x = "@sqlservian"
+x_url = "https://x.com/sqlservian"
 
 [[handle]]
 name = "Aodto"
 x = "@Aodto"
+x_url = "https://x.com/Aodto"
 
 [[handle]]
 name = "ejstembler"
 x = "@ejstembler"
+x_url = "https://x.com/ejstembler"
 
 [[handle]]
 name = "_iVishalJoshi"
 x = "@_iVishalJoshi"
+x_url = "https://x.com/_iVishalJoshi"
 
 [[handle]]
 name = "webbedfeet"
 x = "@webbedfeet"
+x_url = "https://x.com/webbedfeet"
 
 [[handle]]
 name = "jeremy_mcgibbon"
 x = "@jeremy_mcgibbon"
+x_url = "https://x.com/jeremy_mcgibbon"
 
 [[handle]]
 name = "sfchaos"
 x = "@sfchaos"
+x_url = "https://x.com/sfchaos"
 
 [[handle]]
 name = "guilhermejd1"
 x = "@guilhermejd1"
+x_url = "https://x.com/guilhermejd1"
 
 [[handle]]
 name = "Harvard"
 x = "@Harvard"
+x_url = "https://x.com/Harvard"
 
 [[handle]]
 name = "Wharton"
 x = "@Wharton"
+x_url = "https://x.com/Wharton"
 
 [[handle]]
 name = "Penn"
 x = "@Penn"
+x_url = "https://x.com/Penn"
 
 [[handle]]
 name = "shadimoadad"
 x = "@shadimoadad"
+x_url = "https://x.com/shadimoadad"
 
 [[handle]]
 name = "andrebalg"
 x = "@andrebalg"
+x_url = "https://x.com/andrebalg"
 
 [[handle]]
 name = "AnthropicAI"
 x = "@AnthropicAI"
+x_url = "https://x.com/AnthropicAI"
 
 [[handle]]
 name = "SnorkelAI"
 x = "@SnorkelAI"
+x_url = "https://x.com/SnorkelAI"
 
 [[handle]]
 name = "datarobot"
 x = "@datarobot"
+x_url = "https://x.com/datarobot"
 
 [[handle]]
 name = "tylerneylon"
 x = "@tylerneylon"
+x_url = "https://x.com/tylerneylon"
 
 [[handle]]
 name = "unboxresearch"
 x = "@unboxresearch"
+x_url = "https://x.com/unboxresearch"
 
 [[handle]]
 name = "agramfort"
 x = "@agramfort"
+x_url = "https://x.com/agramfort"
 
 [[handle]]
 name = "michael_erasmus"
 x = "@michael_erasmus"
+x_url = "https://x.com/michael_erasmus"
 
 [[handle]]
 name = "chesscom"
 x = "@chesscom"
+x_url = "https://x.com/chesscom"
 
 [[handle]]
 name = "buffer"
 x = "@buffer"
+x_url = "https://x.com/buffer"
 
 [[handle]]
 name = "DonorsChoose"
 x = "@DonorsChoose"
+x_url = "https://x.com/DonorsChoose"
 
 [[handle]]
 name = "TerryTangYuan"
 x = "@TerryTangYuan"
+x_url = "https://x.com/TerryTangYuan"
 
 [[handle]]
 name = "RedHat_AI"
 x = "@RedHat_AI"
+x_url = "https://x.com/RedHat_AI"
 
 [[handle]]
 name = "argoproj"
 x = "@argoproj"
+x_url = "https://x.com/argoproj"
 
 [[handle]]
 name = "kubeflow"
 x = "@kubeflow"
+x_url = "https://x.com/kubeflow"
 
 [[handle]]
 name = "kubernetesio"
 x = "@kubernetesio"
+x_url = "https://x.com/kubernetesio"
 
 [[handle]]
 name = "CloudNativeFdn"
 x = "@CloudNativeFdn"
+x_url = "https://x.com/CloudNativeFdn"
 
 [[handle]]
 name = "moreisdifferent"
 x = "@moreisdifferent"
+x_url = "https://x.com/moreisdifferent"
 
 [[handle]]
 name = "MetascienceObs"
 x = "@MetascienceObs"
+x_url = "https://x.com/MetascienceObs"
 
 [[handle]]
 name = "RADVACProject"
 x = "@RADVACProject"
+x_url = "https://x.com/RADVACProject"
 
 [[handle]]
 name = "GeneWizardX"
 x = "@GeneWizardX"
+x_url = "https://x.com/GeneWizardX"
 
 [[handle]]
 name = "benmurraybruce"
 x = "@benmurraybruce"
+x_url = "https://x.com/benmurraybruce"
 
 [[handle]]
 name = "ageitgey"
 x = "@ageitgey"
+x_url = "https://x.com/ageitgey"
 
 [[handle]]
 name = "TurquoiseHC"
 x = "@TurquoiseHC"
+x_url = "https://x.com/TurquoiseHC"
 
 [[handle]]
 name = "wesmckinn"
 x = "@wesmckinn"
+x_url = "https://x.com/wesmckinn"
 
 [[handle]]
 name = "kennsoftware"
 x = "@kennsoftware"
+x_url = "https://x.com/kennsoftware"
 
 [[handle]]
 name = "ComposedVC"
 x = "@ComposedVC"
+x_url = "https://x.com/ComposedVC"
 
 [[handle]]
 name = "posit_pbc"
 x = "@posit_pbc"
+x_url = "https://x.com/posit_pbc"
 
 [[handle]]
 name = "nielsgl"
 x = "@nielsgl"
+x_url = "https://x.com/nielsgl"
 
 [[handle]]
 name = "fchollet"
 x = "@fchollet"
+x_url = "https://x.com/fchollet"
 
 [[handle]]
 name = "ndea"
 x = "@ndea"
+x_url = "https://x.com/ndea"
 
 [[handle]]
 name = "arcprize"
 x = "@arcprize"
+x_url = "https://x.com/arcprize"
 
 [[handle]]
 name = "amuellerml"
 x = "@amuellerml"
+x_url = "https://x.com/amuellerml"
 
 [[handle]]
 name = "AzureData"
 x = "@AzureData"
+x_url = "https://x.com/AzureData"
 
 [[handle]]
 name = "chrisalbon"
 x = "@chrisalbon"
+x_url = "https://x.com/chrisalbon"
 
 [[handle]]
 name = "Wikimedia"
 x = "@Wikimedia"
+x_url = "https://x.com/Wikimedia"
 
 [[handle]]
 name = "bugraa"
 x = "@bugraa"
+x_url = "https://x.com/bugraa"
 
 [[handle]]
 name = "jsci"
 x = "@jsci"
+x_url = "https://x.com/jsci"
 
 [[handle]]
 name = "proteinqure"
 x = "@proteinqure"
+x_url = "https://x.com/proteinqure"
 
 [[handle]]
 name = "UofT"
 x = "@UofT"
+x_url = "https://x.com/UofT"
 
 [[handle]]
 name = "UWaterloo"
 x = "@UWaterloo"
+x_url = "https://x.com/UWaterloo"
 
 [[handle]]
 name = "jessfraz"
 x = "@jessfraz"
+x_url = "https://x.com/jessfraz"
 
 [[handle]]
 name = "zoodotdev"
 x = "@zoodotdev"
+x_url = "https://x.com/zoodotdev"
 
 [[handle]]
 name = "oxidecomputer"
 x = "@oxidecomputer"
+x_url = "https://x.com/oxidecomputer"
 
 [[handle]]
 name = "ACMQueue"
 x = "@ACMQueue"
+x_url = "https://x.com/ACMQueue"
 
 [[handle]]
 name = "left_pad"
 x = "@left_pad"
+x_url = "https://x.com/left_pad"
 
 [[handle]]
 name = "babeljs"
 x = "@babeljs"
+x_url = "https://x.com/babeljs"
 
 [[handle]]
 name = "jerrykur"
 x = "@jerrykur"
+x_url = "https://x.com/jerrykur"
 
 [[handle]]
 name = "Pluralsight"
 x = "@Pluralsight"
+x_url = "https://x.com/Pluralsight"
 
 [[handle]]
 name = "moul"
 x = "@moul"
+x_url = "https://x.com/moul"
 
 [[handle]]
 name = "bobguns"
 x = "@bobguns"
+x_url = "https://x.com/bobguns"
 
 [[handle]]
 name = "RTindex"
 x = "@RTindex"
+x_url = "https://x.com/RTindex"
 
 [[handle]]
 name = "mert"
 x = "@mert"
+x_url = "https://x.com/mert"
 
 [[handle]]
 name = "helius"
 x = "@helius"
+x_url = "https://x.com/helius"
 
 [[handle]]
 name = "Delphi_Digital"
 x = "@Delphi_Digital"
+x_url = "https://x.com/Delphi_Digital"
 
 [[handle]]
 name = "LinkedIn"
 x = "@LinkedIn"
+x_url = "https://x.com/LinkedIn"
 
 [[handle]]
 name = "LinkedInHelp"
 x = "@LinkedInHelp"
+x_url = "https://x.com/LinkedInHelp"
 
 [[handle]]
 name = "thedefdone"
 x = "@thedefdone"
+x_url = "https://x.com/thedefdone"
 
 [[handle]]
 name = "JanPodleski"
 x = "@JanPodleski"
+x_url = "https://x.com/JanPodleski"
 
 [[handle]]
 name = "jan_defdone"
 x = "@jan_defdone"
+x_url = "https://x.com/jan_defdone"
 
 [[handle]]
 name = "defdone"
 x = "@defdone"
+x_url = "https://x.com/defdone"
 
 [[handle]]
 name = "StephaneTrebel"
 x = "@StephaneTrebel"
+x_url = "https://x.com/StephaneTrebel"
 
 [[handle]]
 name = "AlexAsteure"
 x = "@AlexAsteure"
+x_url = "https://x.com/AlexAsteure"
 
 [[handle]]
 name = "Saptarshi108"
 x = "@Saptarshi108"
+x_url = "https://x.com/Saptarshi108"
 
 [[handle]]
 name = "block_ach"
 x = "@block_ach"
+x_url = "https://x.com/block_ach"
 
 [[handle]]
 name = "Ferno_ag"
 x = "@Ferno_ag"
+x_url = "https://x.com/Ferno_ag"
 
 [[handle]]
 name = "blockzilla_sol"
 x = "@blockzilla_sol"
+x_url = "https://x.com/blockzilla_sol"
 
 [[handle]]
 name = "EncodePanda"
 x = "@EncodePanda"
+x_url = "https://x.com/EncodePanda"
 
 [[handle]]
 name = "ThibautMelen"
 x = "@ThibautMelen"
+x_url = "https://x.com/ThibautMelen"
 
 [[handle]]
 name = "benjilegnard"
 x = "@benjilegnard"
+x_url = "https://x.com/benjilegnard"
 
 [[handle]]
 name = "BnJ25"
 x = "@BnJ25"
+x_url = "https://x.com/BnJ25"
 
 [[handle]]
 name = "supabase"
 x = "@supabase"
+x_url = "https://x.com/supabase"
 
 [[handle]]
 name = "apollographql"
 x = "@apollographql"
+x_url = "https://x.com/apollographql"
 
 [[handle]]
 name = "rust_analyzer"
 x = "@rust_analyzer"
+x_url = "https://x.com/rust_analyzer"
 
 [[handle]]
 name = "imperioworld_"
 x = "@imperioworld_"
+x_url = "https://x.com/imperioworld_"
 
 [[handle]]
 name = "rust_foundation"
 x = "@rust_foundation"
+x_url = "https://x.com/rust_foundation"
 
 [[handle]]
 name = "RustTrending"
 x = "@RustTrending"
+x_url = "https://x.com/RustTrending"
 
 [[handle]]
 name = "pbzweihander_rs"
 x = "@pbzweihander_rs"
+x_url = "https://x.com/pbzweihander_rs"
 
 [[handle]]
 name = "zero2prod"
 x = "@zero2prod"
+x_url = "https://x.com/zero2prod"
 
 [[handle]]
 name = "algo_luca"
 x = "@algo_luca"
+x_url = "https://x.com/algo_luca"
 
 [[handle]]
 name = "FerrousSystems"
 x = "@FerrousSystems"
+x_url = "https://x.com/FerrousSystems"
 
 [[handle]]
 name = "rustlab_conf"
 x = "@rustlab_conf"
+x_url = "https://x.com/rustlab_conf"
 
 [[handle]]
 name = "develer"
 x = "@develer"
+x_url = "https://x.com/develer"
 
 [[handle]]
 name = "spastorino"
 x = "@spastorino"
+x_url = "https://x.com/spastorino"
 
 [[handle]]
 name = "wyeworks"
 x = "@wyeworks"
+x_url = "https://x.com/wyeworks"
 
 [[handle]]
 name = "COGoldRust"
 x = "@COGoldRust"
+x_url = "https://x.com/COGoldRust"
 
 [[handle]]
 name = "crablang"
 x = "@crablang"
+x_url = "https://x.com/crablang"
 
 [[handle]]
 name = "rustlang_fr"
 x = "@rustlang_fr"
+x_url = "https://x.com/rustlang_fr"
 
 [[handle]]
 name = "rustparis"
 x = "@rustparis"
+x_url = "https://x.com/rustparis"
 
 [[handle]]
 name = "rust_amsterdam"
 x = "@rust_amsterdam"
+x_url = "https://x.com/rust_amsterdam"
 
 [[handle]]
 name = "rustjobs_dev"
 x = "@rustjobs_dev"
+x_url = "https://x.com/rustjobs_dev"
 
 [[handle]]
 name = "OCamlPro"
 x = "@OCamlPro"
+linkedin = "@ocamlpro"
+linkedin_url = "https://www.linkedin.com/company/ocamlpro/"
+x_url = "https://x.com/OCamlPro"
 
 [[handle]]
 name = "xperhub"
 x = "@xperhub"
+x_url = "https://x.com/xperhub"
 
 [[handle]]
 name = "adservioacademy"
 x = "@adservioacademy"
+x_url = "https://x.com/adservioacademy"
 
 [[handle]]
 name = "MtpRust"
 x = "@MtpRust"
+x_url = "https://x.com/MtpRust"
 
 [[handle]]
 name = "dcastelltort"
 x = "@dcastelltort"
+x_url = "https://x.com/dcastelltort"
 
 [[handle]]
 name = "TeadsInnovation"
 x = "@TeadsInnovation"
+x_url = "https://x.com/TeadsInnovation"
 
 [[handle]]
 name = "ludwigABAP"
 x = "@ludwigABAP"
+x_url = "https://x.com/ludwigABAP"
 
 [[handle]]
 name = "sckull_"
 x = "@sckull_"
+x_url = "https://x.com/sckull_"
 
 [[handle]]
 name = "DeSciBot"
 x = "@DeSciBot"
+x_url = "https://x.com/DeSciBot"
 
 [[handle]]
 name = "Muhamma08098384"
 x = "@Muhamma08098384"
+x_url = "https://x.com/Muhamma08098384"
 
 [[handle]]
 name = "DaFiLabs"
 x = "@DaFiLabs"
+x_url = "https://x.com/DaFiLabs"
 
 [[handle]]
 name = "nicolas_gadeyne"
 x = "@nicolas_gadeyne"
+x_url = "https://x.com/nicolas_gadeyne"
 
 [[handle]]
 name = "gadeyne_nicolas"
 x = "@gadeyne_nicolas"
+x_url = "https://x.com/gadeyne_nicolas"
 
 [[handle]]
 name = "nicolas_gadenne"
 x = "@nicolas_gadenne"
+x_url = "https://x.com/nicolas_gadenne"
 
 [[handle]]
 name = "collioupierre"
 x = "@collioupierre"
+x_url = "https://x.com/collioupierre"
 
 [[handle]]
 name = "rustafariandev"
 x = "@rustafariandev"
+x_url = "https://x.com/rustafariandev"
 
 [[handle]]
 name = "OpenTrading_AI"
 x = "@OpenTrading_AI"
+x_url = "https://x.com/OpenTrading_AI"
 
 [[handle]]
 name = "nym"
 x = "@nym"
+x_url = "https://x.com/nym"
 
 [[handle]]
 name = "harryhalpin"
 x = "@harryhalpin"
+x_url = "https://x.com/harryhalpin"
 
 [[handle]]
 name = "mit"
 x = "@mit"
+x_url = "https://x.com/mit"
 
 [[handle]]
 name = "VUBrussel"
 x = "@VUBrussel"
+x_url = "https://x.com/VUBrussel"
 
 [[handle]]
 name = "w3c"
 x = "@w3c"
+x_url = "https://x.com/w3c"
 
 [[handle]]
 name = "inria"
 x = "@inria"
+linkedin = "@inria"
+linkedin_url = "https://www.linkedin.com/company/inria/"
+x_url = "https://x.com/inria"
 
 [[handle]]
 name = "AUB_Lebanon"
 x = "@AUB_Lebanon"
+x_url = "https://x.com/AUB_Lebanon"
 
 [[handle]]
 name = "acevail_"
 x = "@acevail_"
+x_url = "https://x.com/acevail_"
 
 [[handle]]
 name = "MintGarden_io"
 x = "@MintGarden_io"
+x_url = "https://x.com/MintGarden_io"
 
 [[handle]]
 name = "XCHPay"
 x = "@XCHPay"
+x_url = "https://x.com/XCHPay"
 
 [[handle]]
 name = "chia_project"
 x = "@chia_project"
+x_url = "https://x.com/chia_project"
 
 [[handle]]
 name = "MarvelMarmots"
 x = "@MarvelMarmots"
+x_url = "https://x.com/MarvelMarmots"
 
 [[handle]]
 name = "0xdevshm"
 x = "@0xdevshm"
+x_url = "https://x.com/0xdevshm"
 
 [[handle]]
 name = "kiyov09"
 x = "@kiyov09"
+x_url = "https://x.com/kiyov09"
 
 [[handle]]
 name = "aryj2288"
 x = "@aryj2288"
+x_url = "https://x.com/aryj2288"
 
 [[handle]]
 name = "nexxeln"
 x = "@nexxeln"
+x_url = "https://x.com/nexxeln"
 
 [[handle]]
 name = "opencode"
 x = "@opencode"
+x_url = "https://x.com/opencode"
 
 [[handle]]
 name = "grok"
 x = "@grok"
+x_url = "https://x.com/grok"
 
 [[handle]]
 name = "_coenen"
 x = "@_coenen"
+x_url = "https://x.com/_coenen"
 
 [[handle]]
 name = "BitcoinComfy"
 x = "@BitcoinComfy"
+x_url = "https://x.com/BitcoinComfy"
 
 [[handle]]
 name = "ForrestPKnight"
 x = "@ForrestPKnight"
+x_url = "https://x.com/ForrestPKnight"
 
 [[handle]]
 name = "dmythro"
 x = "@dmythro"
+x_url = "https://x.com/dmythro"
 
 [[handle]]
 name = "rustaceans_rs"
 x = "@rustaceans_rs"
+x_url = "https://x.com/rustaceans_rs"
 
 [[handle]]
 name = "Itsfoss"
 x = "@Itsfoss"
+x_url = "https://x.com/Itsfoss"
 
 [[handle]]
 name = "devvmichael"
 x = "@devvmichael"
+x_url = "https://x.com/devvmichael"
 
 [[handle]]
 name = "web3bridge"
 x = "@web3bridge"
+x_url = "https://x.com/web3bridge"
 
 [[handle]]
 name = "toddo"
 x = "@toddo"
+x_url = "https://x.com/toddo"
 
 [[handle]]
 name = "BuySellAds"
 x = "@BuySellAds"
+x_url = "https://x.com/BuySellAds"
 
 [[handle]]
 name = "GAMdotAI"
 x = "@GAMdotAI"
+x_url = "https://x.com/GAMdotAI"
 
 [[handle]]
 name = "loadingalias"
 x = "@loadingalias"
+x_url = "https://x.com/loadingalias"
 
 [[handle]]
 name = "haipingfu"
 x = "@haipingfu"
+x_url = "https://x.com/haipingfu"
 
 [[handle]]
 name = "ProtonMail"
 x = "@ProtonMail"
+x_url = "https://x.com/ProtonMail"
 
 [[handle]]
 name = "jskalc"
 x = "@jskalc"
+x_url = "https://x.com/jskalc"
 
 [[handle]]
 name = "ayushagarwal027"
 x = "@ayushagarwal027"
+x_url = "https://x.com/ayushagarwal027"
 
 [[handle]]
 name = "IhorBurlachenko"
 x = "@IhorBurlachenko"
+x_url = "https://x.com/IhorBurlachenko"
 
 [[handle]]
 name = "WeAreTeamMAKE"
 x = "@WeAreTeamMAKE"
+x_url = "https://x.com/WeAreTeamMAKE"
 
 [[handle]]
 name = "unsheepd"
 x = "@unsheepd"
+x_url = "https://x.com/unsheepd"
 
 [[handle]]
 name = "rtk"
 x = "@rtk"
+x_url = "https://x.com/rtk"
 
 [[handle]]
 name = "Ron_Acord"
 x = "@Ron_Acord"
+x_url = "https://x.com/Ron_Acord"
 
 [[handle]]
 name = "matty_charts"
 x = "@matty_charts"
+x_url = "https://x.com/matty_charts"
 
 [[handle]]
 name = "devendranmkm"
 x = "@devendranmkm"
+x_url = "https://x.com/devendranmkm"
 
 [[handle]]
 name = "KochainTech"
 x = "@KochainTech"
+x_url = "https://x.com/KochainTech"
 
 [[handle]]
 name = "david_sab"
 x = "@david_sab"
+x_url = "https://x.com/david_sab"
 
 [[handle]]
 name = "penaltyblog"
 x = "@penaltyblog"
+x_url = "https://x.com/penaltyblog"
 
 [[handle]]
 name = "EHuizenga"
 x = "@EHuizenga"
+x_url = "https://x.com/EHuizenga"
 
 [[handle]]
 name = "google"
 x = "@google"
+x_url = "https://x.com/google"
 
 [[handle]]
 name = "DeepLearningAI"
 x = "@DeepLearningAI"
+x_url = "https://x.com/DeepLearningAI"
 
 [[handle]]
 name = "vmirly"
 x = "@vmirly"
+x_url = "https://x.com/vmirly"
 
 [[handle]]
 name = "rasbt"
 x = "@rasbt"
+x_url = "https://x.com/rasbt"
 
 [[handle]]
 name = "CoreCoder"
 x = "@CoreCoder"
+x_url = "https://x.com/CoreCoder"
 
 [[handle]]
 name = "BastiaanSjardin"
 x = "@BastiaanSjardin"
+x_url = "https://x.com/BastiaanSjardin"
 
 [[handle]]
 name = "InfoWorld"
 x = "@InfoWorld"
+linkedin = "@infoworld"
+linkedin_url = "https://www.linkedin.com/company/infoworld/"
+x_url = "https://x.com/InfoWorld"
 
 [[handle]]
 name = "sjwhitworth"
 x = "@sjwhitworth"
+x_url = "https://x.com/sjwhitworth"
 
 [[handle]]
 name = "karpathy"
 x = "@karpathy"
+x_url = "https://x.com/karpathy"
 
 [[handle]]
 name = "rudyagovic"
 x = "@rudyagovic"
+x_url = "https://x.com/rudyagovic"
 
 [[handle]]
 name = "AriyaHidayat"
 x = "@AriyaHidayat"
+x_url = "https://x.com/AriyaHidayat"
 
 [[handle]]
 name = "tijmenschep"
 x = "@tijmenschep"
+x_url = "https://x.com/tijmenschep"
 
 [[handle]]
 name = "hswolff"
 x = "@hswolff"
+x_url = "https://x.com/hswolff"
 
 [[handle]]
 name = "MongoDB"
 x = "@MongoDB"
+x_url = "https://x.com/MongoDB"
 
 [[handle]]
 name = "MetaOpenSource"
 x = "@MetaOpenSource"
+x_url = "https://x.com/MetaOpenSource"
 
 [[handle]]
 name = "Slasherio"
 x = "@Slasherio"
+x_url = "https://x.com/Slasherio"
 
 [[handle]]
 name = "jlaffaye"
 x = "@jlaffaye"
+x_url = "https://x.com/jlaffaye"
 
 [[handle]]
 name = "raphaelhertzog"
 x = "@raphaelhertzog"
+x_url = "https://x.com/raphaelhertzog"
 
 [[handle]]
 name = "dutchhackathon"
 x = "@dutchhackathon"
+x_url = "https://x.com/dutchhackathon"
 
 [[handle]]
 name = "anthonygaulay"
 x = "@anthonygaulay"
+x_url = "https://x.com/anthonygaulay"
 
 [[handle]]
 name = "orange"
 x = "@orange"
+x_url = "https://x.com/orange"
 
 [[handle]]
 name = "orangebusiness"
 x = "@orangebusiness"
+x_url = "https://x.com/orangebusiness"
 
 [[handle]]
 name = "IgorMinar"
 x = "@IgorMinar"
+x_url = "https://x.com/IgorMinar"
 
 [[handle]]
 name = "vscodetips"
 x = "@vscodetips"
+x_url = "https://x.com/vscodetips"
 
 [[handle]]
 name = "nickytonline"
 x = "@nickytonline"
+x_url = "https://x.com/nickytonline"
 
 [[handle]]
 name = "AClerbois"
 x = "@AClerbois"
+x_url = "https://x.com/AClerbois"
 
 [[handle]]
 name = "BenjaminPasero"
 x = "@BenjaminPasero"
+x_url = "https://x.com/BenjaminPasero"
 
 [[handle]]
 name = "DevToolsCommits"
 x = "@DevToolsCommits"
+x_url = "https://x.com/DevToolsCommits"
 
 [[handle]]
 name = "SanderMeester"
 x = "@SanderMeester"
+x_url = "https://x.com/SanderMeester"
 
 [[handle]]
 name = "pbakaus"
 x = "@pbakaus"
+x_url = "https://x.com/pbakaus"
 
 [[handle]]
 name = "impeccable_ai"
 x = "@impeccable_ai"
+x_url = "https://x.com/impeccable_ai"
 
 [[handle]]
 name = "radiant_shaders"
 x = "@radiant_shaders"
+x_url = "https://x.com/radiant_shaders"
 
 [[handle]]
 name = "jqueryui"
 x = "@jqueryui"
+x_url = "https://x.com/jqueryui"
 
 [[handle]]
 name = "zynga"
 x = "@zynga"
+x_url = "https://x.com/zynga"
 
 [[handle]]
 name = "richturn_ms"
 x = "@richturn_ms"
+x_url = "https://x.com/richturn_ms"
 
 [[handle]]
 name = "bitcrazed"
 x = "@bitcrazed"
+x_url = "https://x.com/bitcrazed"
 
 [[handle]]
 name = "liamchampton"
 x = "@liamchampton"
+x_url = "https://x.com/liamchampton"
 
 [[handle]]
 name = "paul_irish"
 x = "@paul_irish"
+x_url = "https://x.com/paul_irish"
 
 [[handle]]
 name = "unixterminal"
 x = "@unixterminal"
+x_url = "https://x.com/unixterminal"
 
 [[handle]]
 name = "HeroDevs"
 x = "@HeroDevs"
+x_url = "https://x.com/HeroDevs"
 
 [[handle]]
 name = "MVPAward"
 x = "@MVPAward"
+x_url = "https://x.com/MVPAward"
 
 [[handle]]
 name = "Arm"
 x = "@Arm"
+linkedin = "@arm"
+linkedin_url = "https://www.linkedin.com/company/arm/"
+x_url = "https://x.com/Arm"
 
 [[handle]]
 name = "HPE"
 x = "@HPE"
+x_url = "https://x.com/HPE"
 
 [[handle]]
 name = "Rancher_Labs"
 x = "@Rancher_Labs"
+x_url = "https://x.com/Rancher_Labs"
 
 [[handle]]
 name = "Ubuntu"
 x = "@Ubuntu"
+x_url = "https://x.com/Ubuntu"
 
 [[handle]]
 name = "PengwinLinux"
 x = "@PengwinLinux"
+x_url = "https://x.com/PengwinLinux"
 
 [[handle]]
 name = "taviso"
 x = "@taviso"
+x_url = "https://x.com/taviso"
 
 [[handle]]
 name = "jimthecoop"
 x = "@jimthecoop"
+x_url = "https://x.com/jimthecoop"
 
 [[handle]]
 name = "fuolpit"
 x = "@fuolpit"
+x_url = "https://x.com/fuolpit"
 
 [[handle]]
 name = "rcaferati"
 x = "@rcaferati"
+x_url = "https://x.com/rcaferati"
 
 [[handle]]
 name = "opengql"
 x = "@opengql"
+x_url = "https://x.com/opengql"
 
 [[handle]]
 name = "GeertvdC"
 x = "@GeertvdC"
+x_url = "https://x.com/GeertvdC"
 
 [[handle]]
 name = "Xpiritbv"
 x = "@Xpiritbv"
+x_url = "https://x.com/Xpiritbv"
 
 [[handle]]
 name = "Azure"
 x = "@Azure"
+x_url = "https://x.com/Azure"
 
 [[handle]]
 name = "AzureDevOps"
 x = "@AzureDevOps"
+x_url = "https://x.com/AzureDevOps"
 
 [[handle]]
 name = "alexthissen"
 x = "@alexthissen"
+x_url = "https://x.com/alexthissen"
 
 [[handle]]
 name = "jeffreystrauss"
 x = "@jeffreystrauss"
+x_url = "https://x.com/jeffreystrauss"
 
 [[handle]]
 name = "chef"
 x = "@chef"
+x_url = "https://x.com/chef"
 
 [[handle]]
 name = "kc_dc"
 x = "@kc_dc"
+x_url = "https://x.com/kc_dc"
 
 [[handle]]
 name = "dotnetfdn"
 x = "@dotnetfdn"
+x_url = "https://x.com/dotnetfdn"
 
 [[handle]]
 name = "davidortinau"
 x = "@davidortinau"
+x_url = "https://x.com/davidortinau"
 
 [[handle]]
 name = "guyroyse"
 x = "@guyroyse"
+x_url = "https://x.com/guyroyse"
 
 [[handle]]
 name = "rstropek"
 x = "@rstropek"
+x_url = "https://x.com/rstropek"
 
 [[handle]]
 name = "OpenAtMicrosoft"
 x = "@OpenAtMicrosoft"
+x_url = "https://x.com/OpenAtMicrosoft"
 
 [[handle]]
 name = "frontend_mike"
 x = "@frontend_mike"
+x_url = "https://x.com/frontend_mike"
 
 [[handle]]
 name = "jestjs_"
 x = "@jestjs_"
+x_url = "https://x.com/jestjs_"
 
 [[handle]]
 name = "debamax"
 x = "@debamax"
+x_url = "https://x.com/debamax"
 
 [[handle]]
 name = "Debian"
 x = "@Debian"
+x_url = "https://x.com/Debian"
 
 [[handle]]
 name = "CyrilBrulebois"
 x = "@CyrilBrulebois"
+x_url = "https://x.com/CyrilBrulebois"
 
 [[handle]]
 name = "nledez"
 x = "@nledez"
+x_url = "https://x.com/nledez"
 
 [[handle]]
 name = "RayedBenbrahim"
 x = "@RayedBenbrahim"
+x_url = "https://x.com/RayedBenbrahim"
 
 [[handle]]
 name = "isro_me"
 x = "@isro_me"
+x_url = "https://x.com/isro_me"
 
 [[handle]]
 name = "filip_hric"
 x = "@filip_hric"
+x_url = "https://x.com/filip_hric"
 
 [[handle]]
 name = "QodoAI"
 x = "@QodoAI"
+x_url = "https://x.com/QodoAI"
 
 [[handle]]
 name = "eggheadio"
 x = "@eggheadio"
+x_url = "https://x.com/eggheadio"
 
 [[handle]]
 name = "TestAutomationU"
 x = "@TestAutomationU"
+x_url = "https://x.com/TestAutomationU"
 
 [[handle]]
 name = "skillmea_sk"
 x = "@skillmea_sk"
+x_url = "https://x.com/skillmea_sk"
 
 [[handle]]
 name = "sansecio"
 x = "@sansecio"
+x_url = "https://x.com/sansecio"
 
 [[handle]]
 name = "tabnine"
 x = "@tabnine"
+x_url = "https://x.com/tabnine"
 
 [[handle]]
 name = "yahave"
 x = "@yahave"
+x_url = "https://x.com/yahave"
 
 [[handle]]
 name = "TechnionLive"
 x = "@TechnionLive"
+x_url = "https://x.com/TechnionLive"
 
 [[handle]]
 name = "Daniel_Landau"
 x = "@Daniel_Landau"
+x_url = "https://x.com/Daniel_Landau"
 
 [[handle]]
 name = "mushketyk"
 x = "@mushketyk"
+x_url = "https://x.com/mushketyk"
 
 [[handle]]
 name = "stripe"
 x = "@stripe"
+x_url = "https://x.com/stripe"
 
 [[handle]]
 name = "mackaaij@mastodon.nl"
 x = "@mackaaij@mastodon.nl"
+x_url = "https://x.com/mackaaij@mastodon.nl"
 
 [[handle]]
 name = "mackaaij"
 x = "@mackaaij"
+x_url = "https://x.com/mackaaij"
 
 [[handle]]
 name = "gtd"
 x = "@gtd"
+x_url = "https://x.com/gtd"
 
 [[handle]]
 name = "asana"
 x = "@asana"
+x_url = "https://x.com/asana"
 
 [[handle]]
 name = "apple"
 x = "@apple"
+x_url = "https://x.com/apple"
 
 [[handle]]
 name = "pocket"
 x = "@pocket"
+x_url = "https://x.com/pocket"
 
 [[handle]]
 name = "bitwarden"
 x = "@bitwarden"
+x_url = "https://x.com/bitwarden"
 
 [[handle]]
 name = "OverSoftNL"
 x = "@OverSoftNL"
+x_url = "https://x.com/OverSoftNL"
 
 [[handle]]
 name = "wesleyneelen"
 x = "@wesleyneelen"
+x_url = "https://x.com/wesleyneelen"
 
 [[handle]]
 name = "zolderio"
 x = "@zolderio"
+x_url = "https://x.com/zolderio"
 
 [[handle]]
 name = "attic_security"
 x = "@attic_security"
+x_url = "https://x.com/attic_security"
 
 [[handle]]
 name = "dscm_security"
 x = "@dscm_security"
+x_url = "https://x.com/dscm_security"
 
 [[handle]]
 name = "kkomelin"
 x = "@kkomelin"
+x_url = "https://x.com/kkomelin"
 
 [[handle]]
 name = "seynaeve"
 x = "@seynaeve"
+x_url = "https://x.com/seynaeve"
 
 [[handle]]
 name = "jengelberg"
 x = "@jengelberg"
+x_url = "https://x.com/jengelberg"
 
 [[handle]]
 name = "charliehelps"
 x = "@charliehelps"
+x_url = "https://x.com/charliehelps"
 
 [[handle]]
 name = "Codecov"
 x = "@Codecov"
+x_url = "https://x.com/Codecov"
 
 [[handle]]
 name = "Sentry"
 x = "@Sentry"
+x_url = "https://x.com/Sentry"
 
 [[handle]]
 name = "hootener"
 x = "@hootener"
+x_url = "https://x.com/hootener"
 
 [[handle]]
 name = "getsentry"
 x = "@getsentry"
+x_url = "https://x.com/getsentry"
 
 [[handle]]
 name = "render"
 x = "@render"
+linkedin = "@render"
+linkedin_url = "https://www.linkedin.com/company/render/"
+x_url = "https://x.com/render"
 
 [[handle]]
 name = "Enea_Jahollari"
 x = "@Enea_Jahollari"
+x_url = "https://x.com/Enea_Jahollari"
 
 [[handle]]
 name = "ollama"
 x = "@ollama"
+linkedin = "@ollama"
+linkedin_url = "https://www.linkedin.com/company/ollama/"
+x_url = "https://x.com/ollama"
 
 [[handle]]
 name = "burkeholland"
 x = "@burkeholland"
+x_url = "https://x.com/burkeholland"
 
 [[handle]]
 name = "alexdaubois"
 x = "@alexdaubois"
+x_url = "https://x.com/alexdaubois"
 
 [[handle]]
 name = "coopTilleuls"
 x = "@coopTilleuls"
+x_url = "https://x.com/coopTilleuls"
 
 [[handle]]
 name = "thephpf"
 x = "@thephpf"
+x_url = "https://x.com/thephpf"
 
 [[handle]]
 name = "symfony"
 x = "@symfony"
+x_url = "https://x.com/symfony"
 
 [[handle]]
 name = "VincentChabot"
 x = "@VincentChabot"
+x_url = "https://x.com/VincentChabot"
 
 [[handle]]
 name = "_PrestaSafe"
 x = "@_PrestaSafe"
+x_url = "https://x.com/_PrestaSafe"
 
 [[handle]]
 name = "CecileDubouis"
 x = "@CecileDubouis"
+x_url = "https://x.com/CecileDubouis"
 
 [[handle]]
 name = "OpenClassrooms"
 x = "@OpenClassrooms"
+x_url = "https://x.com/OpenClassrooms"
 
 [[handle]]
 name = "PrestaShop"
 x = "@PrestaShop"
+x_url = "https://x.com/PrestaShop"
 
 [[handle]]
 name = "_AnneP_"
 x = "@_AnneP_"
+x_url = "https://x.com/_AnneP_"
 
 [[handle]]
 name = "sebastienhouzet"
 x = "@sebastienhouzet"
+x_url = "https://x.com/sebastienhouzet"
 
 [[handle]]
 name = "webbax_ch"
 x = "@webbax_ch"
+x_url = "https://x.com/webbax_ch"
 
 [[handle]]
 name = "kucoincom"
 x = "@kucoincom"
+x_url = "https://x.com/kucoincom"
 
 [[handle]]
 name = "KuCoinUpdates"
 x = "@KuCoinUpdates"
+x_url = "https://x.com/KuCoinUpdates"
 
 [[handle]]
 name = "KuCoin_UK"
 x = "@KuCoin_UK"
+x_url = "https://x.com/KuCoin_UK"
 
 [[handle]]
 name = "kucoinaustralia"
 x = "@kucoinaustralia"
+x_url = "https://x.com/kucoinaustralia"
 
 [[handle]]
 name = "PrestaKit"
 x = "@PrestaKit"
+x_url = "https://x.com/PrestaKit"
 
 [[handle]]
 name = "NeoFramework"
 x = "@NeoFramework"
+x_url = "https://x.com/NeoFramework"
 
 [[handle]]
 name = "SEO_mercari"
 x = "@SEO_mercari"
+x_url = "https://x.com/SEO_mercari"
 
 [[handle]]
 name = "passerel_fr"
 x = "@passerel_fr"
+x_url = "https://x.com/passerel_fr"
 
 [[handle]]
 name = "magentofeeds"
 x = "@magentofeeds"
+x_url = "https://x.com/magentofeeds"
 
 [[handle]]
 name = "gxjansen"
 x = "@gxjansen"
+x_url = "https://x.com/gxjansen"
 
 [[handle]]
 name = "Metibiane"
 x = "@Metibiane"
+x_url = "https://x.com/Metibiane"
 
 [[handle]]
 name = "cibles_fr"
 x = "@cibles_fr"
+x_url = "https://x.com/cibles_fr"
 
 [[handle]]
 name = "BrunoTRITSCH"
 x = "@BrunoTRITSCH"
+x_url = "https://x.com/BrunoTRITSCH"
 
 [[handle]]
 name = "petitkiwibe"
 x = "@petitkiwibe"
+x_url = "https://x.com/petitkiwibe"
 
 [[handle]]
 name = "ZIMOiTS"
 x = "@ZIMOiTS"
+x_url = "https://x.com/ZIMOiTS"
 
 [[handle]]
 name = "AgenceKalixo"
 x = "@AgenceKalixo"
+x_url = "https://x.com/AgenceKalixo"
 
 [[handle]]
 name = "arnaud_genty"
 x = "@arnaud_genty"
+x_url = "https://x.com/arnaud_genty"
 
 [[handle]]
 name = "altern_it"
 x = "@altern_it"
+x_url = "https://x.com/altern_it"
 
 [[handle]]
 name = "rusalinalilova"
 x = "@rusalinalilova"
+x_url = "https://x.com/rusalinalilova"
 
 [[handle]]
 name = "LaurentG2evolve"
 x = "@LaurentG2evolve"
+x_url = "https://x.com/LaurentG2evolve"
 
 [[handle]]
 name = "loictortelier"
 x = "@loictortelier"
+x_url = "https://x.com/loictortelier"
 
 [[handle]]
 name = "bandimancho"
 x = "@bandimancho"
+x_url = "https://x.com/bandimancho"
 
 [[handle]]
 name = "laurentplenet"
 x = "@laurentplenet"
+x_url = "https://x.com/laurentplenet"
 
 [[handle]]
 name = "SlipSoftware"
 x = "@SlipSoftware"
+x_url = "https://x.com/SlipSoftware"
 
 [[handle]]
 name = "monatelierweb"
 x = "@monatelierweb"
+x_url = "https://x.com/monatelierweb"
 
 [[handle]]
 name = "turza_ondrej"
 x = "@turza_ondrej"
+x_url = "https://x.com/turza_ondrej"
 
 [[handle]]
 name = "orhundev"
 x = "@orhundev"
+x_url = "https://x.com/orhundev"
 
 [[handle]]
 name = "ratatui_rs"
 x = "@ratatui_rs"
+x_url = "https://x.com/ratatui_rs"
 
 [[handle]]
 name = "jetbrains"
 x = "@jetbrains"
+x_url = "https://x.com/jetbrains"
 
 [[handle]]
 name = "archlinux"
 x = "@archlinux"
+x_url = "https://x.com/archlinux"
 
 [[handle]]
 name = "PHPTutorials2"
 x = "@PHPTutorials2"
+x_url = "https://x.com/PHPTutorials2"
 
 [[handle]]
 name = "euroblaze"
 x = "@euroblaze"
+x_url = "https://x.com/euroblaze"
 
 [[handle]]
 name = "Hopdevis"
 x = "@Hopdevis"
+x_url = "https://x.com/Hopdevis"
 
 [[handle]]
 name = "aboobox"
 x = "@aboobox"
+x_url = "https://x.com/aboobox"
 
 [[handle]]
 name = "rueduwebmaster"
 x = "@rueduwebmaster"
+x_url = "https://x.com/rueduwebmaster"
 
 [[handle]]
 name = "Ellegiance"
 x = "@Ellegiance"
+x_url = "https://x.com/Ellegiance"
 
 [[handle]]
 name = "laurentsimony"
 x = "@laurentsimony"
+x_url = "https://x.com/laurentsimony"
 
 [[handle]]
 name = "Agence23Mobile"
 x = "@Agence23Mobile"
+x_url = "https://x.com/Agence23Mobile"
 
 [[handle]]
 name = "GH_DimitriROUS"
 x = "@GH_DimitriROUS"
+x_url = "https://x.com/GH_DimitriROUS"
 
 [[handle]]
 name = "growthhackingfr"
 x = "@growthhackingfr"
+x_url = "https://x.com/growthhackingfr"
 
 [[handle]]
 name = "martin_leni"
 x = "@martin_leni"
+x_url = "https://x.com/martin_leni"
 
 [[handle]]
 name = "bluzzinblog"
 x = "@bluzzinblog"
+x_url = "https://x.com/bluzzinblog"
 
 [[handle]]
 name = "francesurf"
 x = "@francesurf"
+x_url = "https://x.com/francesurf"
 
 [[handle]]
 name = "romainbuche"
 x = "@romainbuche"
+x_url = "https://x.com/romainbuche"
 
 [[handle]]
 name = "FloFgrs"
 x = "@FloFgrs"
+x_url = "https://x.com/FloFgrs"
 
 [[handle]]
 name = "VeilleWordpress"
 x = "@VeilleWordpress"
+x_url = "https://x.com/VeilleWordpress"
 
 [[handle]]
 name = "TimeIsMoneyHQ"
 x = "@TimeIsMoneyHQ"
+x_url = "https://x.com/TimeIsMoneyHQ"
 
 [[handle]]
 name = "samCSPR"
 x = "@samCSPR"
+x_url = "https://x.com/samCSPR"
 
 [[handle]]
 name = "XDevelopers"
 x = "@XDevelopers"
+x_url = "https://x.com/XDevelopers"
 
 [[handle]]
 name = "XFrance"
 x = "@XFrance"
+x_url = "https://x.com/XFrance"
 
 [[handle]]
 name = "X"
 x = "@X"
+x_url = "https://x.com/X"
 
 [[handle]]
 name = "MichelBalineau"
 x = "@MichelBalineau"
+x_url = "https://x.com/MichelBalineau"
 
 [[handle]]
 name = "TrendingGithub"
 x = "@TrendingGithub"
+x_url = "https://x.com/TrendingGithub"
 
 [[handle]]
 name = "andygrunwald"
 x = "@andygrunwald"
+x_url = "https://x.com/andygrunwald"
 
 [[handle]]
 name = "VosFactures"
 x = "@VosFactures"
+x_url = "https://x.com/VosFactures"
 
 [[handle]]
 name = "whoaloic"
 x = "@whoaloic"
+x_url = "https://x.com/whoaloic"
 
 [[handle]]
 name = "seboseo"
 x = "@seboseo"
+x_url = "https://x.com/seboseo"
 
 [[handle]]
 name = "MireilleChollet"
 x = "@MireilleChollet"
+x_url = "https://x.com/MireilleChollet"
 
 [[handle]]
 name = "PascalGuillerm"
 x = "@PascalGuillerm"
+x_url = "https://x.com/PascalGuillerm"
 
 [[handle]]
 name = "tegarrizki171"
 x = "@tegarrizki171"
+x_url = "https://x.com/tegarrizki171"
 
 [[handle]]
 name = "Stetasm181394"
 x = "@Stetasm181394"
+x_url = "https://x.com/Stetasm181394"
 
 [[handle]]
 name = "DaveNeal35"
 x = "@DaveNeal35"
+x_url = "https://x.com/DaveNeal35"
 
 [[handle]]
 name = "parcl"
 x = "@parcl"
+x_url = "https://x.com/parcl"
 
 [[handle]]
 name = "parcllabs"
 x = "@parcllabs"
+x_url = "https://x.com/parcllabs"
 
 [[handle]]
 name = "parcldevco"
 x = "@parcldevco"
+x_url = "https://x.com/parcldevco"
 
 [[handle]]
 name = "wendyo66k"
 x = "@wendyo66k"
+x_url = "https://x.com/wendyo66k"
 
 [[handle]]
 name = "Aurel1enm"
 x = "@Aurel1enm"
+x_url = "https://x.com/Aurel1enm"
 
 [[handle]]
 name = "andrewbrogdan"
 x = "@andrewbrogdan"
+x_url = "https://x.com/andrewbrogdan"
 
 [[handle]]
 name = "kissfmuk"
 x = "@kissfmuk"
+x_url = "https://x.com/kissfmuk"
 
 [[handle]]
 name = "Nikhil_Ag09"
 x = "@Nikhil_Ag09"
+x_url = "https://x.com/Nikhil_Ag09"
 
 [[handle]]
 name = "fmmzV0d23KP94i7"
 x = "@fmmzV0d23KP94i7"
+x_url = "https://x.com/fmmzV0d23KP94i7"
 
 [[handle]]
 name = "wael93186"
 x = "@wael93186"
+x_url = "https://x.com/wael93186"
 
 [[handle]]
 name = "valoryag"
 x = "@valoryag"
+x_url = "https://x.com/valoryag"
 
 [[handle]]
 name = "autonolas"
 x = "@autonolas"
+x_url = "https://x.com/autonolas"
 
 [[handle]]
 name = "kupermind"
 x = "@kupermind"
+x_url = "https://x.com/kupermind"
 
 [[handle]]
 name = "Ta_da_io"
 x = "@Ta_da_io"
+x_url = "https://x.com/Ta_da_io"
 
 [[handle]]
 name = "mtolmacs"
 x = "@mtolmacs"
+x_url = "https://x.com/mtolmacs"
 
 [[handle]]
 name = "Veykril"
 x = "@Veykril"
+x_url = "https://x.com/Veykril"
 
 [[handle]]
 name = "Toro66Qnt"
 x = "@Toro66Qnt"
+x_url = "https://x.com/Toro66Qnt"
 
 [[handle]]
 name = "speedystaking"
 x = "@speedystaking"
+x_url = "https://x.com/speedystaking"
 
 [[handle]]
 name = "ZBCN_STACKER"
 x = "@ZBCN_STACKER"
+x_url = "https://x.com/ZBCN_STACKER"
 
 [[handle]]
 name = "OrangeBFree"
 x = "@OrangeBFree"
+x_url = "https://x.com/OrangeBFree"
 
 [[handle]]
 name = "toncommunity"
 x = "@toncommunity"
+x_url = "https://x.com/toncommunity"
 
 [[handle]]
 name = "ton_blockchain"
 x = "@ton_blockchain"
+x_url = "https://x.com/ton_blockchain"
 
 [[handle]]
 name = "cowl_network"
 x = "@cowl_network"
+x_url = "https://x.com/cowl_network"
 
 [[handle]]
 name = "benbybit"
 x = "@benbybit"
+x_url = "https://x.com/benbybit"
 
 [[handle]]
 name = "Cracking_Crypto"
 x = "@Cracking_Crypto"
+x_url = "https://x.com/Cracking_Crypto"
 
 [[handle]]
 name = "andrew_Tas"
 x = "@andrew_Tas"
+x_url = "https://x.com/andrew_Tas"
 
 [[handle]]
 name = "Repub_Crypto"
 x = "@Repub_Crypto"
+x_url = "https://x.com/Repub_Crypto"
 
 [[handle]]
 name = "PythonCrafted"
 x = "@PythonCrafted"
+x_url = "https://x.com/PythonCrafted"
 
 [[handle]]
 name = "alizee_inboston"
 x = "@alizee_inboston"
+x_url = "https://x.com/alizee_inboston"
 
 [[handle]]
 name = "investasi_coin"
 x = "@investasi_coin"
+x_url = "https://x.com/investasi_coin"
 
 [[handle]]
 name = "cryptolupone"
 x = "@cryptolupone"
+x_url = "https://x.com/cryptolupone"
 
 [[handle]]
 name = "JV07MS"
 x = "@JV07MS"
+x_url = "https://x.com/JV07MS"
 
 [[handle]]
 name = "RyanDevaer"
 x = "@RyanDevaer"
+x_url = "https://x.com/RyanDevaer"
 
 [[handle]]
 name = "trucker_toots"
 x = "@trucker_toots"
+x_url = "https://x.com/trucker_toots"
 
 [[handle]]
 name = "guiltygyoza"
 x = "@guiltygyoza"
+x_url = "https://x.com/guiltygyoza"
 
 [[handle]]
 name = "KubrickShining"
 x = "@KubrickShining"
+x_url = "https://x.com/KubrickShining"
 
 [[handle]]
 name = "TheNode_Network"
 x = "@TheNode_Network"
+x_url = "https://x.com/TheNode_Network"
 
 [[handle]]
 name = "odradev"
 x = "@odradev"
+x_url = "https://x.com/odradev"
 
 [[handle]]
 name = "TommyCSPR"
 x = "@TommyCSPR"
+x_url = "https://x.com/TommyCSPR"
 
 [[handle]]
 name = "CsprNews"
 x = "@CsprNews"
+x_url = "https://x.com/CsprNews"
 
 [[handle]]
 name = "Axedna"
 x = "@Axedna"
+x_url = "https://x.com/Axedna"
 
 [[handle]]
 name = "Kevin_Cage_"
 x = "@Kevin_Cage_"
+x_url = "https://x.com/Kevin_Cage_"
 
 [[handle]]
 name = "ProveAI"
 x = "@ProveAI"
+x_url = "https://x.com/ProveAI"
 
 [[handle]]
 name = "crypto_caesar1"
 x = "@crypto_caesar1"
+x_url = "https://x.com/crypto_caesar1"
 
 [[handle]]
 name = "CC__Capital"
 x = "@CC__Capital"
+x_url = "https://x.com/CC__Capital"
 
 [[handle]]
 name = "joshkeil13"
 x = "@joshkeil13"
+x_url = "https://x.com/joshkeil13"
 
 [[handle]]
 name = "KalebDawson333"
 x = "@KalebDawson333"
+x_url = "https://x.com/KalebDawson333"
 
 [[handle]]
 name = "GillisRobby"
 x = "@GillisRobby"
+x_url = "https://x.com/GillisRobby"
 
 [[handle]]
 name = "tomaka17"
 x = "@tomaka17"
+x_url = "https://x.com/tomaka17"
 
 [[handle]]
 name = "gregberge_"
 x = "@gregberge_"
+x_url = "https://x.com/gregberge_"
 
 [[handle]]
 name = "argos_ci"
 x = "@argos_ci"
+x_url = "https://x.com/argos_ci"
 
 [[handle]]
 name = "gitbookio"
 x = "@gitbookio"
+x_url = "https://x.com/gitbookio"
 
 [[handle]]
 name = "doctolib"
 x = "@doctolib"
+x_url = "https://x.com/doctolib"
 
 [[handle]]
 name = "SebasP49474734"
 x = "@SebasP49474734"
+x_url = "https://x.com/SebasP49474734"
 
 [[handle]]
 name = "ChartHistorian"
 x = "@ChartHistorian"
+x_url = "https://x.com/ChartHistorian"
 
 [[handle]]
 name = "willkpringle"
 x = "@willkpringle"
+x_url = "https://x.com/willkpringle"
 
 [[handle]]
 name = "nilslice"
 x = "@nilslice"
+x_url = "https://x.com/nilslice"
 
 [[handle]]
 name = "dylibso"
 x = "@dylibso"
+linkedin = "@dylibso"
+linkedin_url = "https://www.linkedin.com/company/dylibso/"
+x_url = "https://x.com/dylibso"
 
 [[handle]]
 name = "extism"
 x = "@extism"
+linkedin = "@extism"
+linkedin_url = "https://www.linkedin.com/company/extism/"
+x_url = "https://x.com/extism"
 
 [[handle]]
 name = "ag_dubs"
 x = "@ag_dubs"
+x_url = "https://x.com/ag_dubs"
 
 [[handle]]
 name = "shopify"
 x = "@shopify"
+x_url = "https://x.com/shopify"
 
 [[handle]]
 name = "rustwasm"
 x = "@rustwasm"
+x_url = "https://x.com/rustwasm"
 
 [[handle]]
 name = "Indy_Rottier"
 x = "@Indy_Rottier"
+x_url = "https://x.com/Indy_Rottier"
 
 [[handle]]
 name = "BybitNL"
 x = "@BybitNL"
+x_url = "https://x.com/BybitNL"
 
 [[handle]]
 name = "nodar_d"
 x = "@nodar_d"
+x_url = "https://x.com/nodar_d"
 
 [[handle]]
 name = "ByteBender007"
 x = "@ByteBender007"
+x_url = "https://x.com/ByteBender007"
 
 [[handle]]
 name = "cryptojosh4114"
 x = "@cryptojosh4114"
+x_url = "https://x.com/cryptojosh4114"
 
 [[handle]]
 name = "casperecosystem"
 x = "@casperecosystem"
+x_url = "https://x.com/casperecosystem"
 
 [[handle]]
 name = "razo7575"
 x = "@razo7575"
+x_url = "https://x.com/razo7575"
 
 [[handle]]
 name = "0xVixello"
 x = "@0xVixello"
+x_url = "https://x.com/0xVixello"
 
 [[handle]]
 name = "squintero89"
 x = "@squintero89"
+x_url = "https://x.com/squintero89"
 
 [[handle]]
 name = "Shelby2320"
 x = "@Shelby2320"
+x_url = "https://x.com/Shelby2320"
 
 [[handle]]
 name = "EraGuardian"
 x = "@EraGuardian"
+x_url = "https://x.com/EraGuardian"
 
 [[handle]]
 name = "ShahidArshad85"
 x = "@ShahidArshad85"
+x_url = "https://x.com/ShahidArshad85"
 
 [[handle]]
 name = "OriginStake"
 x = "@OriginStake"
+x_url = "https://x.com/OriginStake"
 
 [[handle]]
 name = "wadlix"
 x = "@wadlix"
+x_url = "https://x.com/wadlix"
 
 [[handle]]
 name = "Breeron"
 x = "@Breeron"
+x_url = "https://x.com/Breeron"
 
 [[handle]]
 name = "midnightfdn"
 x = "@midnightfdn"
+x_url = "https://x.com/midnightfdn"
 
 [[handle]]
 name = "DissonantCat"
 x = "@DissonantCat"
+x_url = "https://x.com/DissonantCat"
 
 [[handle]]
 name = "CryptoRizon"
 x = "@CryptoRizon"
+x_url = "https://x.com/CryptoRizon"
 
 [[handle]]
 name = "melpadden"
 x = "@melpadden"
+x_url = "https://x.com/melpadden"
 
 [[handle]]
 name = "infomaniak"
 x = "@infomaniak"
+x_url = "https://x.com/infomaniak"
 
 [[handle]]
 name = "Starknet"
 x = "@Starknet"
+x_url = "https://x.com/Starknet"
 
 [[handle]]
 name = "StarknetFndn"
 x = "@StarknetFndn"
+x_url = "https://x.com/StarknetFndn"
 
 [[handle]]
 name = "higher_labs"
 x = "@higher_labs"
+x_url = "https://x.com/higher_labs"
 
 [[handle]]
 name = "johnaldinioh89"
 x = "@johnaldinioh89"
+x_url = "https://x.com/johnaldinioh89"
 
 [[handle]]
 name = "CryptoMichNL"
 x = "@CryptoMichNL"
+x_url = "https://x.com/CryptoMichNL"
 
 [[handle]]
 name = "MNFund_"
 x = "@MNFund_"
+x_url = "https://x.com/MNFund_"
 
 [[handle]]
 name = "MNCapital_vc"
 x = "@MNCapital_vc"
+x_url = "https://x.com/MNCapital_vc"
 
 [[handle]]
 name = "new_era_finance"
 x = "@new_era_finance"
+x_url = "https://x.com/new_era_finance"
 
 [[handle]]
 name = "marcoieni"
 x = "@marcoieni"
+x_url = "https://x.com/marcoieni"
 
 [[handle]]
 name = "release_plz_dev"
 x = "@release_plz_dev"
+x_url = "https://x.com/release_plz_dev"
 
 [[handle]]
 name = "knaken_eu"
 x = "@knaken_eu"
+x_url = "https://x.com/knaken_eu"
 
 [[handle]]
 name = "knaken_nl"
 x = "@knaken_nl"
+x_url = "https://x.com/knaken_nl"
 
 [[handle]]
 name = "EIBarbas89"
 x = "@EIBarbas89"
+x_url = "https://x.com/EIBarbas89"
 
 [[handle]]
 name = "playbithotel"
 x = "@playbithotel"
+x_url = "https://x.com/playbithotel"
 
 [[handle]]
 name = "SkaleNetwork"
 x = "@SkaleNetwork"
+x_url = "https://x.com/SkaleNetwork"
 
 [[handle]]
 name = "SeedifyFund"
 x = "@SeedifyFund"
+x_url = "https://x.com/SeedifyFund"
 
 [[handle]]
 name = "Cryptocreamy"
 x = "@Cryptocreamy"
+x_url = "https://x.com/Cryptocreamy"
 
 [[handle]]
 name = "elias_era"
 x = "@elias_era"
+x_url = "https://x.com/elias_era"
 
 [[handle]]
 name = "DarthB86"
 x = "@DarthB86"
+x_url = "https://x.com/DarthB86"
 
 [[handle]]
 name = "willemvermeer"
 x = "@willemvermeer"
+x_url = "https://x.com/willemvermeer"
 
 [[handle]]
 name = "maxwellflitton"
 x = "@maxwellflitton"
+x_url = "https://x.com/maxwellflitton"
 
 [[handle]]
 name = "jonhoo"
 x = "@jonhoo"
+x_url = "https://x.com/jonhoo"
 
 [[handle]]
 name = "HelsingAI"
 x = "@HelsingAI"
+x_url = "https://x.com/HelsingAI"
 
 [[handle]]
 name = "readysetio"
 x = "@readysetio"
+x_url = "https://x.com/readysetio"
 
 [[handle]]
 name = "RustDiscussions"
 x = "@RustDiscussions"
+x_url = "https://x.com/RustDiscussions"
 
 [[handle]]
 name = "Automated by @XojocXojoc"
 x = "@XojocXojoc"
+x_url = "https://x.com/XojocXojoc"
 
 [[handle]]
 name = "mkenzo_8"
 x = "@mkenzo_8"
+x_url = "https://x.com/mkenzo_8"
 
 [[handle]]
 name = "dioxuslabs"
 x = "@dioxuslabs"
+x_url = "https://x.com/dioxuslabs"
 
 [[handle]]
 name = "davidwalschots"
 x = "@davidwalschots"
+x_url = "https://x.com/davidwalschots"
 
 [[handle]]
 name = "rikarends"
 x = "@rikarends"
+x_url = "https://x.com/rikarends"
 
 [[handle]]
 name = "m_ou_se"
 x = "@m_ou_se"
+x_url = "https://x.com/m_ou_se"
 
 [[handle]]
 name = "jonkers_erik"
 x = "@jonkers_erik"
+x_url = "https://x.com/jonkers_erik"
 
 [[handle]]
 name = "tweedegolfbv"
 x = "@tweedegolfbv"
+x_url = "https://x.com/tweedegolfbv"
 
 [[handle]]
 name = "Rust_NL"
 x = "@Rust_NL"
+x_url = "https://x.com/Rust_NL"
 
 [[handle]]
 name = "0xSnoW"
 x = "@0xSnoW"
+x_url = "https://x.com/0xSnoW"
 
 [[handle]]
 name = "WeareAllfeat"
 x = "@WeareAllfeat"
+x_url = "https://x.com/WeareAllfeat"
 
 [[handle]]
 name = "seanmonstar"
 x = "@seanmonstar"
+x_url = "https://x.com/seanmonstar"
 
 [[handle]]
 name = "hyperium_rs"
 x = "@hyperium_rs"
+x_url = "https://x.com/hyperium_rs"
 
 [[handle]]
 name = "nicolodavis"
 x = "@nicolodavis"
+x_url = "https://x.com/nicolodavis"
 
 [[handle]]
 name = "boardgamelabapp"
 x = "@boardgamelabapp"
+x_url = "https://x.com/boardgamelabapp"
 
 [[handle]]
 name = "Codizlow"
 x = "@Codizlow"
+x_url = "https://x.com/Codizlow"
 
 [[handle]]
 name = "GothamSenator"
 x = "@GothamSenator"
+x_url = "https://x.com/GothamSenator"
 
 [[handle]]
 name = "gregory_raymond"
 x = "@gregory_raymond"
+x_url = "https://x.com/gregory_raymond"
 
 [[handle]]
 name = "TheBigWhale_"
 x = "@TheBigWhale_"
+x_url = "https://x.com/TheBigWhale_"
 
 [[handle]]
 name = "RRKUBLI"
 x = "@RRKUBLI"
+x_url = "https://x.com/RRKUBLI"
 
 [[handle]]
 name = "_cv_vc_"
 x = "@_cv_vc_"
+x_url = "https://x.com/_cv_vc_"
 
 [[handle]]
 name = "DCOutlawdogs"
 x = "@DCOutlawdogs"
+x_url = "https://x.com/DCOutlawdogs"
 
 [[handle]]
 name = "Web3xParis"
 x = "@Web3xParis"
+x_url = "https://x.com/Web3xParis"
 
 [[handle]]
 name = "ParisBlockWeek"
 x = "@ParisBlockWeek"
+x_url = "https://x.com/ParisBlockWeek"
 
 [[handle]]
 name = "massachain"
 x = "@massachain"
+x_url = "https://x.com/massachain"
 
 [[handle]]
 name = "Reecepbcups_"
 x = "@Reecepbcups_"
+x_url = "https://x.com/Reecepbcups_"
 
 [[handle]]
 name = "StrangeLoveLabs"
 x = "@StrangeLoveLabs"
+x_url = "https://x.com/StrangeLoveLabs"
 
 [[handle]]
 name = "Ondo"
 x = "@Ondo"
+x_url = "https://x.com/Ondo"
 
 [[handle]]
 name = "JunoNetwork"
 x = "@JunoNetwork"
+x_url = "https://x.com/JunoNetwork"
 
 [[handle]]
 name = "JooDiogoSilva2"
 x = "@JooDiogoSilva2"
+x_url = "https://x.com/JooDiogoSilva2"
 
 [[handle]]
 name = "mystra_io"
 x = "@mystra_io"
+x_url = "https://x.com/mystra_io"
 
 [[handle]]
 name = "orkunkl_"
 x = "@orkunkl_"
+x_url = "https://x.com/orkunkl_"
 
 [[handle]]
 name = "keplrwallet"
 x = "@keplrwallet"
+x_url = "https://x.com/keplrwallet"
 
 [[handle]]
 name = "keplr_infra"
 x = "@keplr_infra"
+x_url = "https://x.com/keplr_infra"
 
 [[handle]]
 name = "cosmosibc"
 x = "@cosmosibc"
+x_url = "https://x.com/cosmosibc"
 
 [[handle]]
 name = "ibcprotocol"
 x = "@ibcprotocol"
+x_url = "https://x.com/ibcprotocol"
 
 [[handle]]
 name = "wynddao"
 x = "@wynddao"
+x_url = "https://x.com/wynddao"
 
 [[handle]]
 name = "ueco_jb"
 x = "@ueco_jb"
+x_url = "https://x.com/ueco_jb"
 
 [[handle]]
 name = "confio_tech"
 x = "@confio_tech"
+x_url = "https://x.com/confio_tech"
 
 [[handle]]
 name = "misangmadrid"
 x = "@misangmadrid"
+x_url = "https://x.com/misangmadrid"
 
 [[handle]]
 name = "dsrvlabs"
 x = "@dsrvlabs"
+x_url = "https://x.com/dsrvlabs"
 
 [[handle]]
 name = "AllThatNode"
 x = "@AllThatNode"
+x_url = "https://x.com/AllThatNode"
 
 [[handle]]
 name = "WelldoneStudio_"
 x = "@WelldoneStudio_"
+x_url = "https://x.com/WelldoneStudio_"
 
 [[handle]]
 name = "osmosis"
 x = "@osmosis"
+linkedin = "@osmosis"
+linkedin_url = "https://www.linkedin.com/company/osmosis/"
+x_url = "https://x.com/osmosis"
 
 [[handle]]
 name = "CosmWasm"
 x = "@CosmWasm"
+linkedin = "@cosmwasm"
+linkedin_url = "https://www.linkedin.com/company/cosmwasm/"
+x_url = "https://x.com/CosmWasm"
 
 [[handle]]
 name = "casperswap"
 x = "@casperswap"
+x_url = "https://x.com/casperswap"
 
 [[handle]]
 name = "link3to"
 x = "@link3to"
+x_url = "https://x.com/link3to"
 
 [[handle]]
 name = "BuildOnCyber"
 x = "@BuildOnCyber"
+x_url = "https://x.com/BuildOnCyber"
 
 [[handle]]
 name = "raymond2454"
 x = "@raymond2454"
+x_url = "https://x.com/raymond2454"
 
 [[handle]]
 name = "Charlie85270R"
 x = "@Charlie85270R"
+x_url = "https://x.com/Charlie85270R"
 
 [[handle]]
 name = "OctavFi"
 x = "@OctavFi"
+x_url = "https://x.com/OctavFi"
 
 [[handle]]
 name = "RyanCarniato"
 x = "@RyanCarniato"
+x_url = "https://x.com/RyanCarniato"
 
 [[handle]]
 name = "solid_js"
 x = "@solid_js"
+x_url = "https://x.com/solid_js"
 
 [[handle]]
 name = "RunningZ98577"
 x = "@RunningZ98577"
+x_url = "https://x.com/RunningZ98577"
 
 [[handle]]
 name = "lesecteurfr"
 x = "@lesecteurfr"
+x_url = "https://x.com/lesecteurfr"
 
 [[handle]]
 name = "NEARProtocol"
 x = "@NEARProtocol"
+x_url = "https://x.com/NEARProtocol"
 
 [[handle]]
 name = "HalbornSecurity"
 x = "@HalbornSecurity"
+x_url = "https://x.com/HalbornSecurity"
 
 [[handle]]
 name = "herberticus"
 x = "@herberticus"
+x_url = "https://x.com/herberticus"
 
 [[handle]]
 name = "ardanlabs"
 x = "@ardanlabs"
+x_url = "https://x.com/ardanlabs"
 
 [[handle]]
 name = "getbeanstock"
 x = "@getbeanstock"
+x_url = "https://x.com/getbeanstock"
 
 [[handle]]
 name = "codeur"
 x = "@codeur"
+x_url = "https://x.com/codeur"
 
 [[handle]]
 name = "projets_codeur"
 x = "@projets_codeur"
+x_url = "https://x.com/projets_codeur"
 
 [[handle]]
 name = "crobox"
 x = "@crobox"
+x_url = "https://x.com/crobox"
 
 [[handle]]
 name = "SteveCareaga"
 x = "@SteveCareaga"
+x_url = "https://x.com/SteveCareaga"
 
 [[handle]]
 name = "MrGoat3D"
 x = "@MrGoat3D"
+x_url = "https://x.com/MrGoat3D"
 
 [[handle]]
 name = "cryptovers3_"
 x = "@cryptovers3_"
+x_url = "https://x.com/cryptovers3_"
 
 [[handle]]
 name = "casperdash_io"
 x = "@casperdash_io"
+x_url = "https://x.com/casperdash_io"
 
 [[handle]]
 name = "EggForceNFT"
 x = "@EggForceNFT"
+x_url = "https://x.com/EggForceNFT"
 
 [[handle]]
 name = "SoubranneQ"
 x = "@SoubranneQ"
+x_url = "https://x.com/SoubranneQ"
 
 [[handle]]
 name = "InvestirFr"
 x = "@InvestirFr"
+x_url = "https://x.com/InvestirFr"
 
 [[handle]]
 name = "casperpunks_"
 x = "@casperpunks_"
+x_url = "https://x.com/casperpunks_"
 
 [[handle]]
 name = "hodlshark"
 x = "@hodlshark"
+x_url = "https://x.com/hodlshark"
 
 [[handle]]
 name = "RaffleRobotAI"
 x = "@RaffleRobotAI"
+x_url = "https://x.com/RaffleRobotAI"
 
 [[handle]]
 name = "CasperProjects"
 x = "@CasperProjects"
+x_url = "https://x.com/CasperProjects"
 
 [[handle]]
 name = "scottwalker99"
 x = "@scottwalker99"
+x_url = "https://x.com/scottwalker99"
 
 [[handle]]
 name = "Casper_Pad"
 x = "@Casper_Pad"
+x_url = "https://x.com/Casper_Pad"
 
 [[handle]]
 name = "mssteuer"
 x = "@mssteuer"
+x_url = "https://x.com/mssteuer"
 
 [[handle]]
 name = "piotrdz"
 x = "@piotrdz"
+x_url = "https://x.com/piotrdz"
 
 [[handle]]
 name = "casper_wallet"
 x = "@casper_wallet"
+x_url = "https://x.com/casper_wallet"
 
 [[handle]]
 name = "_JunoMint"
 x = "@_JunoMint"
+x_url = "https://x.com/_JunoMint"
 
 [[handle]]
 name = "EZStaking"
 x = "@EZStaking"
+x_url = "https://x.com/EZStaking"
 
 [[handle]]
 name = "zakarialounes"
 x = "@zakarialounes"
+x_url = "https://x.com/zakarialounes"
 
 [[handle]]
 name = "webacademie"
 x = "@webacademie"
+x_url = "https://x.com/webacademie"
 
 [[handle]]
 name = "epitech"
 x = "@epitech"
+x_url = "https://x.com/epitech"
 
 [[handle]]
 name = "etna_io"
 x = "@etna_io"
+x_url = "https://x.com/etna_io"
 
 [[handle]]
 name = "jonesteban_"
 x = "@jonesteban_"
+x_url = "https://x.com/jonesteban_"
 
 [[handle]]
 name = "ZKSnarkA"
 x = "@ZKSnarkA"
+x_url = "https://x.com/ZKSnarkA"
 
 [[handle]]
 name = "chainswatch"
 x = "@chainswatch"
+x_url = "https://x.com/chainswatch"
 
 [[handle]]
 name = "adrienlepert"
 x = "@adrienlepert"
+x_url = "https://x.com/adrienlepert"
 
 [[handle]]
 name = "sfroment42"
 x = "@sfroment42"
+x_url = "https://x.com/sfroment42"
 
 [[handle]]
 name = "gwillem"
 x = "@gwillem"
+x_url = "https://x.com/gwillem"
 
 [[handle]]
 name = "greg_devlab"
 x = "@greg_devlab"
+x_url = "https://x.com/greg_devlab"
 
 [[handle]]
 name = "lorrainelejan"
 x = "@lorrainelejan"
+x_url = "https://x.com/lorrainelejan"
 
 [[handle]]
 name = "Onchain_Degen"
 x = "@Onchain_Degen"
+x_url = "https://x.com/Onchain_Degen"
 
 [[handle]]
 name = "casperalerts"
 x = "@casperalerts"
+x_url = "https://x.com/casperalerts"
 
 [[handle]]
 name = "CasperHolders"
 x = "@CasperHolders"
+x_url = "https://x.com/CasperHolders"
 
 [[handle]]
 name = "Div3_App"
 x = "@Div3_App"
+x_url = "https://x.com/Div3_App"
 
 [[handle]]
 name = "KillianOnWeb"
 x = "@KillianOnWeb"
+x_url = "https://x.com/KillianOnWeb"
 
 [[handle]]
 name = "killianonpv"
 x = "@killianonpv"
+x_url = "https://x.com/killianonpv"
 
 [[handle]]
 name = "enapnee"
 x = "@enapnee"
+x_url = "https://x.com/enapnee"
 
 [[handle]]
 name = "CasperCSPR_com"
 x = "@CasperCSPR_com"
+x_url = "https://x.com/CasperCSPR_com"
 
 [[handle]]
 name = "CasperFrance_io"
 x = "@CasperFrance_io"
+x_url = "https://x.com/CasperFrance_io"
 
 [[handle]]
 name = "sacherjj"
 x = "@sacherjj"
+x_url = "https://x.com/sacherjj"
 
 [[handle]]
 name = "MParlikar"
 x = "@MParlikar"
+x_url = "https://x.com/MParlikar"
 
 [[handle]]
 name = "Sfund_community"
 x = "@Sfund_community"
+x_url = "https://x.com/Sfund_community"
 
 [[handle]]
 name = "samberrrry"
 x = "@samberrrry"
+x_url = "https://x.com/samberrrry"
 
 [[handle]]
 name = "QuentinAu"
 x = "@QuentinAu"
+x_url = "https://x.com/QuentinAu"
 
 [[handle]]
 name = "WeAreYemanja"
 x = "@WeAreYemanja"
+x_url = "https://x.com/WeAreYemanja"
 
 [[handle]]
 name = "Griveau"
 x = "@Griveau"
+x_url = "https://x.com/Griveau"
 
 [[handle]]
 name = "linear"
 x = "@linear"
+x_url = "https://x.com/linear"
 
 [[handle]]
 name = "syswarren"
 x = "@syswarren"
+x_url = "https://x.com/syswarren"
 
 [[handle]]
 name = "ProductHunt"
 x = "@ProductHunt"
+x_url = "https://x.com/ProductHunt"
 
 [[handle]]
 name = "AngelList"
 x = "@AngelList"
+x_url = "https://x.com/AngelList"
 
 [[handle]]
 name = "deezer"
 x = "@deezer"
+x_url = "https://x.com/deezer"
 
 [[handle]]
 name = "gobelins_paris"
 x = "@gobelins_paris"
+x_url = "https://x.com/gobelins_paris"
 
 [[handle]]
 name = "PatrickWeil1"
 x = "@PatrickWeil1"
+x_url = "https://x.com/PatrickWeil1"
 
 [[handle]]
 name = "AdrienDomoison"
 x = "@AdrienDomoison"
+x_url = "https://x.com/AdrienDomoison"
 
 [[handle]]
 name = "codowl"
 x = "@codowl"
+x_url = "https://x.com/codowl"
 
 [[handle]]
 name = "Shipow"
 x = "@Shipow"
+x_url = "https://x.com/Shipow"
 
 [[handle]]
 name = "algolia"
 x = "@algolia"
+x_url = "https://x.com/algolia"
 
 [[handle]]
 name = "coderbits"
 x = "@coderbits"
+x_url = "https://x.com/coderbits"
 
 [[handle]]
 name = "GuideduCloud"
 x = "@GuideduCloud"
+x_url = "https://x.com/GuideduCloud"
 
 [[handle]]
 name = "Cloudwatt"
 x = "@Cloudwatt"
+x_url = "https://x.com/Cloudwatt"
 
 [[handle]]
 name = "jmfontaine"
 x = "@jmfontaine"
+x_url = "https://x.com/jmfontaine"
 
 [[handle]]
 name = "JobProd_PHP"
 x = "@JobProd_PHP"
+x_url = "https://x.com/JobProd_PHP"
 
 [[handle]]
 name = "welovedevs"
 x = "@welovedevs"
+x_url = "https://x.com/welovedevs"
 
 [[handle]]
 name = "HCJphp"
 x = "@HCJphp"
+x_url = "https://x.com/HCJphp"
 
 [[handle]]
 name = "HCNphp"
 x = "@HCNphp"
+x_url = "https://x.com/HCNphp"
 
 [[handle]]
 name = "HumanCoders"
 x = "@HumanCoders"
+x_url = "https://x.com/HumanCoders"
 
 [[handle]]
 name = "prediseo"
 x = "@prediseo"
+x_url = "https://x.com/prediseo"
 
 [[handle]]
 name = "peggy_andre"
 x = "@peggy_andre"
+x_url = "https://x.com/peggy_andre"
 
 [[handle]]
 name = "elseviermasson"
 x = "@elseviermasson"
+x_url = "https://x.com/elseviermasson"
 
 [[handle]]
 name = "PCParisSeine"
 x = "@PCParisSeine"
+x_url = "https://x.com/PCParisSeine"
 
 [[handle]]
 name = "shoppingfeedcom"
 x = "@shoppingfeedcom"
+x_url = "https://x.com/shoppingfeedcom"
 
 [[handle]]
 name = "matetlicher"
 x = "@matetlicher"
+x_url = "https://x.com/matetlicher"
 
 [[handle]]
 name = "jesuismika"
 x = "@jesuismika"
+x_url = "https://x.com/jesuismika"
 
 [[handle]]
 name = "GroupeSmile"
 x = "@GroupeSmile"
+x_url = "https://x.com/GroupeSmile"
 
 [[handle]]
 name = "NUMAparis"
 x = "@NUMAparis"
+x_url = "https://x.com/NUMAparis"
 
 [[handle]]
 name = "afup"
 x = "@afup"
+x_url = "https://x.com/afup"
 
 [[handle]]
 name = "AccrochePatte"
 x = "@AccrochePatte"
+x_url = "https://x.com/AccrochePatte"
 
 [[handle]]
 name = "silverebreton"
 x = "@silverebreton"
+x_url = "https://x.com/silverebreton"
 
 [[handle]]
 name = "duboutdesyeux"
 x = "@duboutdesyeux"
+x_url = "https://x.com/duboutdesyeux"
 
 [[handle]]
 name = "f4hwn"
 x = "@f4hwn"
+x_url = "https://x.com/f4hwn"
 
 [[handle]]
 name = "sraymond38"
 x = "@sraymond38"
+x_url = "https://x.com/sraymond38"
 
 [[handle]]
 name = "tifanou"
 x = "@tifanou"
+x_url = "https://x.com/tifanou"
 
 [[handle]]
 name = "AgenceGardeners"
 x = "@AgenceGardeners"
+x_url = "https://x.com/AgenceGardeners"
 
 [[handle]]
 name = "PrestashopBlog"
 x = "@PrestashopBlog"
+x_url = "https://x.com/PrestashopBlog"
 
 [[handle]]
 name = "SophieStickay"
 x = "@SophieStickay"
+x_url = "https://x.com/SophieStickay"
 
 [[handle]]
 name = "_dabims"
 x = "@_dabims"
+x_url = "https://x.com/_dabims"
 
 [[handle]]
 name = "arnaudmerigeau"
 x = "@arnaudmerigeau"
+x_url = "https://x.com/arnaudmerigeau"
 
 [[handle]]
 name = "emploidunet"
 x = "@emploidunet"
+x_url = "https://x.com/emploidunet"
 
 [[handle]]
 name = "e_commercant"
 x = "@e_commercant"
+x_url = "https://x.com/e_commercant"
 
 [[handle]]
 name = "Mathilde"
 x = "@Mathilde"
+x_url = "https://x.com/Mathilde"
 
 [[handle]]
 name = "lessushicodeurs"
 x = "@lessushicodeurs"
+x_url = "https://x.com/lessushicodeurs"
 
 [[handle]]
 name = "Iloveecommerce"
 x = "@Iloveecommerce"
+x_url = "https://x.com/Iloveecommerce"
 
 [[handle]]
 name = "arteestfrance"
 x = "@arteestfrance"
+x_url = "https://x.com/arteestfrance"
 
 [[handle]]
 name = "agencelunaweb"
 x = "@agencelunaweb"
+x_url = "https://x.com/agencelunaweb"
 
 [[handle]]
 name = "PourBebeCom"
 x = "@PourBebeCom"
+x_url = "https://x.com/PourBebeCom"
 
 [[handle]]
 name = "rhooocom"
 x = "@rhooocom"
+x_url = "https://x.com/rhooocom"
 
 [[handle]]
 name = "prestochangeo1"
 x = "@prestochangeo1"
+x_url = "https://x.com/prestochangeo1"
 
 [[handle]]
 name = "fenom"
 x = "@fenom"
+x_url = "https://x.com/fenom"
 
 [[handle]]
 name = "i0n1c"
 x = "@i0n1c"
+x_url = "https://x.com/i0n1c"
 
 [[handle]]
 name = "Antid0tecom"
 x = "@Antid0tecom"
+x_url = "https://x.com/Antid0tecom"
 
 [[handle]]
 name = "SektionEins"
 x = "@SektionEins"
+x_url = "https://x.com/SektionEins"
 
 [[handle]]
 name = "marcosteinhaeus"
 x = "@marcosteinhaeus"
+x_url = "https://x.com/marcosteinhaeus"
 
 [[handle]]
 name = "NTIFormation"
 x = "@NTIFormation"
+x_url = "https://x.com/NTIFormation"
 
 [[handle]]
 name = "ABhFormation"
 x = "@ABhFormation"
+x_url = "https://x.com/ABhFormation"
 
 [[handle]]
 name = "hetic"
 x = "@hetic"
+x_url = "https://x.com/hetic"
 
 [[handle]]
 name = "nilecode"
 x = "@nilecode"
+x_url = "https://x.com/nilecode"
 
 [[handle]]
 name = "nginxorg"
 x = "@nginxorg"
+x_url = "https://x.com/nginxorg"
 
 [[handle]]
 name = "F5"
 x = "@F5"
+x_url = "https://x.com/F5"
 
 [[handle]]
 name = "philippe_humeau"
 x = "@philippe_humeau"
+x_url = "https://x.com/philippe_humeau"
 
 [[handle]]
 name = "dotdeb"
 x = "@dotdeb"
+x_url = "https://x.com/dotdeb"
 
 [[handle]]
 name = "ddtraceweb"
 x = "@ddtraceweb"
+x_url = "https://x.com/ddtraceweb"
 
 [[handle]]
 name = "sliceApp"
 x = "@sliceApp"
+x_url = "https://x.com/sliceApp"
 
 [[handle]]
 name = "o2sources"
 x = "@o2sources"
+x_url = "https://x.com/o2sources"
 
 [[handle]]
 name = "SamyRabih"
 x = "@SamyRabih"
+x_url = "https://x.com/SamyRabih"
 
 [[handle]]
 name = "WM_Jerome"
 x = "@WM_Jerome"
+x_url = "https://x.com/WM_Jerome"
 
 [[handle]]
 name = "AWFormation"
 x = "@AWFormation"
+x_url = "https://x.com/AWFormation"
 
 [[handle]]
 name = "jni__"
 x = "@jni__"
+x_url = "https://x.com/jni__"
 
 [[handle]]
 name = "webdealFR"
 x = "@webdealFR"
+x_url = "https://x.com/webdealFR"
 
 [[handle]]
 name = "lucieasmar"
 x = "@lucieasmar"
+x_url = "https://x.com/lucieasmar"
 
 [[handle]]
 name = "Sparta_Conseils"
 x = "@Sparta_Conseils"
+x_url = "https://x.com/Sparta_Conseils"
 
 [[handle]]
 name = "topups"
 x = "@topups"
+x_url = "https://x.com/topups"
 
 [[handle]]
 name = "odmtech"
 x = "@odmtech"
+x_url = "https://x.com/odmtech"
 
 [[handle]]
 name = "framasoft"
 x = "@framasoft"
+x_url = "https://x.com/framasoft"
 
 [[handle]]
 name = "fragento"
 x = "@fragento"
+x_url = "https://x.com/fragento"
 
 [[handle]]
 name = "twenga"
 x = "@twenga"
+x_url = "https://x.com/twenga"
 
 [[handle]]
 name = "Baobaz"
 x = "@Baobaz"
+x_url = "https://x.com/Baobaz"
 
 [[handle]]
 name = "PHPSolutions1"
 x = "@PHPSolutions1"
+x_url = "https://x.com/PHPSolutions1"
 
 [[handle]]
 name = "MoKaDev"
 x = "@MoKaDev"
+x_url = "https://x.com/MoKaDev"
 
 [[handle]]
 name = "mickal"
 x = "@mickal"
+x_url = "https://x.com/mickal"
 
 [[handle]]
 name = "ternoa_"
 x = "@ternoa_"
+x_url = "https://x.com/ternoa_"
 
 [[handle]]
 name = "OXID_eSales"
 x = "@OXID_eSales"
+x_url = "https://x.com/OXID_eSales"
 
 [[handle]]
 name = "prestatraining"
 x = "@prestatraining"
+x_url = "https://x.com/prestatraining"
 
 [[handle]]
 name = "zend"
 x = "@zend"
+x_url = "https://x.com/zend"
 
 [[handle]]
 name = "Perforce"
 x = "@Perforce"
+x_url = "https://x.com/Perforce"
 
 [[handle]]
 name = "isoskele_fa"
 x = "@isoskele_fa"
+x_url = "https://x.com/isoskele_fa"
 
 [[handle]]
 name = "SmartFocusFRA"
 x = "@SmartFocusFRA"
+x_url = "https://x.com/SmartFocusFRA"
 
 [[handle]]
 name = "synolia"
 x = "@synolia"
+x_url = "https://x.com/synolia"
 
 [[handle]]
 name = "OXIDeSalesFr"
 x = "@OXIDeSalesFr"
+x_url = "https://x.com/OXIDeSalesFr"
 
 [[handle]]
 name = "PickCity_Shop"
 x = "@PickCity_Shop"
+x_url = "https://x.com/PickCity_Shop"
 
 [[handle]]
 name = "nbs_system"
 x = "@nbs_system"
+x_url = "https://x.com/nbs_system"
 
 [[handle]]
 name = "jscouvert"
 x = "@jscouvert"
+x_url = "https://x.com/jscouvert"
 
 [[handle]]
 name = "shopymind"
 x = "@shopymind"
+x_url = "https://x.com/shopymind"
 
 [[handle]]
 name = "webAgencyFAIL"
 x = "@webAgencyFAIL"
+x_url = "https://x.com/webAgencyFAIL"
 
 [[handle]]
 name = "Mezcalito_Scop"
 x = "@Mezcalito_Scop"
+x_url = "https://x.com/Mezcalito_Scop"
 
 [[handle]]
 name = "JulioPotier"
 x = "@JulioPotier"
+x_url = "https://x.com/JulioPotier"
 
 [[handle]]
 name = "SecuPress"
 x = "@SecuPress"
+x_url = "https://x.com/SecuPress"
 
 [[handle]]
 name = "wpmarmite"
 x = "@wpmarmite"
+x_url = "https://x.com/wpmarmite"
 
 [[handle]]
 name = "wpmarmite_en"
 x = "@wpmarmite_en"
+x_url = "https://x.com/wpmarmite_en"
 
 [[handle]]
 name = "GeekPressFR"
 x = "@GeekPressFR"
+x_url = "https://x.com/GeekPressFR"
 
 [[handle]]
 name = "get_gustav"
 x = "@get_gustav"
+x_url = "https://x.com/get_gustav"
 
 [[handle]]
 name = "wp_rocket"
 x = "@wp_rocket"
+x_url = "https://x.com/wp_rocket"
 
 [[handle]]
 name = "imagify"
 x = "@imagify"
+x_url = "https://x.com/imagify"
 
 [[handle]]
 name = "rocketcdn"
 x = "@rocketcdn"
+x_url = "https://x.com/rocketcdn"
 
 [[handle]]
 name = "af83"
 x = "@af83"
+x_url = "https://x.com/af83"
 
 [[handle]]
 name = "buddypress"
 x = "@buddypress"
+x_url = "https://x.com/buddypress"
 
 [[handle]]
 name = "WordPress"
 x = "@WordPress"
+x_url = "https://x.com/WordPress"
 
 [[handle]]
 name = "bbpress"
 x = "@bbpress"
+x_url = "https://x.com/bbpress"
 
 [[handle]]
 name = "fabpot"
 x = "@fabpot"
+x_url = "https://x.com/fabpot"
 
 [[handle]]
 name = "upsundotcom"
 x = "@upsundotcom"
+x_url = "https://x.com/upsundotcom"
 
 [[handle]]
 name = "meyerweb@mastodon.social"
 x = "@meyerweb@mastodon.social"
+x_url = "https://x.com/meyerweb@mastodon.social"
 
 [[handle]]
 name = "meyerweb"
 x = "@meyerweb"
+x_url = "https://x.com/meyerweb"
 
 [[handle]]
 name = "eaxfr"
 x = "@eaxfr"
+x_url = "https://x.com/eaxfr"
 
 [[handle]]
 name = "Ecommercemag_fr"
 x = "@Ecommercemag_fr"
+x_url = "https://x.com/Ecommercemag_fr"
 
 [[handle]]
 name = "blogecommerce"
 x = "@blogecommerce"
+x_url = "https://x.com/blogecommerce"
 
 [[handle]]
 name = "Prestashelp"
 x = "@Prestashelp"
+x_url = "https://x.com/Prestashelp"
 
 [[handle]]
 name = "ProgOnline"
 x = "@ProgOnline"
+x_url = "https://x.com/ProgOnline"
 
 [[handle]]
 name = "worketer"
 x = "@worketer"
+x_url = "https://x.com/worketer"
 
 [[handle]]
 name = "123PRESTA"
 x = "@123PRESTA"
+x_url = "https://x.com/123PRESTA"
 
 [[handle]]
 name = "123_PRESTA"
 x = "@123_PRESTA"
+x_url = "https://x.com/123_PRESTA"
 
 [[handle]]
 name = "jvieilledent"
 x = "@jvieilledent"
+x_url = "https://x.com/jvieilledent"
 
 [[handle]]
 name = "MartY_NiM"
 x = "@MartY_NiM"
+x_url = "https://x.com/MartY_NiM"
 
 [[handle]]
 name = "nimeops"
 x = "@nimeops"
+x_url = "https://x.com/nimeops"
 
 [[handle]]
 name = "layerops"
 x = "@layerops"
+x_url = "https://x.com/layerops"
 
 [[handle]]
 name = "FWmediaEurope"
 x = "@FWmediaEurope"
+x_url = "https://x.com/FWmediaEurope"
 
 [[handle]]
 name = "ifocop"
 x = "@ifocop"
+x_url = "https://x.com/ifocop"
 
 [[handle]]
 name = "digitalcampusdc"
 x = "@digitalcampusdc"
+x_url = "https://x.com/digitalcampusdc"
 
 [[handle]]
 name = "Ouark"
 x = "@Ouark"
+x_url = "https://x.com/Ouark"
 
 [[handle]]
 name = "Activinnov"
 x = "@Activinnov"
+x_url = "https://x.com/Activinnov"
 
 [[handle]]
 name = "LaFermeduWeb"
 x = "@LaFermeduWeb"
+x_url = "https://x.com/LaFermeduWeb"
 
 [[handle]]
 name = "Ressourcesduweb"
 x = "@Ressourcesduweb"
+x_url = "https://x.com/Ressourcesduweb"
 
 [[handle]]
 name = "fabienberthoux"
 x = "@fabienberthoux"
+x_url = "https://x.com/fabienberthoux"
 
 [[handle]]
 name = "webrankinfo"
 x = "@webrankinfo"
+x_url = "https://x.com/webrankinfo"
 
 [[handle]]
 name = "ubuntufr"
 x = "@ubuntufr"
+x_url = "https://x.com/ubuntufr"
 
 [[handle]]
 name = "themeforests"
 x = "@themeforests"
+x_url = "https://x.com/themeforests"
 
 [[handle]]
 name = "WooThemes"
 x = "@WooThemes"
+x_url = "https://x.com/WooThemes"
 
 [[handle]]
 name = "WooCommerce"
 x = "@WooCommerce"
+x_url = "https://x.com/WooCommerce"
 
 [[handle]]
 name = "wordpressdotcom"
 x = "@wordpressdotcom"
+x_url = "https://x.com/wordpressdotcom"
 
 [[handle]]
 name = "Automattic"
 x = "@Automattic"
+x_url = "https://x.com/Automattic"
 
 [[handle]]
 name = "__marcin_"
 x = "@__marcin_"
+x_url = "https://x.com/__marcin_"
 
 [[handle]]
 name = "chcremer"
 x = "@chcremer"
+x_url = "https://x.com/chcremer"
 
 [[handle]]
 name = "l4mnath"
 x = "@l4mnath"
+x_url = "https://x.com/l4mnath"
 
 [[handle]]
 name = "PizzaBonne"
 x = "@PizzaBonne"
+x_url = "https://x.com/PizzaBonne"
 
 [[handle]]
 name = "prismicio"
 x = "@prismicio"
+x_url = "https://x.com/prismicio"
 
 [[handle]]
 name = "_businesstech_"
 x = "@_businesstech_"
+x_url = "https://x.com/_businesstech_"
 
 [[handle]]
 name = "love_radius"
 x = "@love_radius"
+x_url = "https://x.com/love_radius"
 
 [[handle]]
 name = "CroissanceNet"
 x = "@CroissanceNet"
+x_url = "https://x.com/CroissanceNet"
 
 [[handle]]
 name = "Nebojsa31"
 x = "@Nebojsa31"
+x_url = "https://x.com/Nebojsa31"
 
 [[handle]]
 name = "BenjaminNiess"
 x = "@BenjaminNiess"
+x_url = "https://x.com/BenjaminNiess"
 
 [[handle]]
 name = "webIDfr"
 x = "@webIDfr"
+x_url = "https://x.com/webIDfr"
 
 [[handle]]
 name = "herewithme"
 x = "@herewithme"
+x_url = "https://x.com/herewithme"
 
 [[handle]]
 name = "be_api"
 x = "@be_api"
+x_url = "https://x.com/be_api"
 
 [[handle]]
 name = "WordPressVIP"
 x = "@WordPressVIP"
+x_url = "https://x.com/WordPressVIP"
 
 [[handle]]
 name = "Pomme__T"
 x = "@Pomme__T"
+x_url = "https://x.com/Pomme__T"
 
 [[handle]]
 name = "rachelandrew"
 x = "@rachelandrew"
+x_url = "https://x.com/rachelandrew"
 
 [[handle]]
 name = "smashingmag"
 x = "@smashingmag"
+x_url = "https://x.com/smashingmag"
 
 [[handle]]
 name = "SmashingSupport"
 x = "@SmashingSupport"
+x_url = "https://x.com/SmashingSupport"
 
 [[handle]]
 name = "SmashingConf"
 x = "@SmashingConf"
+x_url = "https://x.com/SmashingConf"
 
 [[handle]]
 name = "html5gallery"
 x = "@html5gallery"
+x_url = "https://x.com/html5gallery"
 
 [[handle]]
 name = "html5doctor"
 x = "@html5doctor"
+x_url = "https://x.com/html5doctor"
 
 [[handle]]
 name = "bdc"
 x = "@bdc"
+x_url = "https://x.com/bdc"
 
 [[handle]]
 name = "csswg"
 x = "@csswg"
+x_url = "https://x.com/csswg"
 
 [[handle]]
 name = "html5"
 x = "@html5"
+x_url = "https://x.com/html5"
 
 [[handle]]
 name = "CSS3"
 x = "@CSS3"
+x_url = "https://x.com/CSS3"
 
 [[handle]]
 name = "glazou"
 x = "@glazou"
+x_url = "https://x.com/glazou"
 
 [[handle]]
 name = "goetter"
 x = "@goetter"
+x_url = "https://x.com/goetter"
 
 [[handle]]
 name = "alsacreation"
 x = "@alsacreation"
+x_url = "https://x.com/alsacreation"
 
 [[handle]]
 name = "alsacreations"
 x = "@alsacreations"
+x_url = "https://x.com/alsacreations"
 
 [[handle]]
 name = "LaurentBrieu"
 x = "@LaurentBrieu"
+x_url = "https://x.com/LaurentBrieu"
 
 [[handle]]
 name = "KNPLabs"
 x = "@KNPLabs"
+x_url = "https://x.com/KNPLabs"
 
 [[handle]]
 name = "JulienBreux"
 x = "@JulienBreux"
+x_url = "https://x.com/JulienBreux"
 
 [[handle]]
 name = "golang"
 x = "@golang"
+x_url = "https://x.com/golang"
 
 [[handle]]
 name = "antigravity"
 x = "@antigravity"
+x_url = "https://x.com/antigravity"
 
 [[handle]]
 name = "Presta_acdmy"
 x = "@Presta_acdmy"
+x_url = "https://x.com/Presta_acdmy"
 
 [[handle]]
 name = "StephaneChonez"
 x = "@StephaneChonez"
+x_url = "https://x.com/StephaneChonez"
 
 [[handle]]
 name = "restobarbershop"
 x = "@restobarbershop"
+x_url = "https://x.com/restobarbershop"
 
 [[handle]]
 name = "ecommerce_acdmy"
 x = "@ecommerce_acdmy"
+x_url = "https://x.com/ecommerce_acdmy"
 
 [[handle]]
 name = "GouZ"
 x = "@GouZ"
+x_url = "https://x.com/GouZ"
 
 [[handle]]
 name = "FabienSerny"
 x = "@FabienSerny"
+x_url = "https://x.com/FabienSerny"
 
 [[handle]]
 name = "xpoitau"
 x = "@xpoitau"
+x_url = "https://x.com/xpoitau"
 
 [[handle]]
 name = "axome"
 x = "@axome"
+x_url = "https://x.com/axome"
 
 [[handle]]
 name = "misterchibi"
 x = "@misterchibi"
+x_url = "https://x.com/misterchibi"
 
 [[handle]]
 name = "julienPauli"
 x = "@julienPauli"
+x_url = "https://x.com/julienPauli"
 
 [[handle]]
 name = "prestamodule"
 x = "@prestamodule"
+x_url = "https://x.com/prestamodule"
 
 [[handle]]
 name = "eComEdmonde"
 x = "@eComEdmonde"
+x_url = "https://x.com/eComEdmonde"
 
 [[handle]]
 name = "prestaVincent"
 x = "@prestaVincent"
+x_url = "https://x.com/prestaVincent"
 
 [[handle]]
 name = "profileo"
 x = "@profileo"
+x_url = "https://x.com/profileo"
 
 [[handle]]
 name = "AlainFolletete"
 x = "@AlainFolletete"
+x_url = "https://x.com/AlainFolletete"
 
 [[handle]]
 name = "MotoTrip"
 x = "@MotoTrip"
+x_url = "https://x.com/MotoTrip"
 
 [[handle]]
 name = "combo_hr"
 x = "@combo_hr"
+x_url = "https://x.com/combo_hr"
 
 [[handle]]
 name = "Les_Habitues"
 x = "@Les_Habitues"
+x_url = "https://x.com/Les_Habitues"
 
 [[handle]]
 name = "23Prod"
 x = "@23Prod"
+x_url = "https://x.com/23Prod"
 
 [[handle]]
 name = "mobula75"
 x = "@mobula75"
+x_url = "https://x.com/mobula75"
 
 [[handle]]
 name = "wordpress_fr"
 x = "@wordpress_fr"
+x_url = "https://x.com/wordpress_fr"
 
 [[handle]]
 name = "thierrycreation"
 x = "@thierrycreation"
+x_url = "https://x.com/thierrycreation"
 
 [[handle]]
 name = "BadiBouteraa"
 x = "@BadiBouteraa"
+x_url = "https://x.com/BadiBouteraa"
 
 [[handle]]
 name = "eKreasite"
 x = "@eKreasite"
+x_url = "https://x.com/eKreasite"
 
 [[handle]]
 name = "MyThemeShop"
 x = "@MyThemeShop"
+x_url = "https://x.com/MyThemeShop"
 
 [[handle]]
 name = "kidsdressing"
 x = "@kidsdressing"
+x_url = "https://x.com/kidsdressing"
 
 [[handle]]
 name = "cyrilchotard"
 x = "@cyrilchotard"
+x_url = "https://x.com/cyrilchotard"
 
 [[handle]]
 name = "JoelGaujard"
 x = "@JoelGaujard"
+x_url = "https://x.com/JoelGaujard"
 
 [[handle]]
 name = "DrySsHD"
 x = "@DrySsHD"
+x_url = "https://x.com/DrySsHD"
 
 [[handle]]
 name = "gui"
 x = "@gui"
+x_url = "https://x.com/gui"
 
 [[handle]]
 name = "headjs"
 x = "@headjs"
+x_url = "https://x.com/headjs"
 
 [[handle]]
 name = "SMALLable"
 x = "@SMALLable"
+x_url = "https://x.com/SMALLable"
 
 [[handle]]
 name = "julienalart"
 x = "@julienalart"
+x_url = "https://x.com/julienalart"
 
 [[handle]]
 name = "lumm_io"
 x = "@lumm_io"
+x_url = "https://x.com/lumm_io"
 
 [[handle]]
 name = "Twitter"
 x = "@Twitter"
+x_url = "https://x.com/Twitter"
 
 [[handle]]
 name = "benedilux"
 x = "@benedilux"
+x_url = "https://x.com/benedilux"
 
 [[handle]]
 name = "ChezSuz"
 x = "@ChezSuz"
+x_url = "https://x.com/ChezSuz"
 
 [[handle]]
 name = "Rose_Indigo"
 x = "@Rose_Indigo"
+x_url = "https://x.com/Rose_Indigo"
 
 [[handle]]
 name = "infonel"
 x = "@infonel"
+x_url = "https://x.com/infonel"
 
 [[handle]]
 name = "royrubin"
 x = "@royrubin"
+x_url = "https://x.com/royrubin"
 
 [[handle]]
 name = "magento_acdmy"
 x = "@magento_acdmy"
+x_url = "https://x.com/magento_acdmy"
 
 [[handle]]
 name = "expert_magento"
 x = "@expert_magento"
+x_url = "https://x.com/expert_magento"
 
 [[handle]]
 name = "OpenGento"
 x = "@OpenGento"
+x_url = "https://x.com/OpenGento"
 
 [[handle]]
 name = "lineachic"
 x = "@lineachic"
+x_url = "https://x.com/lineachic"
 
 [[handle]]
 name = "Bargento"
 x = "@Bargento"
+x_url = "https://x.com/Bargento"
 
 [[handle]]
 name = "timefy"
 x = "@timefy"
+x_url = "https://x.com/timefy"
 
 [[handle]]
 name = "UpFactory"
 x = "@UpFactory"
+x_url = "https://x.com/UpFactory"
 
 [[handle]]
 name = "WiziShop_fr"
 x = "@WiziShop_fr"
+x_url = "https://x.com/WiziShop_fr"
 
 [[handle]]
 name = "fubiz"
 x = "@fubiz"
+x_url = "https://x.com/fubiz"
 
 [[handle]]
 name = "romaincolin"
 x = "@romaincolin"
+x_url = "https://x.com/romaincolin"
 
 [[handle]]
 name = "magentomobile"
 x = "@magentomobile"
+x_url = "https://x.com/magentomobile"
 
 [[handle]]
 name = "AdobeCommerce"
 x = "@AdobeCommerce"
+x_url = "https://x.com/AdobeCommerce"
 
 [[handle]]
 name = "Adobe"
 x = "@Adobe"
+x_url = "https://x.com/Adobe"
 
 [[handle]]
 name = "templatemonster"
 x = "@templatemonster"
+x_url = "https://x.com/templatemonster"
 
 [[handle]]
 name = "Consonaute"
 x = "@Consonaute"
+x_url = "https://x.com/Consonaute"
 
 [[handle]]
 name = "brunofridl"
 x = "@brunofridl"
+x_url = "https://x.com/brunofridl"
 
 [[handle]]
 name = "DamienMtz"
 x = "@DamienMtz"
+x_url = "https://x.com/DamienMtz"
 
 [[handle]]
 name = "jolidragon"
 x = "@jolidragon"
+x_url = "https://x.com/jolidragon"
 
 [[handle]]
 name = "PShopAddons"
 x = "@PShopAddons"
+x_url = "https://x.com/PShopAddons"
 
 [[handle]]
 name = "Capitaine"
 x = "@Capitaine"
+x_url = "https://x.com/Capitaine"
 
 [[handle]]
 name = "patricecassard"
 x = "@patricecassard"
+x_url = "https://x.com/patricecassard"
 
 [[handle]]
 name = "xtaz07"
 x = "@xtaz07"
+x_url = "https://x.com/xtaz07"
+[[handle]]
+name = "Coding Park"
+linkedin = "@coding-park"
+linkedin_url = "https://www.linkedin.com/company/coding-park/"
+
+[[handle]]
+name = "Fring"
+linkedin = "@fring"
+linkedin_url = "https://www.linkedin.com/company/fring/"
+
+[[handle]]
+name = "Verq"
+linkedin = "@verq"
+linkedin_url = "https://www.linkedin.com/company/verq/"
+
+[[handle]]
+name = "OurSoftware.EU"
+linkedin = "@oursoftware-eu"
+linkedin_url = "https://www.linkedin.com/company/oursoftware-eu/"
+
+[[handle]]
+name = "Hays"
+linkedin = "@hays"
+linkedin_url = "https://www.linkedin.com/company/hays/"
+
+[[handle]]
+name = "Useful Repos"
+linkedin = "@useful-repos"
+linkedin_url = "https://www.linkedin.com/company/useful-repos/"
+
+[[handle]]
+name = "Grvt"
+linkedin = "@grvt"
+linkedin_url = "https://www.linkedin.com/company/grvt/"
+
+[[handle]]
+name = "PT Pangaea Digital Labs"
+linkedin = "@pt-pangaea-digital-labs"
+linkedin_url = "https://www.linkedin.com/company/pt-pangaea-digital-labs/"
+
+[[handle]]
+name = "PrismML"
+linkedin = "@prismml"
+linkedin_url = "https://www.linkedin.com/company/prismml/"
+
+[[handle]]
+name = "DRW"
+linkedin = "@drw"
+linkedin_url = "https://www.linkedin.com/company/drw/"
+
+[[handle]]
+name = "Reaktor"
+linkedin = "@reaktor"
+linkedin_url = "https://www.linkedin.com/company/reaktor/"
+
+[[handle]]
+name = "Cypress.io"
+linkedin = "@cypress-io"
+linkedin_url = "https://www.linkedin.com/company/cypress-io/"
+
+[[handle]]
+name = "MCP Explorer"
+linkedin = "@mcp-explorer"
+linkedin_url = "https://www.linkedin.com/company/mcp-explorer/"
+
+[[handle]]
+name = "The Embedded Rustacean"
+linkedin = "@the-embedded-rustacean"
+linkedin_url = "https://www.linkedin.com/company/the-embedded-rustacean/"
+
+[[handle]]
+name = "HERE Technologies"
+linkedin = "@here-technologies"
+linkedin_url = "https://www.linkedin.com/company/here-technologies/"
+
+[[handle]]
+name = "netcup"
+linkedin = "@netcup"
+linkedin_url = "https://www.linkedin.com/company/netcup/"
+
+[[handle]]
+name = "Server Comparison Lab"
+linkedin = "@server-comparison-lab"
+linkedin_url = "https://www.linkedin.com/company/server-comparison-lab/"
+
+[[handle]]
+name = "ZML"
+linkedin = "@zml"
+linkedin_url = "https://www.linkedin.com/company/zml/"
+
+[[handle]]
+name = "Plakar"
+linkedin = "@plakar"
+linkedin_url = "https://www.linkedin.com/company/plakar/"
+
+[[handle]]
+name = "Scaleway"
+linkedin = "@scaleway"
+linkedin_url = "https://www.linkedin.com/company/scaleway/"
+
+[[handle]]
+name = "Odin Dynamics, Inc"
+linkedin = "@odin-dynamics-inc"
+linkedin_url = "https://www.linkedin.com/company/odin-dynamics-inc/"
+
+[[handle]]
+name = "Codam Coding College"
+linkedin = "@codam-coding-college"
+linkedin_url = "https://www.linkedin.com/company/codam-coding-college/"
+
+[[handle]]
+name = "DroneAid Collective"
+linkedin = "@droneaid-collective"
+linkedin_url = "https://www.linkedin.com/company/droneaid-collective/"
+
+[[handle]]
+name = "Fionics"
+linkedin = "@fionics"
+linkedin_url = "https://www.linkedin.com/company/fionics/"
+
+[[handle]]
+name = "A Player"
+linkedin = "@a-player"
+linkedin_url = "https://www.linkedin.com/company/a-player/"
+
+[[handle]]
+name = "KiviDB"
+linkedin = "@kividb"
+linkedin_url = "https://www.linkedin.com/company/kividb/"
+
+[[handle]]
+name = "CERBERUS Group, INC"
+linkedin = "@cerberus-group-inc"
+linkedin_url = "https://www.linkedin.com/company/cerberus-group-inc/"
+
+[[handle]]
+name = "The Stack"
+linkedin = "@the-stack"
+linkedin_url = "https://www.linkedin.com/company/the-stack/"
+
+[[handle]]
+name = "TMS"
+linkedin = "@tms"
+linkedin_url = "https://www.linkedin.com/company/tms/"
+
+[[handle]]
+name = "KROOTZ interim & zzp opdrachten | vacatures"
+linkedin = "@krootz-interim-and-zzp-opdrachten-vacatures"
+linkedin_url = "https://www.linkedin.com/company/krootz-interim-and-zzp-opdrachten-vacatures/"
+
+[[handle]]
+name = "Codexa"
+linkedin = "@codexa"
+linkedin_url = "https://www.linkedin.com/company/codexa/"
+
+[[handle]]
+name = "Kesk"
+linkedin = "@kesk"
+linkedin_url = "https://www.linkedin.com/company/kesk/"
+
+[[handle]]
+name = "Freshpaint"
+linkedin = "@freshpaint"
+linkedin_url = "https://www.linkedin.com/company/freshpaint/"
+
+[[handle]]
+name = "Antfarm"
+linkedin = "@antfarm"
+linkedin_url = "https://www.linkedin.com/company/antfarm/"
+
+[[handle]]
+name = "Paessler GmbH"
+linkedin = "@paessler-gmbh"
+linkedin_url = "https://www.linkedin.com/company/paessler-gmbh/"
+
+[[handle]]
+name = "Digital Green B.V."
+linkedin = "@digital-green-b-v"
+linkedin_url = "https://www.linkedin.com/company/digital-green-b-v/"
+
+[[handle]]
+name = "Chronicle"
+linkedin = "@chronicle"
+linkedin_url = "https://www.linkedin.com/company/chronicle/"
+
+[[handle]]
+name = "BrowserLane"
+linkedin = "@browserlane"
+linkedin_url = "https://www.linkedin.com/company/browserlane/"
+
+[[handle]]
+name = "Syctra"
+linkedin = "@syctra"
+linkedin_url = "https://www.linkedin.com/company/syctra/"
+
+[[handle]]
+name = "amBrain"
+linkedin = "@ambrain"
+linkedin_url = "https://www.linkedin.com/company/ambrain/"
+
+[[handle]]
+name = "Lawrence Harvey"
+linkedin = "@lawrence-harvey"
+linkedin_url = "https://www.linkedin.com/company/lawrence-harvey/"
+
+[[handle]]
+name = "Conduit"
+linkedin = "@conduit"
+linkedin_url = "https://www.linkedin.com/company/conduit/"
+
+[[handle]]
+name = "IntellonSec,Inc"
+linkedin = "@intellonsec-inc"
+linkedin_url = "https://www.linkedin.com/company/intellonsec-inc/"
+
+[[handle]]
+name = "Perplexity"
+linkedin = "@perplexity"
+linkedin_url = "https://www.linkedin.com/company/perplexity/"
+
+[[handle]]
+name = "Tower Research Capital"
+linkedin = "@tower-research-capital"
+linkedin_url = "https://www.linkedin.com/company/tower-research-capital/"
+
+[[handle]]
+name = "Tech Hartford"
+linkedin = "@tech-hartford"
+linkedin_url = "https://www.linkedin.com/company/tech-hartford/"
+
+[[handle]]
+name = "Decibel"
+linkedin = "@decibel"
+linkedin_url = "https://www.linkedin.com/company/decibel/"
+
+[[handle]]
+name = "BCG Platinion"
+linkedin = "@bcg-platinion"
+linkedin_url = "https://www.linkedin.com/company/bcg-platinion/"
+
+[[handle]]
+name = "Tech.eu"
+linkedin = "@tech-eu"
+linkedin_url = "https://www.linkedin.com/company/tech-eu/"
+
+[[handle]]
+name = "MITS Capital"
+linkedin = "@mits-capital"
+linkedin_url = "https://www.linkedin.com/company/mits-capital/"
+
+[[handle]]
+name = "Fathom.io"
+linkedin = "@fathom-io"
+linkedin_url = "https://www.linkedin.com/company/fathom-io/"
+
+[[handle]]
+name = "Backbase"
+linkedin = "@backbase"
+linkedin_url = "https://www.linkedin.com/company/backbase/"
+
+[[handle]]
+name = "BoomFi"
+linkedin = "@boomfi"
+linkedin_url = "https://www.linkedin.com/company/boomfi/"
+
+[[handle]]
+name = "Armada"
+linkedin = "@armada"
+linkedin_url = "https://www.linkedin.com/company/armada/"
+
+[[handle]]
+name = "Defence Forward Podcast"
+linkedin = "@defence-forward-podcast"
+linkedin_url = "https://www.linkedin.com/company/defence-forward-podcast/"
+
+[[handle]]
+name = "Keyrock"
+linkedin = "@keyrock"
+linkedin_url = "https://www.linkedin.com/company/keyrock/"
+
+[[handle]]
+name = "European Defense Tech"
+linkedin = "@european-defense-tech"
+linkedin_url = "https://www.linkedin.com/company/european-defense-tech/"
+
+[[handle]]
+name = "Copper Robotics Inc."
+linkedin = "@copper-robotics-inc"
+linkedin_url = "https://www.linkedin.com/company/copper-robotics-inc/"
+
+[[handle]]
+name = "Fox and Lion"
+linkedin = "@fox-and-lion"
+linkedin_url = "https://www.linkedin.com/company/fox-and-lion/"
+
+[[handle]]
+name = "Venture Europe"
+linkedin = "@venture-europe"
+linkedin_url = "https://www.linkedin.com/company/venture-europe/"
+
+[[handle]]
+name = "Fire Point"
+linkedin = "@fire-point"
+linkedin_url = "https://www.linkedin.com/company/fire-point/"
+
+[[handle]]
+name = "HOBBYWING UAV Propulsion System"
+linkedin = "@hobbywing-uav-propulsion-system"
+linkedin_url = "https://www.linkedin.com/company/hobbywing-uav-propulsion-system/"
+
+[[handle]]
+name = "Station"
+linkedin = "@station"
+linkedin_url = "https://www.linkedin.com/company/station/"
+
+[[handle]]
+name = "LinkWell Nodes | Chainlink Blockchain Oracle"
+linkedin = "@linkwell-nodes-chainlink-blockchain-oracle"
+linkedin_url = "https://www.linkedin.com/company/linkwell-nodes-chainlink-blockchain-oracle/"
+
+[[handle]]
+name = "Credora by RedStone"
+linkedin = "@credora-by-redstone"
+linkedin_url = "https://www.linkedin.com/company/credora-by-redstone/"
+
+[[handle]]
+name = "Zero Story Points"
+linkedin = "@zero-story-points"
+linkedin_url = "https://www.linkedin.com/company/zero-story-points/"
+
+[[handle]]
+name = "Sia"
+linkedin = "@sia"
+linkedin_url = "https://www.linkedin.com/company/sia/"
+
+[[handle]]
+name = "Fortanix"
+linkedin = "@fortanix"
+linkedin_url = "https://www.linkedin.com/company/fortanix/"
+
+[[handle]]
+name = "RAI Institute"
+linkedin = "@rai-institute"
+linkedin_url = "https://www.linkedin.com/company/rai-institute/"
+
+[[handle]]
+name = "Peeriot"
+linkedin = "@peeriot"
+linkedin_url = "https://www.linkedin.com/company/peeriot/"
+
+[[handle]]
+name = "PerfectScale by DoiT"
+linkedin = "@perfectscale-by-doit"
+linkedin_url = "https://www.linkedin.com/company/perfectscale-by-doit/"
+
+[[handle]]
+name = "Visual Studio Code"
+linkedin = "@visual-studio-code"
+linkedin_url = "https://www.linkedin.com/company/visual-studio-code/"
+
+[[handle]]
+name = "Xebia"
+linkedin = "@xebia"
+linkedin_url = "https://www.linkedin.com/company/xebia/"
+
+[[handle]]
+name = "Raiku"
+linkedin = "@raiku"
+linkedin_url = "https://www.linkedin.com/company/raiku/"
+
+[[handle]]
+name = "RisingWave"
+linkedin = "@risingwave"
+linkedin_url = "https://www.linkedin.com/company/risingwave/"
+
+[[handle]]
+name = "Rust Bytes"
+linkedin = "@rust-bytes"
+linkedin_url = "https://www.linkedin.com/company/rust-bytes/"
+
+[[handle]]
+name = "Volledig Remote & Meer  |  Vacatures & ZZP-opdrachten"
+linkedin = "@volledig-remote-and-meer-vacatures-and-zzp-opdrachten"
+linkedin_url = "https://www.linkedin.com/company/volledig-remote-and-meer-vacatures-and-zzp-opdrachten/"
+
+[[handle]]
+name = "Noonchak"
+linkedin = "@noonchak"
+linkedin_url = "https://www.linkedin.com/company/noonchak/"
+
+[[handle]]
+name = "Constructor"
+linkedin = "@constructor"
+linkedin_url = "https://www.linkedin.com/company/constructor/"
+
+[[handle]]
+name = "Eyes on Ukraine"
+linkedin = "@eyes-on-ukraine"
+linkedin_url = "https://www.linkedin.com/company/eyes-on-ukraine/"
+
+[[handle]]
+name = "StartupAmsterdam"
+linkedin = "@startupamsterdam"
+linkedin_url = "https://www.linkedin.com/company/startupamsterdam/"
+
+[[handle]]
+name = "Seven Senders"
+linkedin = "@seven-senders"
+linkedin_url = "https://www.linkedin.com/company/seven-senders/"
+
+[[handle]]
+name = "IgnitionAI"
+linkedin = "@ignitionai"
+linkedin_url = "https://www.linkedin.com/company/ignitionai/"
+
+[[handle]]
+name = "LangChain"
+linkedin = "@langchain"
+linkedin_url = "https://www.linkedin.com/company/langchain/"
+
+[[handle]]
+name = "Cohere"
+linkedin = "@cohere"
+linkedin_url = "https://www.linkedin.com/company/cohere/"
+
+[[handle]]
+name = "Gitopia"
+linkedin = "@gitopia"
+linkedin_url = "https://www.linkedin.com/company/gitopia/"
+
+[[handle]]
+name = "dltHub"
+linkedin = "@dlthub"
+linkedin_url = "https://www.linkedin.com/company/dlthub/"
+
+[[handle]]
+name = "Tink"
+linkedin = "@tink"
+linkedin_url = "https://www.linkedin.com/company/tink/"
+
+[[handle]]
+name = "Simple"
+linkedin = "@simple"
+linkedin_url = "https://www.linkedin.com/company/simple/"
+
+[[handle]]
+name = "OpenRouter"
+linkedin = "@openrouter"
+linkedin_url = "https://www.linkedin.com/company/openrouter/"
+
+[[handle]]
+name = "Cerebras"
+linkedin = "@cerebras"
+linkedin_url = "https://www.linkedin.com/company/cerebras/"
+
+[[handle]]
+name = "Alma"
+linkedin = "@alma"
+linkedin_url = "https://www.linkedin.com/company/alma/"
+
+[[handle]]
+name = "Groq"
+linkedin = "@groq"
+linkedin_url = "https://www.linkedin.com/company/groq/"
+
+[[handle]]
+name = "AB3.Tech"
+linkedin = "@ab3-tech"
+linkedin_url = "https://www.linkedin.com/company/ab3-tech/"
+
+[[handle]]
+name = "4308TECH"
+linkedin = "@4308tech"
+linkedin_url = "https://www.linkedin.com/company/4308tech/"
+
+[[handle]]
+name = "Topstep"
+linkedin = "@topstep"
+linkedin_url = "https://www.linkedin.com/company/topstep/"
+
+[[handle]]
+name = "Straddle"
+linkedin = "@straddle"
+linkedin_url = "https://www.linkedin.com/company/straddle/"
+
+[[handle]]
+name = "Everybody Trade"
+linkedin = "@everybody-trade"
+linkedin_url = "https://www.linkedin.com/company/everybody-trade/"
+
+[[handle]]
+name = "Rustler"
+linkedin = "@rustler"
+linkedin_url = "https://www.linkedin.com/company/rustler/"
+
+[[handle]]
+name = "Danske Commodities"
+linkedin = "@danske-commodities"
+linkedin_url = "https://www.linkedin.com/company/danske-commodities/"
+
+[[handle]]
+name = "Veda"
+linkedin = "@veda"
+linkedin_url = "https://www.linkedin.com/company/veda/"
+
+[[handle]]
+name = "LaserData"
+linkedin = "@laserdata"
+linkedin_url = "https://www.linkedin.com/company/laserdata/"
+
+[[handle]]
+name = "White Circle"
+linkedin = "@white-circle"
+linkedin_url = "https://www.linkedin.com/company/white-circle/"
+
+[[handle]]
+name = "LinkedIn Guide to Creating"
+linkedin = "@linkedin-guide-to-creating"
+linkedin_url = "https://www.linkedin.com/company/linkedin-guide-to-creating/"
+
+[[handle]]
+name = "Xata.io"
+linkedin = "@xata-io"
+linkedin_url = "https://www.linkedin.com/company/xata-io/"
+
+[[handle]]
+name = "ether.fi"
+linkedin = "@ether-fi"
+linkedin_url = "https://www.linkedin.com/company/ether-fi/"
+
+[[handle]]
+name = "Tom's Aerial Vehicles Incorporated (TAV)"
+linkedin = "@tom-s-aerial-vehicles-incorporated-tav"
+linkedin_url = "https://www.linkedin.com/company/tom-s-aerial-vehicles-incorporated-tav/"
+
+[[handle]]
+name = "INCHORA LIMITED"
+linkedin = "@inchora-limited"
+linkedin_url = "https://www.linkedin.com/company/inchora-limited/"
+
+[[handle]]
+name = "Infra-First B.V."
+linkedin = "@infra-first-b-v"
+linkedin_url = "https://www.linkedin.com/company/infra-first-b-v/"
+
+[[handle]]
+name = "Storecove"
+linkedin = "@storecove"
+linkedin_url = "https://www.linkedin.com/company/storecove/"
+
+[[handle]]
+name = "Saragossa"
+linkedin = "@saragossa"
+linkedin_url = "https://www.linkedin.com/company/saragossa/"
+
+[[handle]]
+name = "Morgan Black"
+linkedin = "@morgan-black"
+linkedin_url = "https://www.linkedin.com/company/morgan-black/"
+
+[[handle]]
+name = "Stockly"
+linkedin = "@stockly"
+linkedin_url = "https://www.linkedin.com/company/stockly/"
+
+[[handle]]
+name = "Adservio"
+linkedin = "@adservio"
+linkedin_url = "https://www.linkedin.com/company/adservio/"
+
+[[handle]]
+name = "Rust in Paris 🦀 Conf"
+linkedin = "@rust-in-paris-conf"
+linkedin_url = "https://www.linkedin.com/company/rust-in-paris-conf/"
+
+[[handle]]
+name = "Kochain Technologies"
+linkedin = "@kochain-technologies"
+linkedin_url = "https://www.linkedin.com/company/kochain-technologies/"
+
+[[handle]]
+name = "Risk Threat Index"
+linkedin = "@risk-threat-index"
+linkedin_url = "https://www.linkedin.com/company/risk-threat-index/"
+
+[[handle]]
+name = "kaiko.ai"
+linkedin = "@kaiko-ai"
+linkedin_url = "https://www.linkedin.com/company/kaiko-ai/"
+
+[[handle]]
+name = "Staking Facilities GmbH"
+linkedin = "@staking-facilities-gmbh"
+linkedin_url = "https://www.linkedin.com/company/staking-facilities-gmbh/"
+
+[[handle]]
+name = "Roboflow"
+linkedin = "@roboflow"
+linkedin_url = "https://www.linkedin.com/company/roboflow/"
+
+[[handle]]
+name = "deBridge"
+linkedin = "@debridge"
+linkedin_url = "https://www.linkedin.com/company/debridge/"
+
+[[handle]]
+name = "Fluent Labs"
+linkedin = "@fluent-labs"
+linkedin_url = "https://www.linkedin.com/company/fluent-labs/"
+
+[[handle]]
+name = "Zympler"
+linkedin = "@zympler"
+linkedin_url = "https://www.linkedin.com/company/zympler/"
+
+[[handle]]
+name = "SearchApi"
+linkedin = "@searchapi"
+linkedin_url = "https://www.linkedin.com/company/searchapi/"
+
+[[handle]]
+name = "Convex"
+linkedin = "@convex"
+linkedin_url = "https://www.linkedin.com/company/convex/"
+
+[[handle]]
+name = "Open Source Security, Inc."
+linkedin = "@open-source-security-inc"
+linkedin_url = "https://www.linkedin.com/company/open-source-security-inc/"
+
+[[handle]]
+name = "HighTech Innovators"
+linkedin = "@hightech-innovators"
+linkedin_url = "https://www.linkedin.com/company/hightech-innovators/"
+
+[[handle]]
+name = "ROCSYS"
+linkedin = "@rocsys"
+linkedin_url = "https://www.linkedin.com/company/rocsys/"
+
+[[handle]]
+name = "marimo"
+linkedin = "@marimo"
+linkedin_url = "https://www.linkedin.com/company/marimo/"
+
+[[handle]]
+name = "Stelia AI"
+linkedin = "@stelia-ai"
+linkedin_url = "https://www.linkedin.com/company/stelia-ai/"
+
+[[handle]]
+name = "OpenAI Developers"
+linkedin = "@openai-developers"
+linkedin_url = "https://www.linkedin.com/company/openai-developers/"
+
+[[handle]]
+name = "Hexcat"
+linkedin = "@hexcat"
+linkedin_url = "https://www.linkedin.com/company/hexcat/"
+
+[[handle]]
+name = "Openchip & Software Technologies"
+linkedin = "@openchip-and-software-technologies"
+linkedin_url = "https://www.linkedin.com/company/openchip-and-software-technologies/"
+
+[[handle]]
+name = "Zoo"
+linkedin = "@zoo"
+linkedin_url = "https://www.linkedin.com/company/zoo/"
+
+[[handle]]
+name = "KouLi"
+linkedin = "@kouli"
+linkedin_url = "https://www.linkedin.com/company/kouli/"
+
+[[handle]]
+name = "Processing Foundation"
+linkedin = "@processing-foundation"
+linkedin_url = "https://www.linkedin.com/company/processing-foundation/"
+
+[[handle]]
+name = "The Rust Programming Language"
+linkedin = "@the-rust-programming-language"
+linkedin_url = "https://www.linkedin.com/company/the-rust-programming-language/"
+
+[[handle]]
+name = "Foresight Spatial Labs"
+linkedin = "@foresight-spatial-labs"
+linkedin_url = "https://www.linkedin.com/company/foresight-spatial-labs/"
+
+[[handle]]
+name = "Typst"
+linkedin = "@typst"
+linkedin_url = "https://www.linkedin.com/company/typst/"
+
+[[handle]]
+name = "Schuberg Philis"
+linkedin = "@schuberg-philis"
+linkedin_url = "https://www.linkedin.com/company/schuberg-philis/"
+
+[[handle]]
+name = "Canva"
+linkedin = "@canva"
+linkedin_url = "https://www.linkedin.com/company/canva/"
+
+[[handle]]
+name = "EuroRust"
+linkedin = "@eurorust"
+linkedin_url = "https://www.linkedin.com/company/eurorust/"
+
+[[handle]]
+name = "Sovereign Tech Agency"
+linkedin = "@sovereign-tech-agency"
+linkedin_url = "https://www.linkedin.com/company/sovereign-tech-agency/"
+
+[[handle]]
+name = "AHEAD"
+linkedin = "@ahead"
+linkedin_url = "https://www.linkedin.com/company/ahead/"
+
+[[handle]]
+name = "Omnetics"
+linkedin = "@omnetics"
+linkedin_url = "https://www.linkedin.com/company/omnetics/"
+
+[[handle]]
+name = "Bevy Foundation"
+linkedin = "@bevy-foundation"
+linkedin_url = "https://www.linkedin.com/company/bevy-foundation/"
+
+[[handle]]
+name = "It's FOSS"
+linkedin = "@it-s-foss"
+linkedin_url = "https://www.linkedin.com/company/it-s-foss/"
+
+[[handle]]
+name = "IMC Trading"
+linkedin = "@imc-trading"
+linkedin_url = "https://www.linkedin.com/company/imc-trading/"
+
+[[handle]]
+name = "Ferrous Systems GmbH"
+linkedin = "@ferrous-systems-gmbh"
+linkedin_url = "https://www.linkedin.com/company/ferrous-systems-gmbh/"
+
+[[handle]]
+name = "Kernel Recipes"
+linkedin = "@kernel-recipes"
+linkedin_url = "https://www.linkedin.com/company/kernel-recipes/"
+
+[[handle]]
+name = "Risks Incorporated"
+linkedin = "@risks-incorporated"
+linkedin_url = "https://www.linkedin.com/company/risks-incorporated/"
+
+[[handle]]
+name = "Atemitech"
+linkedin = "@atemitech"
+linkedin_url = "https://www.linkedin.com/company/atemitech/"
+
+[[handle]]
+name = "turbopuffer"
+linkedin = "@turbopuffer"
+linkedin_url = "https://www.linkedin.com/company/turbopuffer/"
+
+[[handle]]
+name = "Oxide Computer Company"
+linkedin = "@oxide-computer-company"
+linkedin_url = "https://www.linkedin.com/company/oxide-computer-company/"
+
+[[handle]]
+name = "RustNL"
+linkedin = "@rustnl"
+linkedin_url = "https://www.linkedin.com/company/rustnl/"
+
+[[handle]]
+name = "Rust Nation UK"
+linkedin = "@rust-nation-uk"
+linkedin_url = "https://www.linkedin.com/company/rust-nation-uk/"
+
+[[handle]]
+name = "LLVM Foundation"
+linkedin = "@llvm-foundation"
+linkedin_url = "https://www.linkedin.com/company/llvm-foundation/"
+
+[[handle]]
+name = "n8n"
+linkedin = "@n8n"
+linkedin_url = "https://www.linkedin.com/company/n8n/"
+
+[[handle]]
+name = "Let's Get Rusty"
+linkedin = "@let-s-get-rusty"
+linkedin_url = "https://www.linkedin.com/company/let-s-get-rusty/"
+
+[[handle]]
+name = "Zed Industries"
+linkedin = "@zed-industries"
+linkedin_url = "https://www.linkedin.com/company/zed-industries/"
+
+[[handle]]
+name = "VectorWare"
+linkedin = "@vectorware"
+linkedin_url = "https://www.linkedin.com/company/vectorware/"
+
+[[handle]]
+name = "Dynasas (Dynasoft Applied Systems)"
+linkedin = "@dynasas-dynasoft-applied-systems"
+linkedin_url = "https://www.linkedin.com/company/dynasas-dynasoft-applied-systems/"
+
+[[handle]]
+name = "CapstonAI"
+linkedin = "@capstonai"
+linkedin_url = "https://www.linkedin.com/company/capstonai/"
+
+[[handle]]
+name = "HRAQE"
+linkedin = "@hraqe"
+linkedin_url = "https://www.linkedin.com/company/hraqe/"
+
+[[handle]]
+name = "BitPay"
+linkedin = "@bitpay"
+linkedin_url = "https://www.linkedin.com/company/bitpay/"
+
+[[handle]]
+name = "Bitstack"
+linkedin = "@bitstack"
+linkedin_url = "https://www.linkedin.com/company/bitstack/"
+
+[[handle]]
+name = "Ratatui"
+linkedin = "@ratatui"
+linkedin_url = "https://www.linkedin.com/company/ratatui/"
+
+[[handle]]
+name = "Dodo Payments"
+linkedin = "@dodo-payments"
+linkedin_url = "https://www.linkedin.com/company/dodo-payments/"
+
+[[handle]]
+name = "Unbox"
+linkedin = "@unbox"
+linkedin_url = "https://www.linkedin.com/company/unbox/"
+
+[[handle]]
+name = "Aptos Labs"
+linkedin = "@aptos-labs"
+linkedin_url = "https://www.linkedin.com/company/aptos-labs/"
+
+[[handle]]
+name = "Rust Rover"
+linkedin = "@rust-rover"
+linkedin_url = "https://www.linkedin.com/company/rust-rover/"
+
+[[handle]]
+name = "NammaRust"
+linkedin = "@nammarust"
+linkedin_url = "https://www.linkedin.com/company/nammarust/"
+
+[[handle]]
+name = "Global Remote Jobs"
+linkedin = "@global-remote-jobs"
+linkedin_url = "https://www.linkedin.com/company/global-remote-jobs/"
+
+[[handle]]
+name = "Eclipse Software Defined Vehicle"
+linkedin = "@eclipse-software-defined-vehicle"
+linkedin_url = "https://www.linkedin.com/company/eclipse-software-defined-vehicle/"
+
+[[handle]]
+name = "SOURCE.ME"
+linkedin = "@source-me"
+linkedin_url = "https://www.linkedin.com/company/source-me/"
+
+[[handle]]
+name = "REALM"
+linkedin = "@realm"
+linkedin_url = "https://www.linkedin.com/company/realm/"
+
+[[handle]]
+name = "Together AI"
+linkedin = "@together-ai"
+linkedin_url = "https://www.linkedin.com/company/together-ai/"
+
+[[handle]]
+name = "MotherDuck"
+linkedin = "@motherduck"
+linkedin_url = "https://www.linkedin.com/company/motherduck/"
+
+[[handle]]
+name = "Zama"
+linkedin = "@zama"
+linkedin_url = "https://www.linkedin.com/company/zama/"
+
+[[handle]]
+name = "Orderly"
+linkedin = "@orderly"
+linkedin_url = "https://www.linkedin.com/company/orderly/"
+
+[[handle]]
+name = "NEAR DevHub"
+linkedin = "@near-devhub"
+linkedin_url = "https://www.linkedin.com/company/near-devhub/"
+
+[[handle]]
+name = "GuardSpine"
+linkedin = "@guardspine"
+linkedin_url = "https://www.linkedin.com/company/guardspine/"
+
+[[handle]]
+name = "Workato"
+linkedin = "@workato"
+linkedin_url = "https://www.linkedin.com/company/workato/"
+
+[[handle]]
+name = "Out of The Box Systems | Rust Expertise"
+linkedin = "@out-of-the-box-systems-rust-expertise"
+linkedin_url = "https://www.linkedin.com/company/out-of-the-box-systems-rust-expertise/"
+
+[[handle]]
+name = "Ukrainian Rust Community"
+linkedin = "@ukrainian-rust-community"
+linkedin_url = "https://www.linkedin.com/company/ukrainian-rust-community/"
+
+[[handle]]
+name = "ExpressVPN"
+linkedin = "@expressvpn"
+linkedin_url = "https://www.linkedin.com/company/expressvpn/"
+
+[[handle]]
+name = "Rivellum"
+linkedin = "@rivellum"
+linkedin_url = "https://www.linkedin.com/company/rivellum/"
+
+[[handle]]
+name = "Systems Design"
+linkedin = "@systems-design"
+linkedin_url = "https://www.linkedin.com/company/systems-design/"
+
+[[handle]]
+name = "Doghouse Recruitment"
+linkedin = "@doghouse-recruitment"
+linkedin_url = "https://www.linkedin.com/company/doghouse-recruitment/"
+
+[[handle]]
+name = "Tether.io"
+linkedin = "@tether-io"
+linkedin_url = "https://www.linkedin.com/company/tether-io/"
+
+[[handle]]
+name = "The Circuit Group"
+linkedin = "@the-circuit-group"
+linkedin_url = "https://www.linkedin.com/company/the-circuit-group/"
+
+[[handle]]
+name = "Procivis • Securing Digital Trust"
+linkedin = "@procivis-securing-digital-trust"
+linkedin_url = "https://www.linkedin.com/company/procivis-securing-digital-trust/"
+
+[[handle]]
+name = "Blueprint Finance"
+linkedin = "@blueprint-finance"
+linkedin_url = "https://www.linkedin.com/company/blueprint-finance/"
+
+[[handle]]
+name = "Growity Systems"
+linkedin = "@growity-systems"
+linkedin_url = "https://www.linkedin.com/company/growity-systems/"
+
+[[handle]]
+name = "Klopotek"
+linkedin = "@klopotek"
+linkedin_url = "https://www.linkedin.com/company/klopotek/"
+
+[[handle]]
+name = "checksocials"
+linkedin = "@checksocials"
+linkedin_url = "https://www.linkedin.com/company/checksocials/"
+
+[[handle]]
+name = "Proxify"
+linkedin = "@proxify"
+linkedin_url = "https://www.linkedin.com/company/proxify/"
+
+[[handle]]
+name = "Ministerie van Defensie"
+linkedin = "@ministerie-van-defensie"
+linkedin_url = "https://www.linkedin.com/company/ministerie-van-defensie/"
+
+[[handle]]
+name = "OverheidZZP"
+linkedin = "@overheidzzp"
+linkedin_url = "https://www.linkedin.com/company/overheidzzp/"
+
+[[handle]]
+name = "DEMCON unmanned systems"
+linkedin = "@demcon-unmanned-systems"
+linkedin_url = "https://www.linkedin.com/company/demcon-unmanned-systems/"
+
+[[handle]]
+name = "Skyline CDS"
+linkedin = "@skyline-cds"
+linkedin_url = "https://www.linkedin.com/company/skyline-cds/"
+
+[[handle]]
+name = "Asterion Systems"
+linkedin = "@asterion-systems"
+linkedin_url = "https://www.linkedin.com/company/asterion-systems/"
+
+[[handle]]
+name = "HADES DEFENSE SYSTEMS"
+linkedin = "@hades-defense-systems"
+linkedin_url = "https://www.linkedin.com/company/hades-defense-systems/"
+
+[[handle]]
+name = "Dremian"
+linkedin = "@dremian"
+linkedin_url = "https://www.linkedin.com/company/dremian/"
+
+[[handle]]
+name = "DeltaQuad"
+linkedin = "@deltaquad"
+linkedin_url = "https://www.linkedin.com/company/deltaquad/"
+
+[[handle]]
+name = "Delft Dynamics B.V."
+linkedin = "@delft-dynamics-b-v"
+linkedin_url = "https://www.linkedin.com/company/delft-dynamics-b-v/"
+
+[[handle]]
+name = "HEIGHT TECHNOLOGIES"
+linkedin = "@height-technologies"
+linkedin_url = "https://www.linkedin.com/company/height-technologies/"
+
+[[handle]]
+name = "Acolad group"
+linkedin = "@acolad-group"
+linkedin_url = "https://www.linkedin.com/company/acolad-group/"
+
+[[handle]]
+name = "Remoters"
+linkedin = "@remoters"
+linkedin_url = "https://www.linkedin.com/company/remoters/"
+
+[[handle]]
+name = "ggml"
+linkedin = "@ggml"
+linkedin_url = "https://www.linkedin.com/company/ggml/"
+
+[[handle]]
+name = "ADULLACT"
+linkedin = "@adullact"
+linkedin_url = "https://www.linkedin.com/company/adullact/"
+
+[[handle]]
+name = "Framna"
+linkedin = "@framna"
+linkedin_url = "https://www.linkedin.com/company/framna/"
+
+[[handle]]
+name = "AlgoLand"
+linkedin = "@algoland"
+linkedin_url = "https://www.linkedin.com/company/algoland/"
+
+[[handle]]
+name = "AWIC France"
+linkedin = "@awic-france"
+linkedin_url = "https://www.linkedin.com/company/awic-france/"
+
+[[handle]]
+name = "LE PHARE"
+linkedin = "@le-phare"
+linkedin_url = "https://www.linkedin.com/company/le-phare/"
+
+[[handle]]
+name = "ReadyToTouch | Rust jobs & companies"
+linkedin = "@readytotouch-rust-jobs-and-companies"
+linkedin_url = "https://www.linkedin.com/company/readytotouch-rust-jobs-and-companies/"
+
+[[handle]]
+name = "Ethero"
+linkedin = "@ethero"
+linkedin_url = "https://www.linkedin.com/company/ethero/"
+
+[[handle]]
+name = "Prog.AI"
+linkedin = "@prog-ai"
+linkedin_url = "https://www.linkedin.com/company/prog-ai/"
+
+[[handle]]
+name = "Echelon Prime"
+linkedin = "@echelon-prime"
+linkedin_url = "https://www.linkedin.com/company/echelon-prime/"
+
+[[handle]]
+name = "IARD Solutions"
+linkedin = "@iard-solutions"
+linkedin_url = "https://www.linkedin.com/company/iard-solutions/"
+
+[[handle]]
+name = "Crypto Valley News"
+linkedin = "@crypto-valley-news"
+linkedin_url = "https://www.linkedin.com/company/crypto-valley-news/"
+
+[[handle]]
+name = "Crypto Cultr"
+linkedin = "@crypto-cultr"
+linkedin_url = "https://www.linkedin.com/company/crypto-cultr/"
+
+[[handle]]
+name = "Benjamin Jaymes"
+linkedin = "@benjamin-jaymes"
+linkedin_url = "https://www.linkedin.com/company/benjamin-jaymes/"
+
+[[handle]]
+name = "Hyli"
+linkedin = "@hyli"
+linkedin_url = "https://www.linkedin.com/company/hyli/"
+
+[[handle]]
+name = "InfernoVM"
+linkedin = "@infernovm"
+linkedin_url = "https://www.linkedin.com/company/infernovm/"
+
+[[handle]]
+name = "BlockchainX"
+linkedin = "@blockchainx"
+linkedin_url = "https://www.linkedin.com/company/blockchainx/"
+
+[[handle]]
+name = "Intuitive Instruments"
+linkedin = "@intuitive-instruments"
+linkedin_url = "https://www.linkedin.com/company/intuitive-instruments/"
+
+[[handle]]
+name = "Set In Stone"
+linkedin = "@set-in-stone"
+linkedin_url = "https://www.linkedin.com/company/set-in-stone/"
+
+[[handle]]
+name = "The Hashgraph Association"
+linkedin = "@the-hashgraph-association"
+linkedin_url = "https://www.linkedin.com/company/the-hashgraph-association/"
+
+[[handle]]
+name = "L'eau salée"
+linkedin = "@l-eau-salee"
+linkedin_url = "https://www.linkedin.com/company/l-eau-salee/"
+
+[[handle]]
+name = "NBTC SAS"
+linkedin = "@nbtc-sas"
+linkedin_url = "https://www.linkedin.com/company/nbtc-sas/"
+
+[[handle]]
+name = "101 Blockchains"
+linkedin = "@101-blockchains"
+linkedin_url = "https://www.linkedin.com/company/101-blockchains/"
+
+[[handle]]
+name = "Labonnevoile.com"
+linkedin = "@labonnevoile-com"
+linkedin_url = "https://www.linkedin.com/company/labonnevoile-com/"
+
+[[handle]]
+name = "Bitcoin Ai Startup Lab"
+linkedin = "@bitcoin-ai-startup-lab"
+linkedin_url = "https://www.linkedin.com/company/bitcoin-ai-startup-lab/"
+
+[[handle]]
+name = "Liquidium Inc."
+linkedin = "@liquidium-inc"
+linkedin_url = "https://www.linkedin.com/company/liquidium-inc/"
+
+[[handle]]
+name = "9am"
+linkedin = "@9am"
+linkedin_url = "https://www.linkedin.com/company/9am/"
+
+[[handle]]
+name = "EWOR"
+linkedin = "@ewor"
+linkedin_url = "https://www.linkedin.com/company/ewor/"
+
+[[handle]]
+name = "VERITIC"
+linkedin = "@veritic"
+linkedin_url = "https://www.linkedin.com/company/veritic/"
+
+[[handle]]
+name = "EquityBrix"
+linkedin = "@equitybrix"
+linkedin_url = "https://www.linkedin.com/company/equitybrix/"
+
+[[handle]]
+name = "Spydra"
+linkedin = "@spydra"
+linkedin_url = "https://www.linkedin.com/company/spydra/"
+
+[[handle]]
+name = "Quasar Labs"
+linkedin = "@quasar-labs"
+linkedin_url = "https://www.linkedin.com/company/quasar-labs/"
+
+[[handle]]
+name = "Yat Labs"
+linkedin = "@yat-labs"
+linkedin_url = "https://www.linkedin.com/company/yat-labs/"
+
+[[handle]]
+name = "Yuga Labs"
+linkedin = "@yuga-labs"
+linkedin_url = "https://www.linkedin.com/company/yuga-labs/"
+
+[[handle]]
+name = "Tari Labs"
+linkedin = "@tari-labs"
+linkedin_url = "https://www.linkedin.com/company/tari-labs/"
+
+[[handle]]
+name = "Open Collective"
+linkedin = "@open-collective"
+linkedin_url = "https://www.linkedin.com/company/open-collective/"
+
+[[handle]]
+name = "Tauri Programme within The Commons Conservancy"
+linkedin = "@tauri-programme-within-the-commons-conservancy"
+linkedin_url = "https://www.linkedin.com/company/tauri-programme-within-the-commons-conservancy/"
+
+[[handle]]
+name = "IDVerse, part of LexisNexis® Risk Solutions"
+linkedin = "@idverse-part-of-lexisnexis-risk-solutions"
+linkedin_url = "https://www.linkedin.com/company/idverse-part-of-lexisnexis-risk-solutions/"
+
+[[handle]]
+name = "Pulse 2.0"
+linkedin = "@pulse-2-0"
+linkedin_url = "https://www.linkedin.com/company/pulse-2-0/"
+
+[[handle]]
+name = "Tandochain"
+linkedin = "@tandochain"
+linkedin_url = "https://www.linkedin.com/company/tandochain/"
+
+[[handle]]
+name = "Bitstamp by Robinhood"
+linkedin = "@bitstamp-by-robinhood"
+linkedin_url = "https://www.linkedin.com/company/bitstamp-by-robinhood/"
+
+[[handle]]
+name = "Finst"
+linkedin = "@finst"
+linkedin_url = "https://www.linkedin.com/company/finst/"
+
+[[handle]]
+name = "MN Fund"
+linkedin = "@mn-fund"
+linkedin_url = "https://www.linkedin.com/company/mn-fund/"
+
+[[handle]]
+name = "Bybit"
+linkedin = "@bybit"
+linkedin_url = "https://www.linkedin.com/company/bybit/"
+
+[[handle]]
+name = "Flow Traders"
+linkedin = "@flow-traders"
+linkedin_url = "https://www.linkedin.com/company/flow-traders/"
+
+[[handle]]
+name = "Knaken.eu"
+linkedin = "@knaken-eu"
+linkedin_url = "https://www.linkedin.com/company/knaken-eu/"
+
+[[handle]]
+name = "Knaken"
+linkedin = "@knaken"
+linkedin_url = "https://www.linkedin.com/company/knaken/"
+
+[[handle]]
+name = "Bit Hotel - Blockchain Game"
+linkedin = "@bit-hotel-blockchain-game"
+linkedin_url = "https://www.linkedin.com/company/bit-hotel-blockchain-game/"
+
+[[handle]]
+name = "Caelum Labs - Interoperable Workflows on Blockchain"
+linkedin = "@caelum-labs-interoperable-workflows-on-blockchain"
+linkedin_url = "https://www.linkedin.com/company/caelum-labs-interoperable-workflows-on-blockchain/"
+
+[[handle]]
+name = "Odra.dev"
+linkedin = "@odra-dev"
+linkedin_url = "https://www.linkedin.com/company/odra-dev/"
+
+[[handle]]
+name = "Arcadia"
+linkedin = "@arcadia"
+linkedin_url = "https://www.linkedin.com/company/arcadia/"
+
+[[handle]]
+name = "teonite"
+linkedin = "@teonite"
+linkedin_url = "https://www.linkedin.com/company/teonite/"
+
+[[handle]]
+name = "XP.NETWORK"
+linkedin = "@xp-network"
+linkedin_url = "https://www.linkedin.com/company/xp-network/"
+
+[[handle]]
+name = "SyntiFi"
+linkedin = "@syntifi"
+linkedin_url = "https://www.linkedin.com/company/syntifi/"
+
+[[handle]]
+name = "Boosty Labs"
+linkedin = "@boosty-labs"
+linkedin_url = "https://www.linkedin.com/company/boosty-labs/"
+
+[[handle]]
+name = "Aldrin"
+linkedin = "@aldrin"
+linkedin_url = "https://www.linkedin.com/company/aldrin/"
+
+[[handle]]
+name = "Dioxus Labs"
+linkedin = "@dioxus-labs"
+linkedin_url = "https://www.linkedin.com/company/dioxus-labs/"
+
+[[handle]]
+name = "NLnet Labs"
+linkedin = "@nlnet-labs"
+linkedin_url = "https://www.linkedin.com/company/nlnet-labs/"
+
+[[handle]]
+name = "Fusion Engineering"
+linkedin = "@fusion-engineering"
+linkedin_url = "https://www.linkedin.com/company/fusion-engineering/"
+
+[[handle]]
+name = "Trezy"
+linkedin = "@trezy"
+linkedin_url = "https://www.linkedin.com/company/trezy/"
+
+[[handle]]
+name = "ClubRare"
+linkedin = "@clubrare"
+linkedin_url = "https://www.linkedin.com/company/clubrare/"
+
+[[handle]]
+name = "Fondation Le Réseau.nl"
+linkedin = "@fondation-le-reseau-nl"
+linkedin_url = "https://www.linkedin.com/company/fondation-le-reseau-nl/"
+
+[[handle]]
+name = "Internet Security Research Group (ISRG)"
+linkedin = "@internet-security-research-group-isrg"
+linkedin_url = "https://www.linkedin.com/company/internet-security-research-group-isrg/"
+
+[[handle]]
+name = "SoParticular"
+linkedin = "@soparticular"
+linkedin_url = "https://www.linkedin.com/company/soparticular/"
+
+[[handle]]
+name = "DEVxDAO"
+linkedin = "@devxdao"
+linkedin_url = "https://www.linkedin.com/company/devxdao/"
+
+[[handle]]
+name = "Mentalista"
+linkedin = "@mentalista"
+linkedin_url = "https://www.linkedin.com/company/mentalista/"
+
+[[handle]]
+name = "Coins.fr"
+linkedin = "@coins-fr"
+linkedin_url = "https://www.linkedin.com/company/coins-fr/"
+
+[[handle]]
+name = "Synternet"
+linkedin = "@synternet"
+linkedin_url = "https://www.linkedin.com/company/synternet/"
+
+[[handle]]
+name = "Warp"
+linkedin = "@warp"
+linkedin_url = "https://www.linkedin.com/company/warp/"
+
+[[handle]]
+name = "Nomadic Labs"
+linkedin = "@nomadic-labs"
+linkedin_url = "https://www.linkedin.com/company/nomadic-labs/"
+
+[[handle]]
+name = "Allfeat"
+linkedin = "@allfeat"
+linkedin_url = "https://www.linkedin.com/company/allfeat/"
+
+[[handle]]
+name = "WeMatchPartners"
+linkedin = "@wematchpartners"
+linkedin_url = "https://www.linkedin.com/company/wematchpartners/"
+
+[[handle]]
+name = "The Live Series"
+linkedin = "@the-live-series"
+linkedin_url = "https://www.linkedin.com/company/the-live-series/"
+
+[[handle]]
+name = "Tech Makers"
+linkedin = "@tech-makers"
+linkedin_url = "https://www.linkedin.com/company/tech-makers/"
+
+[[handle]]
+name = "FEATURE 🏗"
+linkedin = "@feature"
+linkedin_url = "https://www.linkedin.com/company/feature/"
+
+[[handle]]
+name = "Fractal ID"
+linkedin = "@fractal-id"
+linkedin_url = "https://www.linkedin.com/company/fractal-id/"
+
+[[handle]]
+name = "CoinList"
+linkedin = "@coinlist"
+linkedin_url = "https://www.linkedin.com/company/coinlist/"
+
+[[handle]]
+name = "GR4"
+linkedin = "@gr4"
+linkedin_url = "https://www.linkedin.com/company/gr4/"
+
+[[handle]]
+name = "Dutch Open Projects"
+linkedin = "@dutch-open-projects"
+linkedin_url = "https://www.linkedin.com/company/dutch-open-projects/"
+
+[[handle]]
+name = "Mystra"
+linkedin = "@mystra"
+linkedin_url = "https://www.linkedin.com/company/mystra/"
+
+[[handle]]
+name = "Cryptotakkies"
+linkedin = "@cryptotakkies"
+linkedin_url = "https://www.linkedin.com/company/cryptotakkies/"
+
+[[handle]]
+name = "DAO Master Labs"
+linkedin = "@dao-master-labs"
+linkedin_url = "https://www.linkedin.com/company/dao-master-labs/"
+
+[[handle]]
+name = "Web3XP"
+linkedin = "@web3xp"
+linkedin_url = "https://www.linkedin.com/company/web3xp/"
+
+[[handle]]
+name = "Little Bear Labs"
+linkedin = "@little-bear-labs"
+linkedin_url = "https://www.linkedin.com/company/little-bear-labs/"
+
+[[handle]]
+name = "Input Output Group"
+linkedin = "@input-output-group"
+linkedin_url = "https://www.linkedin.com/company/input-output-group/"
+
+[[handle]]
+name = "SpicyFi GmbH"
+linkedin = "@spicyfi-gmbh"
+linkedin_url = "https://www.linkedin.com/company/spicyfi-gmbh/"
+
+[[handle]]
+name = "Solana"
+linkedin = "@solana"
+linkedin_url = "https://www.linkedin.com/company/solana/"
+
+[[handle]]
+name = "IdeaSoft Career Booster"
+linkedin = "@ideasoft-career-booster"
+linkedin_url = "https://www.linkedin.com/company/ideasoft-career-booster/"
+
+[[handle]]
+name = "Rethink Labs"
+linkedin = "@rethink-labs"
+linkedin_url = "https://www.linkedin.com/company/rethink-labs/"
+
+[[handle]]
+name = "Odiin."
+linkedin = "@odiin"
+linkedin_url = "https://www.linkedin.com/company/odiin/"
+
+[[handle]]
+name = "Cohort"
+linkedin = "@cohort"
+linkedin_url = "https://www.linkedin.com/company/cohort/"
+
+[[handle]]
+name = "Syncrone"
+linkedin = "@syncrone"
+linkedin_url = "https://www.linkedin.com/company/syncrone/"
+
+[[handle]]
+name = "Web3 Daily"
+linkedin = "@web3-daily"
+linkedin_url = "https://www.linkedin.com/company/web3-daily/"
+
+[[handle]]
+name = "Fight Out"
+linkedin = "@fight-out"
+linkedin_url = "https://www.linkedin.com/company/fight-out/"
+
+[[handle]]
+name = "Ardan Labs"
+linkedin = "@ardan-labs"
+linkedin_url = "https://www.linkedin.com/company/ardan-labs/"
+
+[[handle]]
+name = "BlockTech"
+linkedin = "@blocktech"
+linkedin_url = "https://www.linkedin.com/company/blocktech/"
+
+[[handle]]
+name = "Futurlog"
+linkedin = "@futurlog"
+linkedin_url = "https://www.linkedin.com/company/futurlog/"
+
+[[handle]]
+name = "Plangora - Web and Mobile Development"
+linkedin = "@plangora-web-and-mobile-development"
+linkedin_url = "https://www.linkedin.com/company/plangora-web-and-mobile-development/"
+
+[[handle]]
+name = "Electis"
+linkedin = "@electis"
+linkedin_url = "https://www.linkedin.com/company/electis/"
+
+[[handle]]
+name = "IPwe"
+linkedin = "@ipwe"
+linkedin_url = "https://www.linkedin.com/company/ipwe/"
+
+[[handle]]
+name = "TrustSwap"
+linkedin = "@trustswap"
+linkedin_url = "https://www.linkedin.com/company/trustswap/"
+
+[[handle]]
+name = "Tech Connection"
+linkedin = "@tech-connection"
+linkedin_url = "https://www.linkedin.com/company/tech-connection/"
+
+[[handle]]
+name = "FCK.ADS"
+linkedin = "@fck-ads"
+linkedin_url = "https://www.linkedin.com/company/fck-ads/"
+
+[[handle]]
+name = "Rust Jobs 🦀"
+linkedin = "@rust-jobs"
+linkedin_url = "https://www.linkedin.com/company/rust-jobs/"
+
+[[handle]]
+name = "Kaleido"
+linkedin = "@kaleido"
+linkedin_url = "https://www.linkedin.com/company/kaleido/"
+
+[[handle]]
+name = "Tweede golf"
+linkedin = "@tweede-golf"
+linkedin_url = "https://www.linkedin.com/company/tweede-golf/"
+
+[[handle]]
+name = "Metasouls"
+linkedin = "@metasouls"
+linkedin_url = "https://www.linkedin.com/company/metasouls/"
+
+[[handle]]
+name = "ToneControl.nl"
+linkedin = "@tonecontrol-nl"
+linkedin_url = "https://www.linkedin.com/company/tonecontrol-nl/"
+
+[[handle]]
+name = "Kussoo"
+linkedin = "@kussoo"
+linkedin_url = "https://www.linkedin.com/company/kussoo/"
+
+[[handle]]
+name = "MAKE"
+linkedin = "@make"
+linkedin_url = "https://www.linkedin.com/company/make/"
+
+[[handle]]
+name = "Blockbit.es"
+linkedin = "@blockbit-es"
+linkedin_url = "https://www.linkedin.com/company/blockbit-es/"
+
+[[handle]]
+name = "Shine Nederland"
+linkedin = "@shine-nederland"
+linkedin_url = "https://www.linkedin.com/company/shine-nederland/"
+
+[[handle]]
+name = "Revelator"
+linkedin = "@revelator"
+linkedin_url = "https://www.linkedin.com/company/revelator/"
+
+[[handle]]
+name = "The Chain Bulletin"
+linkedin = "@the-chain-bulletin"
+linkedin_url = "https://www.linkedin.com/company/the-chain-bulletin/"
+
+[[handle]]
+name = "Project Noise Lab"
+linkedin = "@project-noise-lab"
+linkedin_url = "https://www.linkedin.com/company/project-noise-lab/"
+
+[[handle]]
+name = "Todayq"
+linkedin = "@todayq"
+linkedin_url = "https://www.linkedin.com/company/todayq/"
+
+[[handle]]
+name = "Binshops | Best In Shops"
+linkedin = "@binshops-best-in-shops"
+linkedin_url = "https://www.linkedin.com/company/binshops-best-in-shops/"
+
+[[handle]]
+name = "Comdex"
+linkedin = "@comdex"
+linkedin_url = "https://www.linkedin.com/company/comdex/"
+
+[[handle]]
+name = "Chainalysis"
+linkedin = "@chainalysis"
+linkedin_url = "https://www.linkedin.com/company/chainalysis/"
+
+[[handle]]
+name = "Opera"
+linkedin = "@opera"
+linkedin_url = "https://www.linkedin.com/company/opera/"
+
+[[handle]]
+name = "Linux Foundation Europe"
+linkedin = "@linux-foundation-europe"
+linkedin_url = "https://www.linkedin.com/company/linux-foundation-europe/"
+
+[[handle]]
+name = "Storm2"
+linkedin = "@storm2"
+linkedin_url = "https://www.linkedin.com/company/storm2/"
+
+[[handle]]
+name = "Flagship.FYI"
+linkedin = "@flagship-fyi"
+linkedin_url = "https://www.linkedin.com/company/flagship-fyi/"
+
+[[handle]]
+name = "Smart-Chain"
+linkedin = "@smart-chain"
+linkedin_url = "https://www.linkedin.com/company/smart-chain/"
+
+[[handle]]
+name = "Cyberse"
+linkedin = "@cyberse"
+linkedin_url = "https://www.linkedin.com/company/cyberse/"
+
+[[handle]]
+name = "Payplug"
+linkedin = "@payplug"
+linkedin_url = "https://www.linkedin.com/company/payplug/"
+
+[[handle]]
+name = "Crunch Lab"
+linkedin = "@crunch-lab"
+linkedin_url = "https://www.linkedin.com/company/crunch-lab/"
+
+[[handle]]
+name = "Noisegate.com.au"
+linkedin = "@noisegate-com-au"
+linkedin_url = "https://www.linkedin.com/company/noisegate-com-au/"
+
+[[handle]]
+name = "Code6"
+linkedin = "@code6"
+linkedin_url = "https://www.linkedin.com/company/code6/"
+
+[[handle]]
+name = "Vercel"
+linkedin = "@vercel"
+linkedin_url = "https://www.linkedin.com/company/vercel/"
+
+[[handle]]
+name = "Blockchain Matters"
+linkedin = "@blockchain-matters"
+linkedin_url = "https://www.linkedin.com/company/blockchain-matters/"
+
+[[handle]]
+name = "Blodev: building tomorrow"
+linkedin = "@blodev-building-tomorrow"
+linkedin_url = "https://www.linkedin.com/company/blodev-building-tomorrow/"
+
+[[handle]]
+name = "Prove AI"
+linkedin = "@prove-ai"
+linkedin_url = "https://www.linkedin.com/company/prove-ai/"
+
+[[handle]]
+name = "Kometo Labs"
+linkedin = "@kometo-labs"
+linkedin_url = "https://www.linkedin.com/company/kometo-labs/"
+
+[[handle]]
+name = "Ionic: An OutSystems Company"
+linkedin = "@ionic-an-outsystems-company"
+linkedin_url = "https://www.linkedin.com/company/ionic-an-outsystems-company/"
+
+[[handle]]
+name = "Paperjam"
+linkedin = "@paperjam"
+linkedin_url = "https://www.linkedin.com/company/paperjam/"
+
+[[handle]]
+name = "Dicarte Research & Development Solutions"
+linkedin = "@dicarte-research-and-development-solutions"
+linkedin_url = "https://www.linkedin.com/company/dicarte-research-and-development-solutions/"
+
+[[handle]]
+name = "SoundMint Labs, Inc"
+linkedin = "@soundmint-labs-inc"
+linkedin_url = "https://www.linkedin.com/company/soundmint-labs-inc/"
+
+[[handle]]
+name = "SmartLabel"
+linkedin = "@smartlabel"
+linkedin_url = "https://www.linkedin.com/company/smartlabel/"
+
+[[handle]]
+name = "Human Guild"
+linkedin = "@human-guild"
+linkedin_url = "https://www.linkedin.com/company/human-guild/"
+
+[[handle]]
+name = "DIQQ"
+linkedin = "@diqq"
+linkedin_url = "https://www.linkedin.com/company/diqq/"
+
+[[handle]]
+name = "Massa Labs"
+linkedin = "@massa-labs"
+linkedin_url = "https://www.linkedin.com/company/massa-labs/"
+
+[[handle]]
+name = "Chapter Two"
+linkedin = "@chapter-two"
+linkedin_url = "https://www.linkedin.com/company/chapter-two/"
+
+[[handle]]
+name = "Aleph Cloud"
+linkedin = "@aleph-cloud"
+linkedin_url = "https://www.linkedin.com/company/aleph-cloud/"
+
+[[handle]]
+name = "Financial Eye News"
+linkedin = "@financial-eye-news"
+linkedin_url = "https://www.linkedin.com/company/financial-eye-news/"
+
+[[handle]]
+name = "DistroKid"
+linkedin = "@distrokid"
+linkedin_url = "https://www.linkedin.com/company/distrokid/"
+
+[[handle]]
+name = "Get The Sound"
+linkedin = "@get-the-sound"
+linkedin_url = "https://www.linkedin.com/company/get-the-sound/"
+
+[[handle]]
+name = "TrioTech Recruitment"
+linkedin = "@triotech-recruitment"
+linkedin_url = "https://www.linkedin.com/company/triotech-recruitment/"
+
+[[handle]]
+name = "Blockchain Expo"
+linkedin = "@blockchain-expo"
+linkedin_url = "https://www.linkedin.com/company/blockchain-expo/"
+
+[[handle]]
+name = "Keels"
+linkedin = "@keels"
+linkedin_url = "https://www.linkedin.com/company/keels/"
+
+[[handle]]
+name = "Tgrade"
+linkedin = "@tgrade"
+linkedin_url = "https://www.linkedin.com/company/tgrade/"
+
+[[handle]]
+name = "Thentic Pay"
+linkedin = "@thentic-pay"
+linkedin_url = "https://www.linkedin.com/company/thentic-pay/"
+
+[[handle]]
+name = "Éditions Diamond"
+linkedin = "@editions-diamond"
+linkedin_url = "https://www.linkedin.com/company/editions-diamond/"
+
+[[handle]]
+name = "IDOL"
+linkedin = "@idol"
+linkedin_url = "https://www.linkedin.com/company/idol/"
+
+[[handle]]
+name = "Trilon"
+linkedin = "@trilon"
+linkedin_url = "https://www.linkedin.com/company/trilon/"
+
+[[handle]]
+name = "NestJS"
+linkedin = "@nestjs"
+linkedin_url = "https://www.linkedin.com/company/nestjs/"
+
+[[handle]]
+name = "Vault Laboratories, Inc"
+linkedin = "@vault-laboratories-inc"
+linkedin_url = "https://www.linkedin.com/company/vault-laboratories-inc/"
+
+[[handle]]
+name = "Blockworks"
+linkedin = "@blockworks"
+linkedin_url = "https://www.linkedin.com/company/blockworks/"
+
+[[handle]]
+name = "XpertDirect"
+linkedin = "@xpertdirect"
+linkedin_url = "https://www.linkedin.com/company/xpertdirect/"
+
+[[handle]]
+name = "Hadrian"
+linkedin = "@hadrian"
+linkedin_url = "https://www.linkedin.com/company/hadrian/"
+
+[[handle]]
+name = "ɃITSELL X"
+linkedin = "@itsell-x"
+linkedin_url = "https://www.linkedin.com/company/itsell-x/"
+
+[[handle]]
+name = "Cryptoast"
+linkedin = "@cryptoast"
+linkedin_url = "https://www.linkedin.com/company/cryptoast/"
+
+[[handle]]
+name = "QuillAudits | Blockchain Security & OPSEC🥷"
+linkedin = "@quillaudits-blockchain-security-and-opsec"
+linkedin_url = "https://www.linkedin.com/company/quillaudits-blockchain-security-and-opsec/"
+
+[[handle]]
+name = "QA Wolf"
+linkedin = "@qa-wolf"
+linkedin_url = "https://www.linkedin.com/company/qa-wolf/"
+
+[[handle]]
+name = "Enterspeed"
+linkedin = "@enterspeed"
+linkedin_url = "https://www.linkedin.com/company/enterspeed/"
+
+[[handle]]
+name = "YellowHeart"
+linkedin = "@yellowheart"
+linkedin_url = "https://www.linkedin.com/company/yellowheart/"
+
+[[handle]]
+name = "Pianity"
+linkedin = "@pianity"
+linkedin_url = "https://www.linkedin.com/company/pianity/"
+
+[[handle]]
+name = "Bolero"
+linkedin = "@bolero"
+linkedin_url = "https://www.linkedin.com/company/bolero/"
+
+[[handle]]
+name = "Music Hackspace"
+linkedin = "@music-hackspace"
+linkedin_url = "https://www.linkedin.com/company/music-hackspace/"
+
+[[handle]]
+name = "Delicious Insights"
+linkedin = "@delicious-insights"
+linkedin_url = "https://www.linkedin.com/company/delicious-insights/"
+
+[[handle]]
+name = "GMCOLAB"
+linkedin = "@gmcolab"
+linkedin_url = "https://www.linkedin.com/company/gmcolab/"
+
+[[handle]]
+name = "Attrace"
+linkedin = "@attrace"
+linkedin_url = "https://www.linkedin.com/company/attrace/"
+
+[[handle]]
+name = "Sentillia B.V."
+linkedin = "@sentillia-b-v"
+linkedin_url = "https://www.linkedin.com/company/sentillia-b-v/"
+
+[[handle]]
+name = "Palantir Technologies"
+linkedin = "@palantir-technologies"
+linkedin_url = "https://www.linkedin.com/company/palantir-technologies/"
+
+[[handle]]
+name = "Eventbrite"
+linkedin = "@eventbrite"
+linkedin_url = "https://www.linkedin.com/company/eventbrite/"
+
+[[handle]]
+name = "Gimly"
+linkedin = "@gimly"
+linkedin_url = "https://www.linkedin.com/company/gimly/"
+
+[[handle]]
+name = "B9Lab"
+linkedin = "@b9lab"
+linkedin_url = "https://www.linkedin.com/company/b9lab/"
+
+[[handle]]
+name = "Keplr"
+linkedin = "@keplr"
+linkedin_url = "https://www.linkedin.com/company/keplr/"
+
+[[handle]]
+name = "Rust Programming Language"
+linkedin = "@rust-programming-language"
+linkedin_url = "https://www.linkedin.com/company/rust-programming-language/"
+
+[[handle]]
+name = "Interchain Foundation"
+linkedin = "@interchain-foundation"
+linkedin_url = "https://www.linkedin.com/company/interchain-foundation/"
+
+[[handle]]
+name = "thirdweb"
+linkedin = "@thirdweb"
+linkedin_url = "https://www.linkedin.com/company/thirdweb/"
+
+[[handle]]
+name = "Cosmonic"
+linkedin = "@cosmonic"
+linkedin_url = "https://www.linkedin.com/company/cosmonic/"
+
+[[handle]]
+name = "wasmCloud"
+linkedin = "@wasmcloud"
+linkedin_url = "https://www.linkedin.com/company/wasmcloud/"
+
+[[handle]]
+name = "OVHcloud"
+linkedin = "@ovhcloud"
+linkedin_url = "https://www.linkedin.com/company/ovhcloud/"
+
+[[handle]]
+name = "Rhino.fi"
+linkedin = "@rhino-fi"
+linkedin_url = "https://www.linkedin.com/company/rhino-fi/"
+
+[[handle]]
+name = "Sintegra Consulting"
+linkedin = "@sintegra-consulting"
+linkedin_url = "https://www.linkedin.com/company/sintegra-consulting/"
+
+[[handle]]
+name = "t2.world"
+linkedin = "@t2-world"
+linkedin_url = "https://www.linkedin.com/company/t2-world/"
+
+[[handle]]
+name = "Zebec Network"
+linkedin = "@zebec-network"
+linkedin_url = "https://www.linkedin.com/company/zebec-network/"
+
+[[handle]]
+name = "Paris Blockchain Society"
+linkedin = "@paris-blockchain-society"
+linkedin_url = "https://www.linkedin.com/company/paris-blockchain-society/"
+
+[[handle]]
+name = "Frontal - Blockchain and Web3 Frontliners"
+linkedin = "@frontal-blockchain-and-web3-frontliners"
+linkedin_url = "https://www.linkedin.com/company/frontal-blockchain-and-web3-frontliners/"
+
+[[handle]]
+name = "Master PiSE (Université Paris Cité)"
+linkedin = "@master-pise-universite-paris-cite"
+linkedin_url = "https://www.linkedin.com/company/master-pise-universite-paris-cite/"
+
+[[handle]]
+name = "System76"
+linkedin = "@system76"
+linkedin_url = "https://www.linkedin.com/company/system76/"
+
+[[handle]]
+name = "Redox OS"
+linkedin = "@redox-os"
+linkedin_url = "https://www.linkedin.com/company/redox-os/"
+
+[[handle]]
+name = "Eventdrive"
+linkedin = "@eventdrive"
+linkedin_url = "https://www.linkedin.com/company/eventdrive/"
+
+[[handle]]
+name = "Interverse #AI"
+linkedin = "@interverse-ai"
+linkedin_url = "https://www.linkedin.com/company/interverse-ai/"
+
+[[handle]]
+name = "True Harbour"
+linkedin = "@true-harbour"
+linkedin_url = "https://www.linkedin.com/company/true-harbour/"
+
+[[handle]]
+name = "Sifchain"
+linkedin = "@sifchain"
+linkedin_url = "https://www.linkedin.com/company/sifchain/"
+
+[[handle]]
+name = "CryptoRecruit"
+linkedin = "@cryptorecruit"
+linkedin_url = "https://www.linkedin.com/company/cryptorecruit/"
+
+[[handle]]
+name = "Confio GmbH"
+linkedin = "@confio-gmbh"
+linkedin_url = "https://www.linkedin.com/company/confio-gmbh/"
+
+[[handle]]
+name = "Forbole"
+linkedin = "@forbole"
+linkedin_url = "https://www.linkedin.com/company/forbole/"
+
+[[handle]]
+name = "IXO"
+linkedin = "@ixo"
+linkedin_url = "https://www.linkedin.com/company/ixo/"
+
+[[handle]]
+name = "All in Bits (AiB)"
+linkedin = "@all-in-bits-aib"
+linkedin_url = "https://www.linkedin.com/company/all-in-bits-aib/"
+
+[[handle]]
+name = "Terraform Labs"
+linkedin = "@terraform-labs"
+linkedin_url = "https://www.linkedin.com/company/terraform-labs/"
+
+[[handle]]
+name = "COSMOS"
+linkedin = "@cosmos"
+linkedin_url = "https://www.linkedin.com/company/cosmos/"
+
+[[handle]]
+name = "buildspace"
+linkedin = "@buildspace"
+linkedin_url = "https://www.linkedin.com/company/buildspace/"
+
+[[handle]]
+name = "iExec"
+linkedin = "@iexec"
+linkedin_url = "https://www.linkedin.com/company/iexec/"
+
+[[handle]]
+name = "Cardano Feed"
+linkedin = "@cardano-feed"
+linkedin_url = "https://www.linkedin.com/company/cardano-feed/"
+
+[[handle]]
+name = "HAL149 Crypto"
+linkedin = "@hal149-crypto"
+linkedin_url = "https://www.linkedin.com/company/hal149-crypto/"
+
+[[handle]]
+name = "altrady"
+linkedin = "@altrady"
+linkedin_url = "https://www.linkedin.com/company/altrady/"
+
+[[handle]]
+name = "Braintrust"
+linkedin = "@braintrust"
+linkedin_url = "https://www.linkedin.com/company/braintrust/"
+
+[[handle]]
+name = "Joystream DAO"
+linkedin = "@joystream-dao"
+linkedin_url = "https://www.linkedin.com/company/joystream-dao/"
+
+[[handle]]
+name = "Crypto News"
+linkedin = "@crypto-news"
+linkedin_url = "https://www.linkedin.com/company/crypto-news/"
+
+[[handle]]
+name = "Chainforce – Tokenomics Consultancy"
+linkedin = "@chainforce-tokenomics-consultancy"
+linkedin_url = "https://www.linkedin.com/company/chainforce-tokenomics-consultancy/"
+
+[[handle]]
+name = "SKALE Labs"
+linkedin = "@skale-labs"
+linkedin_url = "https://www.linkedin.com/company/skale-labs/"
+
+[[handle]]
+name = "Cometh"
+linkedin = "@cometh"
+linkedin_url = "https://www.linkedin.com/company/cometh/"
+
+[[handle]]
+name = "Ethereum France"
+linkedin = "@ethereum-france"
+linkedin_url = "https://www.linkedin.com/company/ethereum-france/"
+
+[[handle]]
+name = "Sismo"
+linkedin = "@sismo"
+linkedin_url = "https://www.linkedin.com/company/sismo/"
+
+[[handle]]
+name = "Razor Network"
+linkedin = "@razor-network"
+linkedin_url = "https://www.linkedin.com/company/razor-network/"
+
+[[handle]]
+name = "Distributed Ledger, Inc."
+linkedin = "@distributed-ledger-inc"
+linkedin_url = "https://www.linkedin.com/company/distributed-ledger-inc/"
+
+[[handle]]
+name = "stakefish"
+linkedin = "@stakefish"
+linkedin_url = "https://www.linkedin.com/company/stakefish/"
+
+[[handle]]
+name = "The Graph"
+linkedin = "@the-graph"
+linkedin_url = "https://www.linkedin.com/company/the-graph/"
+
+[[handle]]
+name = "Everclear Foundation"
+linkedin = "@everclear-foundation"
+linkedin_url = "https://www.linkedin.com/company/everclear-foundation/"
+
+[[handle]]
+name = "Stake Capital Group"
+linkedin = "@stake-capital-group"
+linkedin_url = "https://www.linkedin.com/company/stake-capital-group/"
+
+[[handle]]
+name = "Via Protocol - Web3 Mastercard"
+linkedin = "@via-protocol-web3-mastercard"
+linkedin_url = "https://www.linkedin.com/company/via-protocol-web3-mastercard/"
+
+[[handle]]
+name = "Equteq"
+linkedin = "@equteq"
+linkedin_url = "https://www.linkedin.com/company/equteq/"
+
+[[handle]]
+name = "Linux Foundation Education"
+linkedin = "@linux-foundation-education"
+linkedin_url = "https://www.linkedin.com/company/linux-foundation-education/"
+
+[[handle]]
+name = "Paxos"
+linkedin = "@paxos"
+linkedin_url = "https://www.linkedin.com/company/paxos/"
+
+[[handle]]
+name = "SoundGym"
+linkedin = "@soundgym"
+linkedin_url = "https://www.linkedin.com/company/soundgym/"
+
+[[handle]]
+name = "Uhmbrella"
+linkedin = "@uhmbrella"
+linkedin_url = "https://www.linkedin.com/company/uhmbrella/"
+
+[[handle]]
+name = "Serenade"
+linkedin = "@serenade"
+linkedin_url = "https://www.linkedin.com/company/serenade/"
+
+[[handle]]
+name = "JustWatch"
+linkedin = "@justwatch"
+linkedin_url = "https://www.linkedin.com/company/justwatch/"
+
+[[handle]]
+name = "OpenSea"
+linkedin = "@opensea"
+linkedin_url = "https://www.linkedin.com/company/opensea/"
+
+[[handle]]
+name = "The Recording Academy"
+linkedin = "@the-recording-academy"
+linkedin_url = "https://www.linkedin.com/company/the-recording-academy/"
+
+[[handle]]
+name = "SIMBA Chain"
+linkedin = "@simba-chain"
+linkedin_url = "https://www.linkedin.com/company/simba-chain/"
+
+[[handle]]
+name = "Arweave"
+linkedin = "@arweave"
+linkedin_url = "https://www.linkedin.com/company/arweave/"
+
+[[handle]]
+name = "MetaMask Institutional"
+linkedin = "@metamask-institutional"
+linkedin_url = "https://www.linkedin.com/company/metamask-institutional/"
+
+[[handle]]
+name = "Bazylic"
+linkedin = "@bazylic"
+linkedin_url = "https://www.linkedin.com/company/bazylic/"
+
+[[handle]]
+name = "Musicinfo"
+linkedin = "@musicinfo"
+linkedin_url = "https://www.linkedin.com/company/musicinfo/"
+
+[[handle]]
+name = "Guild"
+linkedin = "@guild"
+linkedin_url = "https://www.linkedin.com/company/guild/"
+
+[[handle]]
+name = "Paris Blockchain Week"
+linkedin = "@paris-blockchain-week"
+linkedin_url = "https://www.linkedin.com/company/paris-blockchain-week/"
+
+[[handle]]
+name = "LF Decentralized Trust"
+linkedin = "@lf-decentralized-trust"
+linkedin_url = "https://www.linkedin.com/company/lf-decentralized-trust/"
+
+[[handle]]
+name = "Pagoda"
+linkedin = "@pagoda"
+linkedin_url = "https://www.linkedin.com/company/pagoda/"
+
+[[handle]]
+name = "Push Chain"
+linkedin = "@push-chain"
+linkedin_url = "https://www.linkedin.com/company/push-chain/"
+
+[[handle]]
+name = "SettleMint"
+linkedin = "@settlemint"
+linkedin_url = "https://www.linkedin.com/company/settlemint/"
+
+[[handle]]
+name = "Etherplay"
+linkedin = "@etherplay"
+linkedin_url = "https://www.linkedin.com/company/etherplay/"
+
+[[handle]]
+name = "LUKSO"
+linkedin = "@lukso"
+linkedin_url = "https://www.linkedin.com/company/lukso/"
+
+[[handle]]
+name = "Blockchains, Inc."
+linkedin = "@blockchains-inc"
+linkedin_url = "https://www.linkedin.com/company/blockchains-inc/"
+
+[[handle]]
+name = "(Former) slock.it GmbH"
+linkedin = "@former-slock-it-gmbh"
+linkedin_url = "https://www.linkedin.com/company/former-slock-it-gmbh/"
+
+[[handle]]
+name = "Stochastic Technologies"
+linkedin = "@stochastic-technologies"
+linkedin_url = "https://www.linkedin.com/company/stochastic-technologies/"
+
+[[handle]]
+name = "Swarm"
+linkedin = "@swarm"
+linkedin_url = "https://www.linkedin.com/company/swarm/"
+
+[[handle]]
+name = "WalletConnect Labs"
+linkedin = "@walletconnect-labs"
+linkedin_url = "https://www.linkedin.com/company/walletconnect-labs/"
+
+[[handle]]
+name = "WalletConnect Association"
+linkedin = "@walletconnect-association"
+linkedin_url = "https://www.linkedin.com/company/walletconnect-association/"
+
+[[handle]]
+name = "WalletConnect"
+linkedin = "@walletconnect"
+linkedin_url = "https://www.linkedin.com/company/walletconnect/"
+
+[[handle]]
+name = "ChainSafe Systems"
+linkedin = "@chainsafe-systems"
+linkedin_url = "https://www.linkedin.com/company/chainsafe-systems/"
+
+[[handle]]
+name = "Fourstroke"
+linkedin = "@fourstroke"
+linkedin_url = "https://www.linkedin.com/company/fourstroke/"
+
+[[handle]]
+name = "Transak"
+linkedin = "@transak"
+linkedin_url = "https://www.linkedin.com/company/transak/"
+
+[[handle]]
+name = "Wyre"
+linkedin = "@wyre"
+linkedin_url = "https://www.linkedin.com/company/wyre/"
+
+[[handle]]
+name = "CoinDeal Global"
+linkedin = "@coindeal-global"
+linkedin_url = "https://www.linkedin.com/company/coindeal-global/"
+
+[[handle]]
+name = "Coinmerce"
+linkedin = "@coinmerce"
+linkedin_url = "https://www.linkedin.com/company/coinmerce/"
+
+[[handle]]
+name = "NEAR Protocol"
+linkedin = "@near-protocol"
+linkedin_url = "https://www.linkedin.com/company/near-protocol/"
+
+[[handle]]
+name = "BitCanna"
+linkedin = "@bitcanna"
+linkedin_url = "https://www.linkedin.com/company/bitcanna/"
+
+[[handle]]
+name = "Catalog"
+linkedin = "@catalog"
+linkedin_url = "https://www.linkedin.com/company/catalog/"
+
+[[handle]]
+name = "Blockchain Council"
+linkedin = "@blockchain-council"
+linkedin_url = "https://www.linkedin.com/company/blockchain-council/"
+
+[[handle]]
+name = "Blockchain Certification Association"
+linkedin = "@blockchain-certification-association"
+linkedin_url = "https://www.linkedin.com/company/blockchain-certification-association/"
+
+[[handle]]
+name = "ftx"
+linkedin = "@ftx"
+linkedin_url = "https://www.linkedin.com/company/ftx/"
+
+[[handle]]
+name = "Envy Labs"
+linkedin = "@envy-labs"
+linkedin_url = "https://www.linkedin.com/company/envy-labs/"
+
+[[handle]]
+name = "CODEPOP"
+linkedin = "@codepop"
+linkedin_url = "https://www.linkedin.com/company/codepop/"
+
+[[handle]]
+name = "Vue Mastery"
+linkedin = "@vue-mastery"
+linkedin_url = "https://www.linkedin.com/company/vue-mastery/"
+
+[[handle]]
+name = "Musixmatch"
+linkedin = "@musixmatch"
+linkedin_url = "https://www.linkedin.com/company/musixmatch/"
+
+[[handle]]
+name = "KuCoin Exchange"
+linkedin = "@kucoin-exchange"
+linkedin_url = "https://www.linkedin.com/company/kucoin-exchange/"
+
+[[handle]]
+name = "Simulationpret"
+linkedin = "@simulationpret"
+linkedin_url = "https://www.linkedin.com/company/simulationpret/"
+
+[[handle]]
+name = "The Block"
+linkedin = "@the-block"
+linkedin_url = "https://www.linkedin.com/company/the-block/"
+
+[[handle]]
+name = "Neon Labs"
+linkedin = "@neon-labs"
+linkedin_url = "https://www.linkedin.com/company/neon-labs/"
+
+[[handle]]
+name = "VRChat Inc."
+linkedin = "@vrchat-inc"
+linkedin_url = "https://www.linkedin.com/company/vrchat-inc/"
+
+[[handle]]
+name = "Parity Technologies"
+linkedin = "@parity-technologies"
+linkedin_url = "https://www.linkedin.com/company/parity-technologies/"
+
+[[handle]]
+name = "Endlesss"
+linkedin = "@endlesss"
+linkedin_url = "https://www.linkedin.com/company/endlesss/"
+
+[[handle]]
+name = "Djooky/Melodex"
+linkedin = "@djooky-melodex"
+linkedin_url = "https://www.linkedin.com/company/djooky-melodex/"
+
+[[handle]]
+name = "Superlogic"
+linkedin = "@superlogic"
+linkedin_url = "https://www.linkedin.com/company/superlogic/"
+
+[[handle]]
+name = "soundxyz"
+linkedin = "@soundxyz"
+linkedin_url = "https://www.linkedin.com/company/soundxyz/"
+
+[[handle]]
+name = "Āto"
+linkedin = "@ato"
+linkedin_url = "https://www.linkedin.com/company/ato/"
+
+[[handle]]
+name = "Uphold"
+linkedin = "@uphold"
+linkedin_url = "https://www.linkedin.com/company/uphold/"
+
+[[handle]]
+name = "Black Dog Music Partners"
+linkedin = "@black-dog-music-partners"
+linkedin_url = "https://www.linkedin.com/company/black-dog-music-partners/"
+
+[[handle]]
+name = "Captain Trading S.L"
+linkedin = "@captain-trading-s-l"
+linkedin_url = "https://www.linkedin.com/company/captain-trading-s-l/"
+
+[[handle]]
+name = "Kinow - Alpha Networks Group"
+linkedin = "@kinow-alpha-networks-group"
+linkedin_url = "https://www.linkedin.com/company/kinow-alpha-networks-group/"
+
+[[handle]]
+name = "Royal.io"
+linkedin = "@royal-io"
+linkedin_url = "https://www.linkedin.com/company/royal-io/"
+
+[[handle]]
+name = "Filebase"
+linkedin = "@filebase"
+linkedin_url = "https://www.linkedin.com/company/filebase/"
+
+[[handle]]
+name = "Nash"
+linkedin = "@nash"
+linkedin_url = "https://www.linkedin.com/company/nash/"
+
+[[handle]]
+name = "StarkWare"
+linkedin = "@starkware"
+linkedin_url = "https://www.linkedin.com/company/starkware/"
+
+[[handle]]
+name = "Aimi"
+linkedin = "@aimi"
+linkedin_url = "https://www.linkedin.com/company/aimi/"
+
+[[handle]]
+name = "Band Protocol"
+linkedin = "@band-protocol"
+linkedin_url = "https://www.linkedin.com/company/band-protocol/"
+
+[[handle]]
+name = "ROCKI"
+linkedin = "@rocki"
+linkedin_url = "https://www.linkedin.com/company/rocki/"
+
+[[handle]]
+name = "Mint Songs (acquired by Napster)"
+linkedin = "@mint-songs-acquired-by-napster"
+linkedin_url = "https://www.linkedin.com/company/mint-songs-acquired-by-napster/"
+
+[[handle]]
+name = "Chromia"
+linkedin = "@chromia"
+linkedin_url = "https://www.linkedin.com/company/chromia/"
+
+[[handle]]
+name = "ChromaWay"
+linkedin = "@chromaway"
+linkedin_url = "https://www.linkedin.com/company/chromaway/"
+
+[[handle]]
+name = "Consensys Mesh"
+linkedin = "@consensys-mesh"
+linkedin_url = "https://www.linkedin.com/company/consensys-mesh/"
+
+[[handle]]
+name = "MODA DAO"
+linkedin = "@moda-dao"
+linkedin_url = "https://www.linkedin.com/company/moda-dao/"
+
+[[handle]]
+name = "RAREZ"
+linkedin = "@rarez"
+linkedin_url = "https://www.linkedin.com/company/rarez/"
+
+[[handle]]
+name = "Consensys Academy"
+linkedin = "@consensys-academy"
+linkedin_url = "https://www.linkedin.com/company/consensys-academy/"
+
+[[handle]]
+name = "Open Music Initiative"
+linkedin = "@open-music-initiative"
+linkedin_url = "https://www.linkedin.com/company/open-music-initiative/"
+
+[[handle]]
+name = "Viberate"
+linkedin = "@viberate"
+linkedin_url = "https://www.linkedin.com/company/viberate/"
+
+[[handle]]
+name = "Mediachain Labs"
+linkedin = "@mediachain-labs"
+linkedin_url = "https://www.linkedin.com/company/mediachain-labs/"
+
+[[handle]]
+name = "Emanate"
+linkedin = "@emanate"
+linkedin_url = "https://www.linkedin.com/company/emanate/"
+
+[[handle]]
+name = "KepingAi"
+linkedin = "@kepingai"
+linkedin_url = "https://www.linkedin.com/company/kepingai/"
+
+[[handle]]
+name = "Pussy Financial"
+linkedin = "@pussy-financial"
+linkedin_url = "https://www.linkedin.com/company/pussy-financial/"
+
+[[handle]]
+name = "ANote Music"
+linkedin = "@anote-music"
+linkedin_url = "https://www.linkedin.com/company/anote-music/"
+
+[[handle]]
+name = "Blockchain Music Industry"
+linkedin = "@blockchain-music-industry"
+linkedin_url = "https://www.linkedin.com/company/blockchain-music-industry/"
+
+[[handle]]
+name = "French Digital Reserve"
+linkedin = "@french-digital-reserve"
+linkedin_url = "https://www.linkedin.com/company/french-digital-reserve/"
+
+[[handle]]
+name = "BitSong"
+linkedin = "@bitsong"
+linkedin_url = "https://www.linkedin.com/company/bitsong/"
+
+[[handle]]
+name = "Musicoin Foundation"
+linkedin = "@musicoin-foundation"
+linkedin_url = "https://www.linkedin.com/company/musicoin-foundation/"
+
+[[handle]]
+name = "DSound - Decentralized Sound Platform"
+linkedin = "@dsound-decentralized-sound-platform"
+linkedin_url = "https://www.linkedin.com/company/dsound-decentralized-sound-platform/"
+
+[[handle]]
+name = "Ujo"
+linkedin = "@ujo"
+linkedin_url = "https://www.linkedin.com/company/ujo/"
+
+[[handle]]
+name = "Loud Market"
+linkedin = "@loud-market"
+linkedin_url = "https://www.linkedin.com/company/loud-market/"
+
+[[handle]]
+name = "Nexera"
+linkedin = "@nexera"
+linkedin_url = "https://www.linkedin.com/company/nexera/"
+
+[[handle]]
+name = "DSLA"
+linkedin = "@dsla"
+linkedin_url = "https://www.linkedin.com/company/dsla/"
+
+[[handle]]
+name = "Darkblock"
+linkedin = "@darkblock"
+linkedin_url = "https://www.linkedin.com/company/darkblock/"
+
+[[handle]]
+name = "Experia View"
+linkedin = "@experia-view"
+linkedin_url = "https://www.linkedin.com/company/experia-view/"
+
+[[handle]]
+name = "The NFT Labs"
+linkedin = "@the-nft-labs"
+linkedin_url = "https://www.linkedin.com/company/the-nft-labs/"
+
+[[handle]]
+name = "Boson"
+linkedin = "@boson"
+linkedin_url = "https://www.linkedin.com/company/boson/"
+
+[[handle]]
+name = "Curio NFT"
+linkedin = "@curio-nft"
+linkedin_url = "https://www.linkedin.com/company/curio-nft/"
+
+[[handle]]
+name = "The Sandbox"
+linkedin = "@the-sandbox"
+linkedin_url = "https://www.linkedin.com/company/the-sandbox/"
+
+[[handle]]
+name = "Reddit, Inc."
+linkedin = "@reddit-inc"
+linkedin_url = "https://www.linkedin.com/company/reddit-inc/"
+
+[[handle]]
+name = "NFTfi"
+linkedin = "@nftfi"
+linkedin_url = "https://www.linkedin.com/company/nftfi/"
+
+[[handle]]
+name = "Storj"
+linkedin = "@storj"
+linkedin_url = "https://www.linkedin.com/company/storj/"
+
+[[handle]]
+name = "b00st.com"
+linkedin = "@b00st-com"
+linkedin_url = "https://www.linkedin.com/company/b00st-com/"
+
+[[handle]]
+name = "RAR3LABS"
+linkedin = "@rar3labs"
+linkedin_url = "https://www.linkedin.com/company/rar3labs/"
+
+[[handle]]
+name = "NFTY Token"
+linkedin = "@nfty-token"
+linkedin_url = "https://www.linkedin.com/company/nfty-token/"
+
+[[handle]]
+name = "CafeCosmos"
+linkedin = "@cafecosmos"
+linkedin_url = "https://www.linkedin.com/company/cafecosmos/"
+
+[[handle]]
+name = "Frame 24"
+linkedin = "@frame-24"
+linkedin_url = "https://www.linkedin.com/company/frame-24/"
+
+[[handle]]
+name = "Mintable"
+linkedin = "@mintable"
+linkedin_url = "https://www.linkedin.com/company/mintable/"
+
+[[handle]]
+name = "Blockchain Recruiters"
+linkedin = "@blockchain-recruiters"
+linkedin_url = "https://www.linkedin.com/company/blockchain-recruiters/"
+
+[[handle]]
+name = "CollectorsMint"
+linkedin = "@collectorsmint"
+linkedin_url = "https://www.linkedin.com/company/collectorsmint/"
+
+[[handle]]
+name = "Metaplex Studios"
+linkedin = "@metaplex-studios"
+linkedin_url = "https://www.linkedin.com/company/metaplex-studios/"
+
+[[handle]]
+name = "Encode Club"
+linkedin = "@encode-club"
+linkedin_url = "https://www.linkedin.com/company/encode-club/"
+
+[[handle]]
+name = "Ristband"
+linkedin = "@ristband"
+linkedin_url = "https://www.linkedin.com/company/ristband/"
+
+[[handle]]
+name = "OP Labs PBC"
+linkedin = "@op-labs-pbc"
+linkedin_url = "https://www.linkedin.com/company/op-labs-pbc/"
+
+[[handle]]
+name = "Metaverse Labs"
+linkedin = "@metaverse-labs"
+linkedin_url = "https://www.linkedin.com/company/metaverse-labs/"
+
+[[handle]]
+name = "Theta Network"
+linkedin = "@theta-network"
+linkedin_url = "https://www.linkedin.com/company/theta-network/"
+
+[[handle]]
+name = "Estuary"
+linkedin = "@estuary"
+linkedin_url = "https://www.linkedin.com/company/estuary/"
+
+[[handle]]
+name = "Uniswap"
+linkedin = "@uniswap"
+linkedin_url = "https://www.linkedin.com/company/uniswap/"
+
+[[handle]]
+name = "OpenZeppelin"
+linkedin = "@openzeppelin"
+linkedin_url = "https://www.linkedin.com/company/openzeppelin/"
+
+[[handle]]
+name = "Cartesi"
+linkedin = "@cartesi"
+linkedin_url = "https://www.linkedin.com/company/cartesi/"
+
+[[handle]]
+name = "ARK Ecosystem"
+linkedin = "@ark-ecosystem"
+linkedin_url = "https://www.linkedin.com/company/ark-ecosystem/"
+
+[[handle]]
+name = "NonFungible.com"
+linkedin = "@nonfungible-com"
+linkedin_url = "https://www.linkedin.com/company/nonfungible-com/"
+
+[[handle]]
+name = "FUGA"
+linkedin = "@fuga"
+linkedin_url = "https://www.linkedin.com/company/fuga/"
+
+[[handle]]
+name = "Songspace"
+linkedin = "@songspace"
+linkedin_url = "https://www.linkedin.com/company/songspace/"
+
+[[handle]]
+name = "Multis"
+linkedin = "@multis"
+linkedin_url = "https://www.linkedin.com/company/multis/"
+
+[[handle]]
+name = "EZ Staking"
+linkedin = "@ez-staking"
+linkedin_url = "https://www.linkedin.com/company/ez-staking/"
+
+[[handle]]
+name = "Plexus Resource Solutions"
+linkedin = "@plexus-resource-solutions"
+linkedin_url = "https://www.linkedin.com/company/plexus-resource-solutions/"
+
+[[handle]]
+name = "Distributed Lab🇺🇦"
+linkedin = "@distributed-lab"
+linkedin_url = "https://www.linkedin.com/company/distributed-lab/"
+
+[[handle]]
+name = "QuantFlow"
+linkedin = "@quantflow"
+linkedin_url = "https://www.linkedin.com/company/quantflow/"
+
+[[handle]]
+name = "Dutch Blockchain Coalition"
+linkedin = "@dutch-blockchain-coalition"
+linkedin_url = "https://www.linkedin.com/company/dutch-blockchain-coalition/"
+
+[[handle]]
+name = "Martian Network"
+linkedin = "@martian-network"
+linkedin_url = "https://www.linkedin.com/company/martian-network/"
+
+[[handle]]
+name = "Masterpiece"
+linkedin = "@masterpiece"
+linkedin_url = "https://www.linkedin.com/company/masterpiece/"
+
+[[handle]]
+name = "EGSY"
+linkedin = "@egsy"
+linkedin_url = "https://www.linkedin.com/company/egsy/"
+
+[[handle]]
+name = "Edge & Node"
+linkedin = "@edge-and-node"
+linkedin_url = "https://www.linkedin.com/company/edge-and-node/"
+
+[[handle]]
+name = "Collectible"
+linkedin = "@collectible"
+linkedin_url = "https://www.linkedin.com/company/collectible/"
+
+[[handle]]
+name = "Chainlink Labs"
+linkedin = "@chainlink-labs"
+linkedin_url = "https://www.linkedin.com/company/chainlink-labs/"
+
+[[handle]]
+name = "Turn Block Talent"
+linkedin = "@turn-block-talent"
+linkedin_url = "https://www.linkedin.com/company/turn-block-talent/"
+
+[[handle]]
+name = "SEDA"
+linkedin = "@seda"
+linkedin_url = "https://www.linkedin.com/company/seda/"
+
+[[handle]]
+name = "FoundersBoost BENELUX-DACH"
+linkedin = "@foundersboost-benelux-dach"
+linkedin_url = "https://www.linkedin.com/company/foundersboost-benelux-dach/"
+
+[[handle]]
+name = "Maven 11"
+linkedin = "@maven-11"
+linkedin_url = "https://www.linkedin.com/company/maven-11/"
+
+[[handle]]
+name = "CoinDesk"
+linkedin = "@coindesk"
+linkedin_url = "https://www.linkedin.com/company/coindesk/"
+
+[[handle]]
+name = "Decrypt"
+linkedin = "@decrypt"
+linkedin_url = "https://www.linkedin.com/company/decrypt/"
+
+[[handle]]
+name = "Dolphin Global Consultancy/DeXentra"
+linkedin = "@dolphin-global-consultancy-dexentra"
+linkedin_url = "https://www.linkedin.com/company/dolphin-global-consultancy-dexentra/"
+
+[[handle]]
+name = "Centaurify"
+linkedin = "@centaurify"
+linkedin_url = "https://www.linkedin.com/company/centaurify/"
+
+[[handle]]
+name = "INFRINITY"
+linkedin = "@infrinity"
+linkedin_url = "https://www.linkedin.com/company/infrinity/"
+
+[[handle]]
+name = "Digital Source"
+linkedin = "@digital-source"
+linkedin_url = "https://www.linkedin.com/company/digital-source/"
+
+[[handle]]
+name = "Sovryn"
+linkedin = "@sovryn"
+linkedin_url = "https://www.linkedin.com/company/sovryn/"
+
+[[handle]]
+name = "Gitcoin"
+linkedin = "@gitcoin"
+linkedin_url = "https://www.linkedin.com/company/gitcoin/"
+
+[[handle]]
+name = "Bitpanda"
+linkedin = "@bitpanda"
+linkedin_url = "https://www.linkedin.com/company/bitpanda/"
+
+[[handle]]
+name = "Ethereum Foundation"
+linkedin = "@ethereum-foundation"
+linkedin_url = "https://www.linkedin.com/company/ethereum-foundation/"
+

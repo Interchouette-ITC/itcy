@@ -341,12 +341,38 @@ Call browse_url on an on-topic publisher link before searching again."
         }
         let mut out = format!("lookup_handles result for \"{name}\":\n");
         for entry in matches {
+            let best_for_linkedin = if !entry.linkedin.is_empty() {
+                entry.linkedin.as_str()
+            } else if !entry.x.is_empty() {
+                entry.x.as_str()
+            } else {
+                ""
+            };
+            let best_for_x = if !entry.x.is_empty() {
+                entry.x.as_str()
+            } else if !entry.linkedin.is_empty() {
+                entry.linkedin.as_str()
+            } else {
+                ""
+            };
             let _ = writeln!(out, "- name: {}", entry.name);
             if !entry.linkedin.is_empty() {
                 let _ = writeln!(out, "  linkedin: {}", entry.linkedin);
             }
             if !entry.x.is_empty() {
                 let _ = writeln!(out, "  x: {}", entry.x);
+            }
+            if !entry.linkedin_url.is_empty() {
+                let _ = writeln!(out, "  linkedin_url: {}", entry.linkedin_url);
+            }
+            if !entry.x_url.is_empty() {
+                let _ = writeln!(out, "  x_url: {}", entry.x_url);
+            }
+            if !best_for_linkedin.is_empty() {
+                let _ = writeln!(out, "  best_for_linkedin: {best_for_linkedin}");
+            }
+            if !best_for_x.is_empty() {
+                let _ = writeln!(out, "  best_for_x: {best_for_x}");
             }
         }
         out
