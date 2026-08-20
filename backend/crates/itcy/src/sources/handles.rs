@@ -24,6 +24,12 @@ pub struct HandleEntry {
     /// X / Twitter handle (e.g. `@Interchouette`). Optional.
     #[serde(default)]
     pub x: String,
+    /// Canonical `LinkedIn` URL for this entry (clickable in `handles.toml`).
+    #[serde(default)]
+    pub linkedin_url: String,
+    /// Canonical X URL for this entry (clickable in `handles.toml`).
+    #[serde(default)]
+    pub x_url: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -119,6 +125,8 @@ pub fn load_handles_from(path: &Path) -> Result<HandlesIndex, HandlesError> {
             name: e.name.trim().to_string(),
             linkedin: e.linkedin.trim().to_string(),
             x: e.x.trim().to_string(),
+            linkedin_url: e.linkedin_url.trim().to_string(),
+            x_url: e.x_url.trim().to_string(),
         })
         .collect();
     Ok(HandlesIndex { entries })
@@ -145,6 +153,8 @@ mod tests {
                 name: "Rust Foundation".into(),
                 linkedin: "@rust-foundation".into(),
                 x: "@rustlang".into(),
+                linkedin_url: "https://www.linkedin.com/company/rust-foundation/".into(),
+                x_url: "https://x.com/rustlang".into(),
             }],
         };
         assert!(!idx.search("rust").is_empty());
