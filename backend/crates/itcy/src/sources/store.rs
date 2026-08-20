@@ -441,8 +441,10 @@ impl SourceDb {
                     return Err(rusqlite::Error::InvalidQuery);
                 }
                 let embedding: Vec<f32> = blob
-                    .chunks_exact(4)
-                    .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|c| f32::from_le_bytes(*c))
                     .collect();
                 Ok(ChunkRecord {
                     id: row.get(0)?,

@@ -125,7 +125,7 @@ impl SlackRuntime {
             return;
         }
         // Skip empty placeholder dirs (only README).
-        let has_data = std::fs::read_dir(&path).ok().is_some_and(|rd| {
+        let has_data = std::fs::read_dir(&path).is_ok_and(|rd| {
             rd.filter_map(Result::ok).any(|e| {
                 let path = e.path();
                 path.extension().is_some_and(|x| {
