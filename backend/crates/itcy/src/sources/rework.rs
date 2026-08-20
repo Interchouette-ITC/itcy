@@ -100,10 +100,9 @@ pub async fn rework_stored_draft(
     let prose = crate::llm::sanitize_itcy_text(
         &crate::sources::draft_footer::draft_prose_for_rework(&stored.body),
     );
-    crate::sources::handles::ensure_pack_linkedin_brand_handle(
-        &mut pack,
-        &format!("{}\n{instructions}\n{prose}", stored.subject),
-    );
+    let handles = crate::sources::handles::load_handles().unwrap_or_default();
+    let brief_for_handles = format!("{}\n{instructions}\n{prose}", stored.subject);
+    crate::sources::handles::apply_brief_handles_to_pack(&mut pack, &brief_for_handles, &handles);
     let user = draft_rework_user_message(
         instructions,
         &stored.draft_id,
@@ -141,6 +140,7 @@ pub async fn rework_stored_draft(
     }
     body = strip_leading_draft_id(&body);
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
+    body = crate::sources::handles::ensure_linkedin_handle_from_pack(&body, &pack, &handles);
     let body = compose_draft_message(&body, &stored.draft_id, &link_options);
     let body = with_disclosure(&body, &trace);
     info!(
@@ -158,7 +158,7 @@ pub async fn rework_stored_draft(
         tokens_out: trace.completion_tokens,
         sources: pack_urls,
         link_options,
-        research_pack: stored.research_pack.clone(),
+        research_pack: pack,
     })
 }
 
@@ -283,15 +283,21 @@ pub async fn rework_stored_tweet(
     }
     let instructions = sanitize_rework_instructions(instructions);
     let instructions = instructions.as_str();
-    let pack = if stored.research_pack.trim().is_empty() {
+    let mut pack = if stored.research_pack.trim().is_empty() {
         rework_empty_pack(&stored.subject)
     } else {
         stored.research_pack.clone()
     };
+    let handles = crate::sources::handles::load_handles().unwrap_or_default();
+    crate::sources::handles::apply_brief_handles_to_pack(
+        &mut pack,
+        &format!("{}\n{instructions}", stored.subject),
+        &handles,
+    );
     let current = stored.link_options.first().cloned().unwrap_or_else(|| {
         crate::sources::draft_url::extract_in_post_url(&stored.body).unwrap_or_default()
     });
-    let farce = stored_is_farce(&stored.research_pack, &stored.body);
+    let farce = stored_is_farce(&pack, &stored.body);
     info!(
         tweet_id = %stored.draft_id,
         instructions = %instructions,
@@ -320,6 +326,7 @@ pub async fn rework_stored_tweet(
     if farce {
         body = ensure_farce_mentions(&body);
     }
+    body = crate::sources::handles::ensure_x_handle_from_pack(&body, &pack, &handles);
     let pack_urls = stored.sources.clone();
     let mut link_options = if stored.link_options.is_empty() {
         pick_tweet_cite_options(&pack_urls, &body)
@@ -360,7 +367,7 @@ pub async fn rework_stored_tweet(
         tokens_out: trace.completion_tokens,
         sources: pack_urls,
         link_options,
-        research_pack: stored.research_pack.clone(),
+        research_pack: pack,
     })
 }
 

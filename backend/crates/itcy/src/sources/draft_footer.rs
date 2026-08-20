@@ -164,7 +164,9 @@ pub fn slack_paste_safe_linkedin_message(composed: &str) -> String {
     if prose.is_empty() || prose.starts_with("```") {
         return composed.to_string();
     }
-    let fenced = fence_slack_plaintext(prose);
+    // On-the-fly: old stored drafts may still have spaced-hyphen pauses.
+    let prose = crate::llm::sanitize_itcy_text(prose);
+    let fenced = fence_slack_plaintext(&prose);
     if footer.is_empty() {
         format!("{header}\n\n{fenced}")
     } else {

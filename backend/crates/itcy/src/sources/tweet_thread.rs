@@ -99,26 +99,36 @@ struct Peeled {
 }
 
 fn peel_trailer(text: &str) -> Peeled {
-    let mut lines: Vec<&str> = text.lines().collect();
+    let mut lines: Vec<String> = text.lines().map(std::string::ToString::to_string).collect();
     while lines.last().is_some_and(|l| l.trim().is_empty()) {
         lines.pop();
     }
     let mut url = None;
     let mut tag_lines: Vec<String> = Vec::new();
     while let Some(raw) = lines.last() {
-        let t = raw.trim();
+        let t = raw.trim().to_string();
         if t.is_empty() {
             lines.pop();
             continue;
         }
-        if url.is_none() && is_publisher_cite_line(t) {
-            url = Some(t.to_string());
+        if url.is_none() && is_publisher_cite_line(&t) {
+            url = Some(t);
             lines.pop();
             continue;
         }
-        if is_hashtag_line(t) {
-            tag_lines.push(t.to_string());
+        if is_hashtag_line(&t) {
+            tag_lines.push(t);
             lines.pop();
+            continue;
+        }
+        // Writer often glues tags onto the last prose line. Peel them so overflow
+        // still becomes root + reply (tags on tweet 2) instead of one over-long root.
+        if let Some((prose, tags)) = peel_trailing_hashtags(&t) {
+            lines.pop();
+            if !prose.is_empty() {
+                lines.push(prose);
+            }
+            tag_lines.push(tags);
             continue;
         }
         break;
@@ -136,6 +146,32 @@ fn peel_trailer(text: &str) -> Peeled {
     Peeled { head, trailer }
 }
 
+/// If `line` ends with one or more `#tags` after prose, split them off.
+fn peel_trailing_hashtags(line: &str) -> Option<(String, String)> {
+    let tokens: Vec<&str> = line.split_whitespace().collect();
+    if tokens.len() < 2 {
+        return None;
+    }
+    let mut tag_start = tokens.len();
+    while tag_start > 0 && is_hashtag_token(tokens[tag_start - 1]) {
+        tag_start -= 1;
+    }
+    if tag_start == 0 || tag_start == tokens.len() {
+        return None;
+    }
+    let prose = tokens[..tag_start].join(" ");
+    let tags = tokens[tag_start..].join(" ");
+    Some((prose, tags))
+}
+
+fn is_hashtag_token(tok: &str) -> bool {
+    tok.starts_with('#')
+        && tok.len() >= 2
+        && tok[1..]
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 fn is_publisher_cite_line(t: &str) -> bool {
     // Publisher page or X status: one bare https line; X still renders as a quote card.
     t.starts_with("https://") && is_allowed_tweet_cite(t)
@@ -144,13 +180,7 @@ fn is_publisher_cite_line(t: &str) -> bool {
 fn is_hashtag_line(t: &str) -> bool {
     let mut any = false;
     for tok in t.split_whitespace() {
-        if !tok.starts_with('#') || tok.len() < 2 {
-            return false;
-        }
-        if !tok[1..]
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_')
-        {
+        if !is_hashtag_token(tok) {
             return false;
         }
         any = true;
@@ -410,6 +440,24 @@ The future of AI tools is still in flux.
 #AI #GitHub #ModelRetirement
 
 https://blog.dante.company/en/articles/github-models-retirement-migration-2026-07-02";
+
+    #[test]
+    fn inline_trailing_hashtags_peel_for_split() {
+        // Same shape as TWEET-20260820-000046 after cite URL strip: tags glued on prose.
+        let text = "\
+📜 @github’s 2026 outage crisis is real, 257 incidents, 48 major outages, and a 50% repo download error rate. 🚀 The root? Autoscaling fails + VS Code retry storms. 🦀 But they’re not just fixing it, they’re shipping fixes and new features like stacked PRs. #CloudOps #DevTools #GitHub #OutageFixes";
+        assert!(
+            !fits_x_limit(text),
+            "fixture must overflow before peel: {}",
+            x_weighted_len(text)
+        );
+        let parts = layout_x_thread(text);
+        assert_eq!(parts.len(), 2, "{parts:?}");
+        assert!(fits_x_limit(&parts[0]), "{}", x_weighted_len(&parts[0]));
+        assert!(fits_x_limit(&parts[1]), "{}", x_weighted_len(&parts[1]));
+        assert!(!parts[0].contains('#'), "root: {}", parts[0]);
+        assert!(parts[1].contains("#CloudOps"), "reply: {}", parts[1]);
+    }
 
     #[test]
     fn sample_splits_commentary_then_tags_and_url() {

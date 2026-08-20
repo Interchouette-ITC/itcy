@@ -56,11 +56,12 @@ pub async fn build_grounded_tweet(
     let prefer = extract_brief_cite(subject);
     let subject_https = prefer.is_some();
 
-    let (research_pack, pack_urls, load_trace) = if let Some(url) = prefer.as_deref() {
+    let (mut research_pack, pack_urls, load_trace) = if let Some(url) = prefer.as_deref() {
         run_short_cite_load(subject, url, tools).await?
     } else {
         run_load_phase(router, subject, tools, tools_dyn, session_dir.as_ref()).await?
     };
+    crate::sources::rag::apply_pack_handles(tools, subject, &mut research_pack);
 
     checkpoint_building_pack(db_path, tools, subject, &research_pack, &pack_urls).await;
 
@@ -104,6 +105,7 @@ pub async fn build_grounded_tweet(
         load_trace.model_label(),
         tweet_trace.model_label()
     );
+    let tweet_body = ensure_tweet_handles_from_pack(tools, &tweet_body, &research_pack);
     let (body, link_options) =
         attach_tweet_cites(&tweet_body, &pack_urls, &tweet_id, prefer.as_deref());
     info!(
@@ -147,7 +149,9 @@ pub async fn build_grounded_tweet_from_pack(
 ) -> Result<GroundedDraft, RagError> {
     let session_dir = begin_load_session_dir(tools, db_path, subject).await;
     let urls: Vec<String> = pack_urls.to_vec();
-    checkpoint_building_pack(db_path, tools, subject, research_pack, &urls).await;
+    let mut research_pack = research_pack.to_string();
+    crate::sources::rag::apply_pack_handles(tools, subject, &mut research_pack);
+    checkpoint_building_pack(db_path, tools, subject, &research_pack, &urls).await;
     let prefer = extract_brief_cite(subject);
     let subject_https = prefer.is_some();
     if let Some(t) = tools {
@@ -160,7 +164,7 @@ pub async fn build_grounded_tweet_from_pack(
     let (tweet_body, tweet_trace) = run_tweet_phase(
         router,
         subject,
-        research_pack,
+        &research_pack,
         &urls,
         subject_https,
         session_dir.as_ref(),
@@ -177,6 +181,7 @@ pub async fn build_grounded_tweet_from_pack(
         ),
     )
     .await;
+    let tweet_body = ensure_tweet_handles_from_pack(tools, &tweet_body, &research_pack);
     let (body, link_options) = attach_tweet_cites(&tweet_body, &urls, &tweet_id, prefer.as_deref());
     Ok(GroundedDraft {
         subject: subject.to_string(),
@@ -191,7 +196,7 @@ pub async fn build_grounded_tweet_from_pack(
             urls
         },
         link_options,
-        research_pack: research_pack.to_string(),
+        research_pack,
     })
 }
 
@@ -298,6 +303,15 @@ pub(crate) fn scrub_tweet_body(raw: &str) -> String {
     let raw = crate::llm::sanitize_itcy_text(raw);
     let raw = crate::sources::draft_url::strip_sources_section(&raw);
     crate::sources::tweet_footer::strip_own_x_handle(&raw)
+}
+
+fn ensure_tweet_handles_from_pack(tools: Option<&ItcyTools>, body: &str, pack: &str) -> String {
+    if let Some(t) = tools {
+        let idx = t.handles_index();
+        return crate::sources::handles::ensure_x_handle_from_pack(body, pack, &idx);
+    }
+    let owned = crate::sources::handles::load_handles().unwrap_or_default();
+    crate::sources::handles::ensure_x_handle_from_pack(body, pack, &owned)
 }
 
 #[cfg(test)]

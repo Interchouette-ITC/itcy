@@ -24,7 +24,7 @@ use crate::sources::handles::HandlesIndex;
 use async_trait::async_trait;
 use std::fmt::Write as _;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
@@ -32,7 +32,7 @@ use tracing::{info, warn};
 pub struct ItcyTools {
     state_db: PathBuf,
     corpus: CorpusSearch,
-    handles: HandlesIndex,
+    handles: Arc<RwLock<HandlesIndex>>,
     playwright: Mutex<Option<Arc<PlaywrightMcp>>>,
     playwright_cmd: PathBuf,
     session: Mutex<Option<ResearchSession>>,
@@ -46,12 +46,40 @@ impl ItcyTools {
         Self {
             state_db: db_path.clone(),
             corpus: CorpusSearch::new(db_path, embed),
-            handles,
+            handles: Arc::new(RwLock::new(handles)),
             playwright: Mutex::new(None),
             playwright_cmd,
             session: Mutex::new(None),
             policy: Mutex::new(ToolPolicy::default()),
         }
+    }
+
+    /// Snapshot of the in-memory handle registry (loaded at boot; updated by `/handle_add`).
+    #[must_use]
+    pub fn handles_index(&self) -> HandlesIndex {
+        self.handles
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Parse + append `handles.toml` + hot-reload memory (no process restart).
+    ///
+    /// # Errors
+    ///
+    /// Returns an operator-facing message on parse / path / IO failure.
+    pub fn handle_add(
+        &self,
+        raw: &str,
+    ) -> Result<crate::sources::handles::HandleAddOutcome, String> {
+        let path = crate::sources::handles::resolve_handles_path().ok_or_else(|| {
+            "handles.toml not found (expected under backend/handles.toml)".to_string()
+        })?;
+        let mut guard = self
+            .handles
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::sources::handles::apply_handle_add(&mut guard, &path, raw)
     }
 
     /// Start one folder for the whole load→draft research run under `pw/screenshots/<draft_id>/`.
@@ -335,7 +363,8 @@ Call browse_url on an on-topic publisher link before searching again."
         let Some(name) = parse_name_arg(arguments) else {
             return "lookup_handles requires {\"name\": \"...\"}".to_string();
         };
-        let matches = self.handles.search(&name);
+        let index = self.handles_index();
+        let matches = index.search(&name);
         if matches.is_empty() {
             return format!("No handles found for \"{name}\" in registry.");
         }

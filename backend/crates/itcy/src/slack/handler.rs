@@ -462,6 +462,7 @@ impl SlackRuntime {
             OperatorCommand::AcceptCommentReply { url } => Self::accept_comment_reply_reply(&url),
             OperatorCommand::Enrich { url } => self.enrich_reply(&url).await,
             OperatorCommand::Ingest { url } => self.ingest_reply(&url).await,
+            OperatorCommand::HandleAdd { raw } => self.handle_add_reply(&raw),
             OperatorCommand::TweetAbout {
                 subject,
                 instructions,
@@ -593,6 +594,13 @@ Comment-reply rework is not implemented."
                 report.slack_message()
             }
             Err(e) => format!("`/ingest` failed for `{url}`: {e}"),
+        }
+    }
+
+    fn handle_add_reply(&self, raw: &str) -> String {
+        match self.tools.handle_add(raw) {
+            Ok(outcome) => crate::sources::handles::format_handle_add_reply(&outcome),
+            Err(e) => format!("`/handle_add` failed: {e}"),
         }
     }
 

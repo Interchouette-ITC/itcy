@@ -93,6 +93,10 @@ pub enum OperatorCommand {
     Delete {
         ids: Vec<String>,
     },
+    /// Append a person/company to `handles.toml` and hot-reload the registry.
+    HandleAdd {
+        raw: String,
+    },
 }
 
 /// Outcome of a slash command (immediate ack + final reply).
@@ -129,6 +133,7 @@ pub const fn slash_command_name(cmd: &OperatorCommand) -> &'static str {
         OperatorCommand::List => "/list",
         OperatorCommand::Show { .. } => "/show",
         OperatorCommand::Delete { .. } => "/delete",
+        OperatorCommand::HandleAdd { .. } => "/handle_add",
     }
 }
 
@@ -161,6 +166,7 @@ pub const KNOWN_SLASH_COMMANDS: &[&str] = &[
     "accept_comment_reply",
     "enrich",
     "ingest",
+    "handle_add",
 ];
 
 /// True when `name` is in [`KNOWN_SLASH_COMMANDS`] (leading `/` ignored).
@@ -261,6 +267,10 @@ pub fn command_ack_text(cmd: &OperatorCommand) -> String {
         }
         OperatorCommand::Enrich { url } => format!("Received `/enrich` `{url}`"),
         OperatorCommand::Ingest { url } => format!("Received `/ingest` `{url}`"),
+        OperatorCommand::HandleAdd { raw } => {
+            let preview = raw.chars().take(80).collect::<String>();
+            format!("Received `/handle_add` | {preview}")
+        }
         OperatorCommand::TweetAbout {
             subject,
             instructions,
@@ -522,6 +532,16 @@ pub fn parse_slash_command(command: &str, text: &str) -> Result<OperatorCommand,
             }
             Ok(OperatorCommand::Ingest {
                 url: crate::sources::url_hygiene::canonicalize_ingest_url(&url),
+            })
+        }
+        "handle_add" => {
+            if args.is_empty() {
+                return Err(
+                    "usage: /handle_add <name> <linkedin-or-x-url|@handle>…".into(),
+                );
+            }
+            Ok(OperatorCommand::HandleAdd {
+                raw: args.to_string(),
             })
         }
         "status" => Err(
@@ -941,6 +961,7 @@ pub const fn help_text() -> &'static str {
      • `/retry_bat <Draft-ID|Tweet-ID|XPOST-ID>` - re-ship after BAT (missed webhook or X/LinkedIn ship failed)\n\
      • `/enrich <url>` - enrich corpus with a personal LinkedIn post (Tor)\n\
      • `/ingest <url>` - ingest public article or LinkedIn Pulse (clearnet)\n\
+     • `/handle_add <name> <url|@handle>…` - append LinkedIn/X handles to the registry (hot reload)\n\
      • `/daily_digest` - 20 press + 20 For you + 20 Following + 20 tweet searches + 10 Interchouette (5 draft / 5 tweet) into `#daily-digest`\n\
      • `/propose_draft` - new draft from corpus (what we already know)\n\
      • `/propose_draft <DIGEST-…>, <1|1,3>` or `/propose_draft <N>` - new drafts from that digest's propositions\n\
@@ -1439,6 +1460,7 @@ mod tests {
         assert!(h.contains("/delete"));
         assert!(h.contains("/enrich"));
         assert!(h.contains("/ingest"));
+        assert!(h.contains("/handle_add"));
         assert!(!h.contains("/accept_tweet"));
         assert!(!h.contains("/list_tweets"));
         assert!(!h.contains("/rework_draft"));

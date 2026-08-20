@@ -7520,3 +7520,10 @@ name = "Ethereum Foundation"
 linkedin = "@ethereum-foundation"
 linkedin_url = "https://www.linkedin.com/company/ethereum-foundation/"
 
+
+[[handle]]
+name = "Niko Matsakis"
+linkedin = "@nicholas-matsakis-615614"
+x = "@nikomatsakis"
+linkedin_url = "https://www.linkedin.com/in/nicholas-matsakis-615614/"
+x_url = "https://x.com/nikomatsakis"

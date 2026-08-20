@@ -431,6 +431,26 @@ pub(crate) async fn resolve_session_draft_id(tools: Option<&ItcyTools>, db_path:
     allocate_draft_id_fallback(db_path)
 }
 
+/// Inject registry handles from the operator brief (name / URL / `@`), then brand if named.
+pub(crate) fn apply_pack_handles(tools: Option<&ItcyTools>, brief: &str, pack: &mut String) {
+    if let Some(t) = tools {
+        let idx = t.handles_index();
+        crate::sources::handles::apply_brief_handles_to_pack(pack, brief, &idx);
+        return;
+    }
+    let owned = crate::sources::handles::load_handles().unwrap_or_default();
+    crate::sources::handles::apply_brief_handles_to_pack(pack, brief, &owned);
+}
+
+fn ensure_body_handles_from_pack(tools: Option<&ItcyTools>, body: &str, pack: &str) -> String {
+    if let Some(t) = tools {
+        let idx = t.handles_index();
+        return crate::sources::handles::ensure_linkedin_handle_from_pack(body, pack, &idx);
+    }
+    let owned = crate::sources::handles::load_handles().unwrap_or_default();
+    crate::sources::handles::ensure_linkedin_handle_from_pack(body, pack, &owned)
+}
+
 /// Persist research pack while status stays `building` (survives restart mid-writer).
 pub(crate) async fn checkpoint_building_pack(
     db_path: &Path,
@@ -565,6 +585,7 @@ pub async fn build_grounded_draft(
     let mut body =
         scrub_and_validate_writer_body(&draft_response.message.content, &pack_urls, subject)?;
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
+    body = ensure_body_handles_from_pack(tools, &body, &research_pack);
     let mut link_options = crate::sources::draft_footer::pick_link_options(&pack_urls, &body);
     if let Some(cite) = crate::sources::tweet_footer::extract_brief_cite(subject) {
         if !crate::sources::url_hygiene::is_x_status_url(&cite) {
@@ -639,6 +660,7 @@ pub async fn build_grounded_draft_from_pack(
     .await;
     let mut body = scrub_and_validate_writer_body(&draft_response.message.content, &urls, subject)?;
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
+    body = ensure_body_handles_from_pack(tools, &body, &research_pack);
     let mut link_options = crate::sources::draft_footer::pick_link_options(&urls, &body);
     if let Some(cite) = crate::sources::tweet_footer::extract_brief_cite(subject) {
         if !crate::sources::url_hygiene::is_x_status_url(&cite) {
