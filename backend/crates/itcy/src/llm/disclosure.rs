@@ -26,7 +26,7 @@ pub fn strip_trailing_disclosures(body: &str) -> &str {
     let mut end = body.trim_end();
     while let Some(idx) = end.rfind(DISCLOSURE_PREFIX) {
         let after_prefix = &end[idx..];
-        let line_end = after_prefix.find('\n').map_or(after_prefix.len(), |n| n);
+        let line_end = after_prefix.find('\n').unwrap_or(after_prefix.len());
         // Only strip when the match is a trailing paragraph (only whitespace after).
         if after_prefix[line_end..].trim().is_empty() {
             end = end[..idx].trim_end();

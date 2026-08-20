@@ -62,10 +62,7 @@ pub async fn ship_x_post(
         Some(m) => m,
         None => resolve_x_publish_mode(mode_fallback)?,
     };
-    // X status URL in the tweet text already quotes on X. Do not also open quote composer.
-    if ship_text_has_x_status(&request.body) {
-        request.quote_tweet_id = None;
-    }
+    prepare_x_publish_request(&mut request);
     info!(
         mode = mode.as_str(),
         tweet_id = request.tweet_id.as_deref().unwrap_or(""),
@@ -229,6 +226,13 @@ async fn brave_x_post(request: &XPublishRequest) -> Result<PublishResult, Publis
     })
 }
 
+/// Keep `quote_tweet_id` when set. A bare X status URL in the body is the
+/// operator Link choice - do not clear the quote and do not strip that URL.
+const fn prepare_x_publish_request(_request: &mut XPublishRequest) {
+    // Intentionally empty: previous code cleared quote whenever an X status URL
+    // remained in the body. That was wrong (URL ≠ Quote Tweet on X).
+}
+
 fn ship_texts(body: &str) -> Result<(String, Option<String>), PublishError> {
     let mut iter = tweet_texts_for_api(body)
         .into_iter()
@@ -236,6 +240,23 @@ fn ship_texts(body: &str) -> Result<(String, Option<String>), PublishError> {
     let first = iter
         .next()
         .ok_or_else(|| PublishError::Other("empty tweet text after footer strip".into()))?;
+    if !crate::sources::tweet_thread::fits_x_limit(&first) {
+        return Err(PublishError::Other(format!(
+            "refusing to ship: root tweet is {} weighted chars (X limit {})",
+            crate::sources::tweet_thread::x_weighted_len(&first),
+            crate::sources::tweet_thread::X_CHAR_LIMIT
+        )));
+    }
+    let reply = iter.next();
+    if let Some(ref r) = reply {
+        if !crate::sources::tweet_thread::fits_x_limit(r) {
+            return Err(PublishError::Other(format!(
+                "refusing to ship: reply tweet is {} weighted chars (X limit {})",
+                crate::sources::tweet_thread::x_weighted_len(r),
+                crate::sources::tweet_thread::X_CHAR_LIMIT
+            )));
+        }
+    }
     let own_at = format!("@{X_PUBLIC_HANDLE}");
     let own_at_lower = own_at.to_ascii_lowercase();
     if first
@@ -248,13 +269,7 @@ fn ship_texts(body: &str) -> Result<(String, Option<String>), PublishError> {
             "refusing to ship: tweet text still contains {own_at} (own-handle spam)"
         )));
     }
-    Ok((first, iter.next()))
-}
-
-fn ship_text_has_x_status(body: &str) -> bool {
-    tweet_text_for_api(body)
-        .lines()
-        .any(|l| crate::sources::url_hygiene::is_x_status_url(l.trim()))
+    Ok((first, reply))
 }
 
 fn resolve_post_twitter_cmd() -> Option<PathBuf> {
@@ -363,8 +378,8 @@ async fn api_reply_tweet(
     Ok(parse_created_tweet_id(&body).unwrap_or_else(|| "unknown".into()))
 }
 
-/// Drop Slack footer / ID header; keep tweet text (+ publisher URL line).
-/// Bare X status URLs are removed: quote ship carries that cite.
+/// Drop Slack footer / ID header; keep tweet text (+ publisher / X status URL).
+/// Operator Link:1 stays in the body. Quote is a separate field (`quote_tweet_id`).
 #[must_use]
 pub fn tweet_text_for_api(body: &str) -> String {
     let mut lines: Vec<&str> = Vec::new();
@@ -542,6 +557,12 @@ fn pct(s: &str) -> String {
 mod tests {
     use super::*;
 
+    fn ship_text_has_x_status(body: &str) -> bool {
+        tweet_text_for_api(body)
+            .lines()
+            .any(|l| crate::sources::url_hygiene::is_x_status_url(l.trim()))
+    }
+
     #[test]
     fn playground_records_quote_vs_link() {
         let link = playground_x_post(&XPublishRequest {
@@ -629,7 +650,7 @@ https://blog.dante.company/en/articles/github-models-retirement-migration-2026-0
     }
 
     #[test]
-    fn tinyboot_style_body_keeps_x_url_one_or_split() {
+    fn tinyboot_style_body_keeps_x_url_when_no_quote() {
         let body = "\
 Tweet ID: TWEET-1
 
@@ -675,6 +696,53 @@ Link: 1
             texts[0]
         );
         assert!(ship_text_has_x_status(body));
+    }
+
+    #[test]
+    fn quote_ship_keeps_quote_and_operator_link_url() {
+        // Regression: XPOST-20260820-000046 — quote + Link:1 = X status.
+        // Must keep quote AND keep the operator-chosen URL (do not strip / do not clear quote).
+        let body = "\
+Tweet ID: TWEET-20260820-000046
+
+📜 @github’s 2026 outage crisis is real, 257 incidents, 48 major outages, and a 50% repo download error rate. 🚀 The root? Autoscaling fails + VS Code retry storms. 🦀 But they’re not just fixing it, they’re shipping fixes and new features like stacked PRs. #CloudOps #DevTools #GitHub #OutageFixes
+
+https://x.com/acolombiadev/status/2089811385899160055
+
+Link: 1
+0 = no link. /change_url TWEET-20260820-000046 <0|1|2|3|url>
+1. https://x.com/acolombiadev/status/2089811385899160055
+2. https://x.com/ashnichrist/status/2090551150214836367
+
+Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
+        let mut req = XPublishRequest {
+            tweet_id: Some("XPOST-20260820-000046".into()),
+            pubs_pr_number: Some(45),
+            body: body.into(),
+            quote_tweet_id: Some("2089811385899160055".into()),
+        };
+        prepare_x_publish_request(&mut req);
+        assert_eq!(req.quote_tweet_id.as_deref(), Some("2089811385899160055"));
+        assert!(
+            ship_text_has_x_status(&req.body),
+            "operator Link:1 X URL must stay in the body"
+        );
+        let (text, reply) = ship_texts(&req.body).expect("ship texts");
+        let reply = reply.expect("URL+tags force a reply so root fits");
+        assert!(crate::sources::tweet_thread::fits_x_limit(&text), "{text}");
+        assert!(
+            crate::sources::tweet_thread::fits_x_limit(&reply),
+            "{reply}"
+        );
+        assert!(text.contains("outage crisis"), "{text}");
+        assert!(
+            reply.contains("acolombiadev") || reply.contains("2089811385899160055"),
+            "reply keeps the cite URL: {reply}"
+        );
+        assert!(
+            reply.contains("#CloudOps") || text.contains("#CloudOps"),
+            "tags still ship: root={text} reply={reply}"
+        );
     }
 
     #[test]

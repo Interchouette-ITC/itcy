@@ -257,6 +257,31 @@ async function clickPost(scope) {
     );
   }
   await clickOrDump(waitPage, btn, "post");
+  // Confirm X accepted the post: dialog/composer clears or a toast appears.
+  for (let i = 0; i < 40; i++) {
+    if (looksQuotePaywall(await waitPage.content())) {
+      const cap = await captureOverlay(waitPage, "quote-paywall-after-post");
+      fail(
+        `X blocked Quote after Post click. screenshot=${relArtifact(cap.png)}`
+      );
+    }
+    const toastUp = await waitPage
+      .locator('[data-testid="toast"]')
+      .first()
+      .isVisible()
+      .catch(() => false);
+    const boxUp = await scope
+      .locator('[data-testid="tweetTextarea_0"]')
+      .first()
+      .isVisible()
+      .catch(() => false);
+    if (toastUp || !boxUp) return;
+    await waitPage.waitForTimeout(250);
+  }
+  const cap = await captureOverlay(waitPage, "post-no-confirm");
+  fail(
+    `Post click did not clear composer or show toast (tweet may not have been created). screenshot=${relArtifact(cap.png)}`
+  );
 }
 
 function statusFromHref(href) {
@@ -273,45 +298,107 @@ function statusFromHref(href) {
   return { id, handle: handle.toLowerCase(), url };
 }
 
-function pickPostedStatus(candidates, excludeIds) {
-  const skip = (s) => excludeIds.includes(s.id);
-  const own = candidates.find((s) => s.handle === "interchouette" && !skip(s));
-  if (own) return own;
-  return candidates.find((s) => !skip(s)) || null;
+function statusIdNewer(a, b) {
+  try {
+    return BigInt(a) > BigInt(b);
+  } catch {
+    return a > b;
+  }
 }
 
-async function readStatusFromPage(page, excludeIds, tries) {
+function pickPostedStatus(candidates, excludeIds, needle) {
+  const skip = (s) => excludeIds.includes(s.id);
+  const own = candidates.filter(
+    (s) => s.handle === "interchouette" && !skip(s)
+  );
+  if (!own.length) return null;
+  // Prefer newest own status (snowflake). Never fall back to another account.
+  own.sort((a, b) => (statusIdNewer(a.id, b.id) ? -1 : statusIdNewer(b.id, a.id) ? 1 : 0));
+  if (!needle) return own[0];
+  const matched = own.find((s) => (s.snippet || "").includes(needle));
+  return matched || null;
+}
+
+function normalizeMatchText(s) {
+  return String(s || "")
+    .replace(/[''\u2018\u2019]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function textNeedle(text) {
+  // Prefer a latin phrase so leading emoji / curly quotes do not break matching.
+  const compact = normalizeMatchText(text);
+  const latin = compact.match(/[A-Za-z][A-Za-z0-9 ,.-]{19,79}/);
+  if (latin) return latin[0].slice(0, 48).trim();
+  if (compact.length < 12) return "";
+  return compact.slice(0, Math.min(40, compact.length));
+}
+
+function ownStatusFromArticle(hrefs) {
+  for (const href of hrefs || []) {
+    const s = statusFromHref(href);
+    if (s && s.handle === "interchouette") return s;
+  }
+  return null;
+}
+
+async function readStatusFromPage(page, excludeIds, tries, needle) {
+  const want = (needle || "").trim();
   for (let i = 0; i < tries; i++) {
-    const hrefs = await page.evaluate(() => {
+    const hrefs = await page.evaluate((need) => {
       const toast = document.querySelector(
         '[data-testid="toast"] a[href*="/status/"]'
       );
-      const all = [...document.querySelectorAll('a[href*="/status/"]')].map(
-        (a) => a.getAttribute("href")
-      );
+      const articles = [...document.querySelectorAll("article")].map((art) => {
+        const raw = (art.innerText || "").replace(/\s+/g, " ").trim();
+        const flat = raw.replace(/[''\u2018\u2019]/g, "");
+        const needFlat = String(need || "").replace(/[''\u2018\u2019]/g, "");
+        // Quote cards list the *cited* /status/ link first - collect all.
+        const statusHrefs = [
+          ...art.querySelectorAll('a[href*="/status/"]'),
+        ].map((a) => a.getAttribute("href"));
+        return {
+          statusHrefs,
+          snippet: raw.slice(0, 280),
+          matches: needFlat ? flat.includes(needFlat) : false,
+        };
+      });
       return {
         page: location.href,
         toast: toast ? toast.getAttribute("href") : null,
-        all,
+        articles,
       };
-    });
-    const cands = [];
+    }, want);
     const toast = statusFromHref(hrefs.toast);
-    if (toast) cands.push(toast);
-    const fromUrl = statusFromHref(hrefs.page);
-    if (fromUrl) cands.push(fromUrl);
-    for (const h of hrefs.all || []) {
-      const s = statusFromHref(h);
-      if (s) cands.push(s);
+    if (toast && toast.handle === "interchouette" && !excludeIds.includes(toast.id)) {
+      return toast;
     }
-    const picked = pickPostedStatus(cands, excludeIds);
-    if (picked) return picked;
+    for (const art of hrefs.articles || []) {
+      if (want && !art.matches) continue;
+      const own = ownStatusFromArticle(art.statusHrefs);
+      if (own && !excludeIds.includes(own.id)) {
+        own.snippet = art.snippet || "";
+        if (!want || art.matches) return own;
+      }
+    }
+    if (!want) {
+      const fromArticles = [];
+      for (const art of hrefs.articles || []) {
+        const own = ownStatusFromArticle(art.statusHrefs);
+        if (own) fromArticles.push(own);
+      }
+      const fromUrl = statusFromHref(hrefs.page);
+      if (fromUrl && fromUrl.handle === "interchouette") fromArticles.push(fromUrl);
+      const picked = pickPostedStatus(fromArticles, excludeIds, "");
+      if (picked) return picked;
+    }
     await page.waitForTimeout(500);
   }
   return null;
 }
 
-async function postReply(page, replyText, parent, excludeIds) {
+async function postReply(page, replyText, parent, excludeIds, needle) {
   await page.goto(parent.url, {
     waitUntil: "domcontentloaded",
     timeout: 60000,
@@ -325,14 +412,14 @@ async function postReply(page, replyText, parent, excludeIds) {
   await clickPost(page);
   await page.waitForTimeout(2000);
   const skip = excludeIds.concat([parent.id]);
-  let found = await readStatusFromPage(page, skip, 12);
+  let found = await readStatusFromPage(page, skip, 12, needle || "");
   if (!found) {
     await page.goto("https://x.com/Interchouette", {
       waitUntil: "domcontentloaded",
       timeout: 60000,
     });
     await page.waitForTimeout(3500);
-    found = await readStatusFromPage(page, skip, 16);
+    found = await readStatusFromPage(page, skip, 16, needle || "");
   }
   return found;
 }
@@ -374,20 +461,28 @@ async function main() {
       await clickPost(scope);
     }
 
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(2500);
     const excludeIds = quoteId ? [quoteId] : [];
-    // Quote compose stays on the source status; do not treat that URL as ours.
-    let found = await readStatusFromPage(page, excludeIds, quoteId ? 8 : 24);
+    const needle = textNeedle(text);
+    // Quote compose stays on the source status; go to profile for our card.
+    // Prefer toast, then article text match with *our* /status/ link (not the cited one).
+    let found = null;
+    if (!quoteId) {
+      found = await readStatusFromPage(page, excludeIds, 12, needle);
+    }
     if (!found) {
       await page.goto("https://x.com/Interchouette", {
         waitUntil: "domcontentloaded",
         timeout: 60000,
       });
-      await page.waitForTimeout(3500);
-      found = await readStatusFromPage(page, excludeIds, 16);
+      await page.waitForTimeout(4000);
+      found = await readStatusFromPage(page, excludeIds, 24, needle);
     }
     if (!found) {
-      fail("posted but could not resolve status URL");
+      const cap = await captureOverlay(page, "resolve-miss");
+      fail(
+        `posted but could not resolve status URL (needle=${JSON.stringify(needle)}; no toast / no profile text match); refusing to guess an old tweet. screenshot=${relArtifact(cap.png)}`
+      );
     }
     let replyFound = null;
     if (replyFile) {
@@ -398,7 +493,7 @@ async function main() {
         fail(`read reply file: ${e}`);
       }
       if (replyText) {
-        replyFound = await postReply(page, replyText, found, excludeIds);
+        replyFound = await postReply(page, replyText, found, excludeIds, textNeedle(replyText));
       }
     }
     ok(

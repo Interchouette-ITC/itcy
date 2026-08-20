@@ -234,21 +234,18 @@ fn load_items(
     Ok(items)
 }
 
-/// Top-level Slack overview (DIGEST fence + plain `/propose_draft` hint).
+/// Top-level Slack overview (`DIGEST` fence; per-item propose lines sit under each choice).
 #[must_use]
 pub fn format_digest_overview(rec: &DigestRecord) -> String {
-    format!(
-        "```\n{id}\n```\n\nUse /propose_draft {id}, 1,\n\nUse /propose_tweet {id}, 1,",
-        id = rec.digest_id,
-    )
+    format!("```\n{id}\n```", id = rec.digest_id)
 }
 
 /// Grey empty code bar posted **between** digest items (NBSP so Slack keeps the fence).
 pub const DIGEST_ITEM_GREY_BAR: &str = "```\n\u{00a0}\n```";
 
-/// One digest choice: number, title, grey summary, URL. Separators live between items.
+/// One digest choice: number, title, grey summary, URL, then clear `/propose_*` lines to copy.
 #[must_use]
-pub fn format_digest_item(it: &DigestItem) -> String {
+pub fn format_digest_item(it: &DigestItem, digest_id: &str) -> String {
     let url = it.url.as_deref().unwrap_or("-");
     let head = format!(
         "`{idx}` _ *{title}*",
@@ -260,6 +257,10 @@ pub fn format_digest_item(it: &DigestItem) -> String {
         parts.push(fence_block(&body));
     }
     parts.push(url.to_string());
+    parts.push(format!(
+        "/propose_draft {digest_id}, {idx}\n/propose_tweet {digest_id}, {idx}",
+        idx = it.idx,
+    ));
     parts.join("\n\n")
 }
 
@@ -403,15 +404,30 @@ pub fn digest_slack_post(rec: &DigestRecord) -> DigestSlackPost {
     DigestSlackPost {
         overview: format_digest_overview(rec),
         press_title: format!("```\nPRESS {n}\n```", n = press.len()),
-        press_items: press.into_iter().map(format_digest_item).collect(),
+        press_items: press
+            .into_iter()
+            .map(|it| format_digest_item(it, &rec.digest_id))
+            .collect(),
         for_you_title: format!("```\nFOLLOWS FOR YOU {n}\n```", n = for_you.len()),
-        for_you_items: for_you.into_iter().map(format_digest_item).collect(),
+        for_you_items: for_you
+            .into_iter()
+            .map(|it| format_digest_item(it, &rec.digest_id))
+            .collect(),
         following_title: format!("```\nFOLLOWING {n}\n```", n = following.len()),
-        following_items: following.into_iter().map(format_digest_item).collect(),
+        following_items: following
+            .into_iter()
+            .map(|it| format_digest_item(it, &rec.digest_id))
+            .collect(),
         twitter_title: format!("```\nTWITTER {n}\n```", n = tweets.len()),
-        twitter_items: tweets.into_iter().map(format_digest_item).collect(),
+        twitter_items: tweets
+            .into_iter()
+            .map(|it| format_digest_item(it, &rec.digest_id))
+            .collect(),
         itc_title: format!("```\nINTERCHOUETTE {n}\n```", n = itc.len()),
-        itc_items: itc.into_iter().map(format_digest_item).collect(),
+        itc_items: itc
+            .into_iter()
+            .map(|it| format_digest_item(it, &rec.digest_id))
+            .collect(),
     }
 }
 
@@ -2123,10 +2139,7 @@ mod tests {
             ],
         };
         let post = digest_slack_post(&rec);
-        assert_eq!(
-            post.overview,
-            "```\nDIGEST-20990101-000001\n```\n\nUse /propose_draft DIGEST-20990101-000001, 1,\n\nUse /propose_tweet DIGEST-20990101-000001, 1,"
-        );
+        assert_eq!(post.overview, "```\nDIGEST-20990101-000001\n```");
         assert!(!post.overview.contains("open"));
         assert!(!post.overview.contains("bare 3"));
         assert_eq!(post.press_title, "```\nPRESS 1\n```");
@@ -2142,6 +2155,9 @@ mod tests {
         assert!(post.press_items[0].contains("`1` _ *A Brief Guide To Ai Powered Software*"));
         assert!(post.press_items[0].contains("Signals keep form state"));
         assert!(post.press_items[0].contains("https://www.infoworld.com/article/x"));
+        assert!(post.press_items[0].contains(
+            "/propose_draft DIGEST-20990101-000001, 1\n/propose_tweet DIGEST-20990101-000001, 1"
+        ));
         assert!(
             post.press_items[0].contains("`1` _ *A Brief Guide To Ai Powered Software*\n\n```\n")
         );
@@ -2191,9 +2207,13 @@ mod tests {
         assert_eq!(post.itc_items.len(), 2);
         assert!(post.itc_items[0].contains("DRAFT · itcy-tui"));
         assert!(post.itc_items[0].contains("https://github.com/Interchouette-ITC/itcy-tui"));
+        assert!(post.itc_items[0].contains(
+            "/propose_draft DIGEST-20990101-000010, 1\n/propose_tweet DIGEST-20990101-000010, 1"
+        ));
         assert!(post.itc_items[1].contains("TWEET · tvscreener-rs"));
-        assert!(post.overview.contains("/propose_tweet"));
-        assert!(post.overview.contains("/propose_draft"));
+        assert!(post.itc_items[1].contains(
+            "/propose_draft DIGEST-20990101-000010, 2\n/propose_tweet DIGEST-20990101-000010, 2"
+        ));
     }
 
     #[test]
@@ -2271,8 +2291,11 @@ mod tests {
             weight: 8,
             detail: "infoworld.com\ndev / languages / enterprise software".into(),
         };
-        let msg = format_digest_item(&it);
+        let msg = format_digest_item(&it, "DIGEST-20990101-000099");
         assert!(!msg.contains("```"));
         assert!(msg.contains("https://www.infoworld.com/article/x"));
+        assert!(msg.contains(
+            "/propose_draft DIGEST-20990101-000099, 1\n/propose_tweet DIGEST-20990101-000099, 1"
+        ));
     }
 }

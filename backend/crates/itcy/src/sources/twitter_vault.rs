@@ -41,9 +41,7 @@ pub fn resolve_twitter_gold_dir() -> PathBuf {
 #[must_use]
 pub fn probe_twitter_vault() -> TwitterVaultStatus {
     let profile_dir = resolve_twitter_gold_dir();
-    let bearer = crate::sources::twitter::load_twitter_creds()
-        .ok()
-        .is_some_and(|c| c.has_bearer());
+    let bearer = crate::sources::twitter::load_twitter_creds().is_ok_and(|c| c.has_bearer());
     if bearer {
         return TwitterVaultStatus {
             ok: true,

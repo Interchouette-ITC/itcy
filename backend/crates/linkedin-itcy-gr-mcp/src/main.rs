@@ -312,6 +312,8 @@ impl LinkedinGrMcp {
     }
 }
 
+// rmcp `tool_handler` expands ServerHandler methods as `async` with no `.await`.
+#[allow(clippy::unused_async_trait_impl)]
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for LinkedinGrMcp {
     fn get_info(&self) -> ServerInfo {

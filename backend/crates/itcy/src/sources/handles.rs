@@ -76,6 +76,88 @@ impl HandlesIndex {
     pub const fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+
+    /// Best registry hit for an operator brief (name, profile URL, or `@handle`).
+    ///
+    /// Same idea as cite-URL extraction: deterministic, not model-dependent.
+    /// Prefers URL / `@` hits, then the longest name phrase found in the brief.
+    #[must_use]
+    pub fn primary_from_brief(&self, brief: &str) -> Option<&HandleEntry> {
+        if brief.trim().is_empty() || self.entries.is_empty() {
+            return None;
+        }
+        if let Some(hit) = self.hit_from_urls(brief) {
+            return Some(hit);
+        }
+        if let Some(hit) = self.hit_from_at_handles(brief) {
+            return Some(hit);
+        }
+        self.hit_from_names(brief)
+    }
+
+    fn hit_from_urls(&self, brief: &str) -> Option<&HandleEntry> {
+        for url in crate::sources::url_hygiene::extract_https_urls(brief) {
+            let norm = normalize_profile_url(&url);
+            for entry in &self.entries {
+                if !entry.linkedin_url.is_empty()
+                    && normalize_profile_url(&entry.linkedin_url) == norm
+                {
+                    return Some(entry);
+                }
+                if !entry.x_url.is_empty() && normalize_profile_url(&entry.x_url) == norm {
+                    return Some(entry);
+                }
+            }
+            if let Some(slug) = linkedin_slug_from_url(&url) {
+                let needle = format!("@{slug}");
+                for entry in &self.entries {
+                    if entry.linkedin.eq_ignore_ascii_case(&needle) {
+                        return Some(entry);
+                    }
+                }
+            }
+            if let Some(slug) = x_slug_from_url(&url) {
+                let needle = format!("@{slug}");
+                for entry in &self.entries {
+                    if entry.x.eq_ignore_ascii_case(&needle) {
+                        return Some(entry);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn hit_from_at_handles(&self, brief: &str) -> Option<&HandleEntry> {
+        for at in extract_at_handles(brief) {
+            for entry in &self.entries {
+                if (!entry.linkedin.is_empty() && entry.linkedin.eq_ignore_ascii_case(&at))
+                    || (!entry.x.is_empty() && entry.x.eq_ignore_ascii_case(&at))
+                {
+                    return Some(entry);
+                }
+            }
+        }
+        None
+    }
+
+    fn hit_from_names(&self, brief: &str) -> Option<&HandleEntry> {
+        let mut best: Option<(&HandleEntry, usize)> = None;
+        for entry in &self.entries {
+            let name = entry.name.trim();
+            if name.len() < 3 {
+                continue;
+            }
+            if find_phrase_outside_url(brief, name).is_none() {
+                continue;
+            }
+            let score = name.len();
+            if best.as_ref().is_none_or(|(_, s)| score > *s) {
+                best = Some((entry, score));
+            }
+        }
+        best.map(|(e, _)| e)
+    }
 }
 
 /// Candidate paths searched in order (mirrors `live_sites.rs` pattern).
@@ -132,6 +214,350 @@ pub fn load_handles_from(path: &Path) -> Result<HandlesIndex, HandlesError> {
     Ok(HandlesIndex { entries })
 }
 
+/// Result of `/handle_add` after parse + optional file append.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HandleAddOutcome {
+    /// New row appended to `handles.toml` and memory.
+    Added(HandleEntry),
+    /// Same name or profile URL already in the registry (no duplicate append).
+    AlreadyPresent(HandleEntry),
+}
+
+impl HandlesIndex {
+    /// Append or replace by identity (name / `LinkedIn` URL / X URL).
+    pub fn upsert_entry(&mut self, entry: HandleEntry) {
+        if let Some(i) = self.duplicate_index(&entry) {
+            merge_missing_fields(&mut self.entries[i], &entry);
+            return;
+        }
+        self.entries.push(entry);
+    }
+
+    fn duplicate_index(&self, entry: &HandleEntry) -> Option<usize> {
+        self.entries.iter().position(|e| entries_match(e, entry))
+    }
+
+    /// Existing row that matches name or profile URL, if any.
+    #[must_use]
+    pub fn find_duplicate(&self, entry: &HandleEntry) -> Option<&HandleEntry> {
+        self.duplicate_index(entry).map(|i| &self.entries[i])
+    }
+}
+
+fn entries_match(a: &HandleEntry, b: &HandleEntry) -> bool {
+    if !a.name.is_empty() && !b.name.is_empty() && a.name.eq_ignore_ascii_case(&b.name) {
+        return true;
+    }
+    if !a.linkedin_url.is_empty()
+        && !b.linkedin_url.is_empty()
+        && normalize_profile_url(&a.linkedin_url) == normalize_profile_url(&b.linkedin_url)
+    {
+        return true;
+    }
+    if !a.x_url.is_empty()
+        && !b.x_url.is_empty()
+        && normalize_profile_url(&a.x_url) == normalize_profile_url(&b.x_url)
+    {
+        return true;
+    }
+    false
+}
+
+fn merge_missing_fields(dst: &mut HandleEntry, src: &HandleEntry) {
+    if dst.linkedin.is_empty() && !src.linkedin.is_empty() {
+        dst.linkedin.clone_from(&src.linkedin);
+    }
+    if dst.x.is_empty() && !src.x.is_empty() {
+        dst.x.clone_from(&src.x);
+    }
+    if dst.linkedin_url.is_empty() && !src.linkedin_url.is_empty() {
+        dst.linkedin_url.clone_from(&src.linkedin_url);
+    }
+    if dst.x_url.is_empty() && !src.x_url.is_empty() {
+        dst.x_url.clone_from(&src.x_url);
+    }
+}
+
+fn normalize_profile_url(url: &str) -> String {
+    let u = crate::sources::url_hygiene::scrub_https_url(url).to_ascii_lowercase();
+    u.trim_end_matches('/').to_string()
+}
+
+fn linkedin_slug_from_url(url: &str) -> Option<String> {
+    let low = url.to_ascii_lowercase();
+    for marker in ["/in/", "/company/"] {
+        if let Some(i) = low.find(marker) {
+            let rest = &url[i + marker.len()..];
+            let slug = rest.split(['/', '?', '#', '&']).next().unwrap_or("").trim();
+            if !slug.is_empty() {
+                return Some(slug.to_ascii_lowercase());
+            }
+        }
+    }
+    None
+}
+
+fn x_slug_from_url(url: &str) -> Option<String> {
+    let low = url.to_ascii_lowercase();
+    for host in [
+        "https://x.com/",
+        "https://twitter.com/",
+        "http://x.com/",
+        "http://twitter.com/",
+    ] {
+        if let Some(rest) = low.strip_prefix(host) {
+            let slug = rest.split(['/', '?', '#', '&']).next().unwrap_or("").trim();
+            if !slug.is_empty()
+                && !matches!(
+                    slug,
+                    "i" | "home" | "explore" | "search" | "intent" | "share" | "hashtag"
+                )
+            {
+                return Some(slug.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn extract_at_handles(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'@' {
+            let start = i;
+            i += 1;
+            while i < bytes.len()
+                && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'-')
+            {
+                i += 1;
+            }
+            if i > start + 1 {
+                let at = trim_glued_site_suffix(&text[start..i]);
+                if !out.iter().any(|x: &String| x.eq_ignore_ascii_case(&at)) {
+                    out.push(at);
+                }
+            }
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// `@nikomatsakislinkedin` (glued before `.com`) → `@nikomatsakis`.
+fn trim_glued_site_suffix(at: &str) -> String {
+    let body = at.trim_start_matches('@');
+    let lower = body.to_ascii_lowercase();
+    for suffix in ["linkedin", "twitter"] {
+        if let Some(prefix) = lower.strip_suffix(suffix) {
+            if prefix.len() >= 2 {
+                return format!("@{}", &body[..prefix.len()]);
+            }
+        }
+    }
+    at.to_string()
+}
+
+/// Parse operator free text into a [`HandleEntry`] (name + URLs / `@handles`).
+///
+/// # Errors
+///
+/// Returns a short operator message when nothing usable is present.
+pub fn parse_handle_add(raw: &str) -> Result<HandleEntry, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Err("usage: /handle_add <name> <linkedin-or-x-url|@handle>…".into());
+    }
+    let urls = crate::sources::url_hygiene::extract_https_urls(raw);
+    let ats = extract_at_handles(raw);
+    let mut linkedin = String::new();
+    let mut linkedin_url = String::new();
+    let mut x = String::new();
+    let mut x_url = String::new();
+    for url in &urls {
+        let scrubbed = crate::sources::url_hygiene::scrub_https_url(url);
+        if linkedin_slug_from_url(&scrubbed).is_some() {
+            if let Some(slug) = linkedin_slug_from_url(&scrubbed) {
+                linkedin = format!("@{slug}");
+                linkedin_url = scrubbed;
+            }
+            continue;
+        }
+        if let Some(slug) = x_slug_from_url(&scrubbed) {
+            x = format!("@{slug}");
+            x_url = scrubbed;
+        }
+    }
+    for at in &ats {
+        let at_norm = if at.starts_with('@') {
+            at.clone()
+        } else {
+            format!("@{at}")
+        };
+        if !linkedin.is_empty() && !linkedin.eq_ignore_ascii_case(&at_norm) && x.is_empty() {
+            x = at_norm;
+            x_url = format!("https://x.com/{}", x.trim_start_matches('@'));
+            continue;
+        }
+        if linkedin.is_empty() && x.is_empty() {
+            x = at_norm;
+            x_url = format!("https://x.com/{}", x.trim_start_matches('@'));
+        }
+    }
+    let name = strip_urls_and_ats(raw).trim().to_string();
+    let name = if name.is_empty() {
+        humanize_from_entry(&linkedin, &x, &linkedin_url)
+    } else {
+        name
+    };
+    if name.is_empty() && linkedin.is_empty() && x.is_empty() {
+        return Err("usage: /handle_add <name> <linkedin-or-x-url|@handle>…".into());
+    }
+    if name.is_empty() {
+        return Err("could not derive a display name; pass a name before the URL/@".into());
+    }
+    Ok(HandleEntry {
+        name,
+        linkedin,
+        x,
+        linkedin_url,
+        x_url,
+    })
+}
+
+fn strip_urls_and_ats(raw: &str) -> String {
+    let mut s = raw.to_string();
+    for url in crate::sources::url_hygiene::extract_https_urls(raw) {
+        s = s.replace(&url, " ");
+        let with_slash = format!("{url}/");
+        s = s.replace(&with_slash, " ");
+    }
+    for at in extract_at_handles(raw) {
+        s = s.replace(&at, " ");
+    }
+    s.split_whitespace()
+        .filter(|t| t.chars().any(char::is_alphanumeric))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn humanize_from_entry(linkedin: &str, x: &str, linkedin_url: &str) -> String {
+    if let Some(slug) = linkedin_slug_from_url(linkedin_url) {
+        return humanize_slug(&slug);
+    }
+    let from_li = linkedin.trim_start_matches('@');
+    if !from_li.is_empty() {
+        return humanize_slug(from_li);
+    }
+    let from_x = x.trim_start_matches('@');
+    if !from_x.is_empty() {
+        return humanize_slug(from_x);
+    }
+    String::new()
+}
+
+fn humanize_slug(slug: &str) -> String {
+    slug.split(['-', '_'])
+        .filter(|p| !p.is_empty() && !p.chars().all(|c| c.is_ascii_digit()))
+        .map(|p| {
+            let mut chars = p.chars();
+            chars.next().map_or_else(String::new, |c| {
+                let mut out = c.to_uppercase().collect::<String>();
+                out.push_str(&chars.as_str().to_ascii_lowercase());
+                out
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Append one `[[handle]]` block to `handles.toml`.
+///
+/// # Errors
+///
+/// Returns [`HandlesError`] on IO failure.
+pub fn append_handle_toml(path: &Path, entry: &HandleEntry) -> Result<(), HandlesError> {
+    use std::io::Write;
+    let mut f = std::fs::OpenOptions::new().append(true).open(path)?;
+    let block = format_handle_toml_block(entry);
+    f.write_all(block.as_bytes())?;
+    Ok(())
+}
+
+#[must_use]
+pub fn format_handle_toml_block(entry: &HandleEntry) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::from("\n[[handle]]\n");
+    let _ = writeln!(out, "name = \"{}\"", toml_escape(&entry.name));
+    if !entry.linkedin.is_empty() {
+        let _ = writeln!(out, "linkedin = \"{}\"", toml_escape(&entry.linkedin));
+    }
+    if !entry.x.is_empty() {
+        let _ = writeln!(out, "x = \"{}\"", toml_escape(&entry.x));
+    }
+    if !entry.linkedin_url.is_empty() {
+        let _ = writeln!(
+            out,
+            "linkedin_url = \"{}\"",
+            toml_escape(&entry.linkedin_url)
+        );
+    }
+    if !entry.x_url.is_empty() {
+        let _ = writeln!(out, "x_url = \"{}\"", toml_escape(&entry.x_url));
+    }
+    out
+}
+
+fn toml_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Parse, detect duplicate, append file when new, always upsert memory.
+///
+/// # Errors
+///
+/// Parse errors as `String`; file IO as [`HandlesError`] mapped by caller.
+pub fn apply_handle_add(
+    index: &mut HandlesIndex,
+    path: &Path,
+    raw: &str,
+) -> Result<HandleAddOutcome, String> {
+    let entry = parse_handle_add(raw)?;
+    if let Some(existing) = index.find_duplicate(&entry).cloned() {
+        index.upsert_entry(entry);
+        let after = index.find_duplicate(&existing).cloned().unwrap_or(existing);
+        return Ok(HandleAddOutcome::AlreadyPresent(after));
+    }
+    append_handle_toml(path, &entry).map_err(|e| e.to_string())?;
+    index.upsert_entry(entry.clone());
+    Ok(HandleAddOutcome::Added(entry))
+}
+
+/// Slack reply lines for a successful `/handle_add`.
+#[must_use]
+pub fn format_handle_add_reply(outcome: &HandleAddOutcome) -> String {
+    let (title, e) = match outcome {
+        HandleAddOutcome::Added(e) => ("*Handle added*", e),
+        HandleAddOutcome::AlreadyPresent(e) => ("*Handle already present*", e),
+    };
+    let mut lines = vec![title.to_string(), format!("• name: {}", e.name)];
+    if !e.linkedin.is_empty() {
+        lines.push(format!("• linkedin: {}", e.linkedin));
+    }
+    if !e.x.is_empty() {
+        lines.push(format!("• x: {}", e.x));
+    }
+    if !e.linkedin_url.is_empty() {
+        lines.push(format!("• {}", e.linkedin_url));
+    }
+    if !e.x_url.is_empty() {
+        lines.push(format!("• {}", e.x_url));
+    }
+    lines.join("\n")
+}
+
 const BRAND: &str = "Interchouette";
 const BRAND_ITC: &str = "Interchouette ITC";
 const LINKEDIN_BRAND_HANDLE: &str = "@interchouette-itc";
@@ -162,6 +588,19 @@ pub fn ensure_linkedin_brand_mention(body: &str) -> String {
     body.to_string()
 }
 
+/// Deterministic `handles:` from the operator brief (name / profile URL / `@`), like cite URLs.
+///
+/// Overwrites a model-written `handles:` line when the registry matches the brief.
+pub fn ensure_pack_handles_from_brief(pack: &mut String, brief: &str, index: &HandlesIndex) {
+    let Some(entry) = index.primary_from_brief(brief) else {
+        return;
+    };
+    let Some(line) = format_handles_line(&entry.linkedin, &entry.x) else {
+        return;
+    };
+    *pack = upsert_handles_line(pack, &line);
+}
+
 /// Put the `LinkedIn` brand handle in the `ResearchPack` when the operator named Interchouette.
 pub fn ensure_pack_linkedin_brand_handle(pack: &mut String, brief: &str) {
     if find_phrase_outside_url(brief, BRAND).is_none() {
@@ -173,28 +612,145 @@ pub fn ensure_pack_linkedin_brand_handle(pack: &mut String, brief: &str) {
     {
         return;
     }
-    *pack = insert_handles_after_subject(pack, "handles: linkedin=@interchouette-itc");
+    *pack = upsert_handles_line(pack, "handles: linkedin=@interchouette-itc");
+}
+
+/// Apply brief registry handles, then brand Interchouette when named.
+pub fn apply_brief_handles_to_pack(pack: &mut String, brief: &str, index: &HandlesIndex) {
+    ensure_pack_handles_from_brief(pack, brief, index);
+    ensure_pack_linkedin_brand_handle(pack, brief);
+}
+
+/// Put the pack's `LinkedIn` `@handle` in the body (name to handle, or lead line).
+///
+/// Skips the Interchouette brand handle (see [`ensure_linkedin_brand_mention`]).
+#[must_use]
+pub fn ensure_linkedin_handle_from_pack(body: &str, pack: &str, index: &HandlesIndex) -> String {
+    let Some(handle) = handle_from_pack(pack, "linkedin=") else {
+        return body.to_string();
+    };
+    if handle.eq_ignore_ascii_case(LINKEDIN_BRAND_HANDLE) {
+        return body.to_string();
+    }
+    ensure_named_handle_in_body(body, &handle, index, HandleMatch::LinkedIn)
+}
+
+/// Put the pack's X `@handle` in the tweet body (name to handle, or lead mention).
+///
+/// Skips the own account handle (`@Interchouette`). Never injects a `LinkedIn` handle on X.
+#[must_use]
+pub fn ensure_x_handle_from_pack(body: &str, pack: &str, index: &HandlesIndex) -> String {
+    let Some(handle) = handle_from_pack(pack, "x=") else {
+        return body.to_string();
+    };
+    if handle.eq_ignore_ascii_case(&format!(
+        "@{}",
+        crate::sources::url_hygiene::X_PUBLIC_HANDLE
+    )) {
+        return body.to_string();
+    }
+    ensure_named_handle_in_body(body, &handle, index, HandleMatch::X)
+}
+
+#[derive(Clone, Copy)]
+enum HandleMatch {
+    LinkedIn,
+    X,
+}
+
+fn ensure_named_handle_in_body(
+    body: &str,
+    handle: &str,
+    index: &HandlesIndex,
+    kind: HandleMatch,
+) -> String {
+    if body
+        .to_ascii_lowercase()
+        .contains(&handle.to_ascii_lowercase())
+    {
+        return body.to_string();
+    }
+    let entry = index.entries.iter().find(|e| match kind {
+        HandleMatch::LinkedIn => e.linkedin.eq_ignore_ascii_case(handle),
+        HandleMatch::X => e.x.eq_ignore_ascii_case(handle),
+    });
+    if let Some(entry) = entry {
+        if let Some((start, end)) = find_phrase_outside_url(body, &entry.name) {
+            return replace_range(body, start, end, handle);
+        }
+    }
+    let trimmed = body.trim_start();
+    if trimmed.is_empty() {
+        return handle.to_string();
+    }
+    match kind {
+        HandleMatch::LinkedIn => format!("From {handle}.\n\n{trimmed}"),
+        HandleMatch::X => format!("{handle}: {trimmed}"),
+    }
+}
+
+fn handle_from_pack(pack: &str, key: &str) -> Option<String> {
+    for line in pack.lines() {
+        let t = line.trim_start();
+        let Some(rest) = t.strip_prefix("handles:") else {
+            continue;
+        };
+        for part in rest.split_whitespace() {
+            if let Some(h) = part.strip_prefix(key) {
+                let h = h.trim();
+                if h.starts_with('@') {
+                    return Some(h.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn format_handles_line(linkedin: &str, x: &str) -> Option<String> {
+    let mut parts = Vec::new();
+    if !linkedin.trim().is_empty() {
+        parts.push(format!("linkedin={}", linkedin.trim()));
+    }
+    if !x.trim().is_empty() {
+        parts.push(format!("x={}", x.trim()));
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(format!("handles: {}", parts.join(" ")))
+    }
 }
 
 fn replace_range(body: &str, start: usize, end: usize, with: &str) -> String {
     format!("{}{}{}", &body[..start], with, &body[end..])
 }
 
-fn insert_handles_after_subject(pack: &str, line: &str) -> String {
+fn upsert_handles_line(pack: &str, line: &str) -> String {
     let mut out = String::new();
     let mut inserted = false;
+    let mut saw_subject = false;
     for raw in pack.lines() {
+        let t = raw.trim_start();
+        if t.starts_with("handles:") {
+            continue;
+        }
         out.push_str(raw);
         out.push('\n');
         if !inserted && raw.starts_with("subject:") {
+            saw_subject = true;
             out.push_str(line);
             out.push('\n');
             inserted = true;
         }
     }
     if !inserted {
-        out.push_str(line);
-        out.push('\n');
+        if saw_subject {
+            out.push_str(line);
+            out.push('\n');
+        } else {
+            out.insert_str(0, &format!("{line}\n"));
+        }
     }
     out
 }
@@ -330,5 +886,138 @@ mod tests {
         );
         assert!(pack.contains("handles: linkedin=@interchouette-itc"));
         assert!(pack.contains("subject: WebMCP"));
+    }
+
+    fn isaac_index() -> HandlesIndex {
+        HandlesIndex {
+            entries: vec![HandleEntry {
+                name: "Isaac Sacolick".into(),
+                linkedin: "@isaacsacolick".into(),
+                x: "@nyike".into(),
+                linkedin_url: "https://www.linkedin.com/in/isaacsacolick".into(),
+                x_url: "https://x.com/nyike".into(),
+            }],
+        }
+    }
+
+    #[test]
+    fn brief_name_injects_handles_like_cite_url() {
+        let idx = isaac_index();
+        let mut pack = String::from(
+            "## ResearchPack\nsubject: DX principles\nhandles: linkedin=@interchouette-itc x=@interchouette\nsummary: noise\n",
+        );
+        let brief = "10 principles for creating a great developer experience, from Isaac Sacolick cite https://www.infoworld.com/article/2337290/10-principles-for-creating-great-developer-experiences.html";
+        apply_brief_handles_to_pack(&mut pack, brief, &idx);
+        assert!(pack.contains("handles: linkedin=@isaacsacolick x=@nyike"));
+        assert!(!pack.contains("@interchouette-itc"));
+        assert_eq!(pack.matches("handles:").count(), 1);
+    }
+
+    #[test]
+    fn brief_linkedin_url_resolves_registry_row() {
+        let idx = isaac_index();
+        let hit = idx
+            .primary_from_brief("cite https://www.linkedin.com/in/isaacsacolick/")
+            .expect("url hit");
+        assert_eq!(hit.x, "@nyike");
+    }
+
+    #[test]
+    fn brief_x_handle_resolves_registry_row() {
+        let idx = isaac_index();
+        let hit = idx
+            .primary_from_brief("quote @nyike on DX")
+            .expect("at hit");
+        assert_eq!(hit.linkedin, "@isaacsacolick");
+    }
+
+    #[test]
+    fn body_gets_pack_linkedin_handle_when_missing() {
+        let idx = isaac_index();
+        let pack = "subject: DX\nhandles: linkedin=@isaacsacolick x=@nyike\n";
+        let body = "Great developer experience needs less friction in the toolchain.";
+        let out = ensure_linkedin_handle_from_pack(body, pack, &idx);
+        assert!(out.starts_with("From @isaacsacolick."));
+        assert!(out.contains("Great developer experience"));
+        let named = ensure_linkedin_handle_from_pack(
+            "Isaac Sacolick lists ten DX principles worth reading.",
+            pack,
+            &idx,
+        );
+        assert!(named.starts_with("@isaacsacolick lists"));
+        assert!(!named.contains("Isaac Sacolick"));
+    }
+
+    #[test]
+    fn tweet_body_gets_x_handle_not_linkedin() {
+        let idx = isaac_index();
+        let pack = "subject: DX\nhandles: linkedin=@isaacsacolick x=@nyike\n";
+        let body = "Isaac Sacolick’s 10 principles are the wrench you need.";
+        let out = ensure_x_handle_from_pack(body, pack, &idx);
+        assert!(out.contains("@nyike"));
+        assert!(!out.contains("Isaac Sacolick"));
+        assert!(!out.contains("@isaacsacolick"));
+        let missing = ensure_x_handle_from_pack("DX that sticks.", pack, &idx);
+        assert!(missing.starts_with("@nyike:"));
+    }
+
+    #[test]
+    fn parse_niko_style_linkedin_url_and_x_at() {
+        let e = parse_handle_add(
+            "Niko Matsakis https://www.linkedin.com/in/nicholas-matsakis-615614/ @nikomatsakis",
+        )
+        .expect("parse");
+        assert_eq!(e.name, "Niko Matsakis");
+        assert_eq!(e.linkedin, "@nicholas-matsakis-615614");
+        assert_eq!(e.x, "@nikomatsakis");
+        assert!(e.linkedin_url.contains("nicholas-matsakis-615614"));
+        assert_eq!(e.x_url, "https://x.com/nikomatsakis");
+    }
+
+    #[test]
+    fn parse_linkedin_url_only_humanizes_name() {
+        let e = parse_handle_add("https://www.linkedin.com/in/nicholas-matsakis-615614/")
+            .expect("parse");
+        assert_eq!(e.linkedin, "@nicholas-matsakis-615614");
+        assert!(e.name.contains("Nicholas") || e.name.contains("Matsakis"));
+        assert!(e.x.is_empty());
+    }
+
+    #[test]
+    fn parse_x_url_only() {
+        let e = parse_handle_add("Wasmer https://x.com/wasmerio").expect("parse");
+        assert_eq!(e.name, "Wasmer");
+        assert_eq!(e.x, "@wasmerio");
+        assert!(e.linkedin.is_empty());
+    }
+
+    #[test]
+    fn parse_truncates_junk_after_at() {
+        let e = parse_handle_add("Niko @nikomatsakislinkedin.com junk").expect("parse");
+        assert_eq!(e.x, "@nikomatsakis");
+    }
+
+    #[test]
+    fn apply_handle_add_skips_duplicate_linkedin_url() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let path = dir.path().join("handles.toml");
+        std::fs::write(&path, "# seed\n").expect("write");
+        let mut idx = HandlesIndex::default();
+        let first = apply_handle_add(
+            &mut idx,
+            &path,
+            "Niko Matsakis https://www.linkedin.com/in/nicholas-matsakis-615614/",
+        )
+        .expect("first");
+        assert!(matches!(first, HandleAddOutcome::Added(_)));
+        let second = apply_handle_add(
+            &mut idx,
+            &path,
+            "Other Name https://www.linkedin.com/in/nicholas-matsakis-615614/",
+        )
+        .expect("second");
+        assert!(matches!(second, HandleAddOutcome::AlreadyPresent(_)));
+        let text = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(text.matches("[[handle]]").count(), 1);
     }
 }

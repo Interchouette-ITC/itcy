@@ -12,10 +12,11 @@ pub const EN_DASH: char = '\u{2013}';
 /// Strips / replaces characters forbidden in public and Slack `ITCy` text.
 ///
 /// Em dash (U+2014), including ` — ` (spaces around it), becomes `, `. Never
-/// rewrite an em dash into an ASCII hyphen. Leftover ASCII pause ` - ` (already
-/// in stored copy) also becomes `, `. Digit en-dash ranges stay `2024-2026`.
-/// Compound hyphens (`memory-safety`) are unchanged. Slack `:shortcode:` becomes
-/// Unicode (`X` and `LinkedIn` cannot render colon codes).
+/// rewrite an em dash into an ASCII hyphen. Spaced hyphen pauses (` - `, or any
+/// Unicode whitespace around `-`) also become `, ` (models cheat past em-dash
+/// bans this way). Digit en-dash ranges stay `2024-2026`. Compound hyphens
+/// (`memory-safety`) are unchanged. Slack `:shortcode:` becomes Unicode (`X`
+/// and `LinkedIn` cannot render colon codes).
 #[must_use]
 pub fn sanitize_itcy_text(input: &str) -> String {
     let mut s = tight_hyphen_digit_en_dashes(input);
@@ -23,12 +24,41 @@ pub fn sanitize_itcy_text(input: &str) -> String {
     s = s.replace(EM_DASH, ", ");
     s = s.replace(&format!(" {EN_DASH} "), ", ");
     s = s.replace(EN_DASH, ", ");
-    s = s.replace(" - ", ", ");
+    s = replace_spaced_hyphen_pauses(&s);
     collapse_spaces(&mut s);
     tidy_commas(&mut s);
     s = expand_emoji_shortcodes(&s);
     collapse_spaces(&mut s);
     s
+}
+
+/// `word - word` / NBSP-hyphen-NBSP → `word, word`. Leaves `memory-safety` alone.
+fn replace_spaced_hyphen_pauses(input: &str) -> String {
+    let chars: Vec<char> = input.chars().collect();
+    let n = chars.len();
+    let mut out = String::with_capacity(input.len());
+    let mut i = 0;
+    while i < n {
+        if chars[i] == '-'
+            && i > 0
+            && i + 1 < n
+            && chars[i - 1].is_whitespace()
+            && chars[i + 1].is_whitespace()
+        {
+            while out.ends_with(char::is_whitespace) {
+                out.pop();
+            }
+            out.push_str(", ");
+            i += 1;
+            while i < n && chars[i].is_whitespace() {
+                i += 1;
+            }
+            continue;
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
 }
 
 /// `2024–2026` → `2024-2026` (range hyphen, not a pause).
@@ -240,6 +270,12 @@ mod tests {
         let compound = sanitize_itcy_text("memory-safety and C/C++ stay hyphenated.");
         assert!(compound.contains("memory-safety"));
         assert!(compound.contains("C/C++"));
+    }
+
+    #[test]
+    fn nbsp_spaced_hyphen_pause_becomes_comma() {
+        let s = sanitize_itcy_text("code\u{00a0}-\u{00a0}it’s about trust");
+        assert_eq!(s, "code, it’s about trust");
     }
 
     #[test]
