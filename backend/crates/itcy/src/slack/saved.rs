@@ -65,9 +65,11 @@ impl SlackRuntime {
         match store.get(id) {
             Ok(Some(row)) => {
                 let body = if row.body.trim().is_empty() {
-                    "(empty body)"
+                    "(empty body)".to_string()
+                } else if row.draft_id.starts_with("DRAFT-") {
+                    crate::sources::draft_footer::slack_paste_safe_linkedin_message(row.body.trim())
                 } else {
-                    row.body.trim()
+                    row.body.trim().to_string()
                 };
                 format!(
                     "{kind} `{id}`  status=`{st}`  updated=`{upd}`\n\n{body}",

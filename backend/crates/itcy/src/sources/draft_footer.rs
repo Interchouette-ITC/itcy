@@ -143,6 +143,40 @@ pub fn compose_draft_message(body: &str, draft_id: &str, links: &[String]) -> St
     out.trim_end().to_string()
 }
 
+/// Slack display only: fence `LinkedIn` draft prose so emoji copy as Unicode text.
+///
+/// Slack turns emoji into rich widgets / images on the clipboard; `LinkedIn` paste then
+/// drops them (blank). A code block keeps glyphs as plain text. Do **not** store the
+/// fenced form in `runtime.db` or publications `body.md`.
+#[must_use]
+pub fn slack_paste_safe_linkedin_message(composed: &str) -> String {
+    let Some((header, rest)) = composed.split_once("\n\n") else {
+        return composed.to_string();
+    };
+    if !header.starts_with("Draft ID:") {
+        return composed.to_string();
+    }
+    let (prose, footer) = rest
+        .find("\nLink: ")
+        .or_else(|| rest.find("\n0 = no link"))
+        .map_or((rest, ""), |i| (&rest[..i], &rest[i..]));
+    let prose = prose.trim();
+    if prose.is_empty() || prose.starts_with("```") {
+        return composed.to_string();
+    }
+    let fenced = fence_slack_plaintext(prose);
+    if footer.is_empty() {
+        format!("{header}\n\n{fenced}")
+    } else {
+        format!("{header}\n\n{fenced}{footer}")
+    }
+}
+
+fn fence_slack_plaintext(inner: &str) -> String {
+    let ticks = if inner.contains("```") { "````" } else { "```" };
+    format!("{ticks}\n{}\n{ticks}", inner.trim_end())
+}
+
 /// Simplified draft message for self-introduction commands: Draft ID + body only, no link picker.
 ///
 /// The URL is already baked into the body by the self-intro writer. Storing `link_options`
@@ -160,6 +194,9 @@ pub fn draft_prose_for_rework(body: &str) -> String {
     let mut lines: Vec<&str> = Vec::new();
     for line in body.lines() {
         let t = line.trim();
+        if t.starts_with("```") {
+            continue;
+        }
         if is_draft_footer_break(t) {
             break;
         }
@@ -309,5 +346,27 @@ mod tests {
         assert!(!prose.contains("Link:"));
         assert!(!prose.contains("0 = no link"));
         assert!(!prose.contains("change_url"));
+    }
+
+    #[test]
+    fn slack_paste_safe_fences_prose_keeps_footer() {
+        let stored = compose_draft_message(
+            "Hello 🦉 world.\n\nhttps://example.com/a\n",
+            "DRAFT-20260820-000001",
+            &["https://example.com/a".into()],
+        );
+        let shown = slack_paste_safe_linkedin_message(&stored);
+        assert!(shown.contains("```\nHello 🦉 world."));
+        assert!(shown.contains("Link: 1"));
+        assert!(!stored.contains("```"), "stored body must stay unfenced");
+        let prose = draft_prose_for_rework(&shown);
+        assert!(prose.contains("Hello 🦉 world."));
+        assert!(!prose.contains("```"));
+    }
+
+    #[test]
+    fn slack_paste_safe_ignores_tweets() {
+        let tweet = "Tweet ID: TWEET-1\n\nHello :owl:";
+        assert_eq!(slack_paste_safe_linkedin_message(tweet), tweet);
     }
 }
