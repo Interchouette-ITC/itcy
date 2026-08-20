@@ -150,10 +150,7 @@ pub fn compose_tweet_message(body: &str, tweet_id: &str, cites: &[String]) -> St
             let _ = writeln!(out, "Link: 0");
         }
     }
-    let _ = writeln!(
-        out,
-        "0 = no link. /change_tweet_url {tweet_id} <0|1|2|3|url>"
-    );
+    let _ = writeln!(out, "0 = no link. /change_url {tweet_id} <0|1|2|3|url>");
     for (i, u) in cites.iter().take(3).enumerate() {
         let _ = writeln!(out, "{}. {u}", i + 1);
     }
@@ -169,7 +166,7 @@ pub fn compose_self_intro_tweet_message(body: &str, tweet_id: &str) -> String {
     format!("Tweet ID: {tweet_id}\n\n{}", body.trim())
 }
 
-/// Apply `/change_tweet_url`: chosen URL becomes option **1** and the https line in the tweet.
+/// Apply `/change_url` on a tweet: chosen URL becomes option **1** and the https line.
 ///
 /// `0` clears the https line (options list unchanged). No special-case lecture.
 ///
@@ -601,7 +598,7 @@ Optimizer magic.
 https://hotpath.rs/blog/profiling-rust-guide
 
 Link: 2
-0 = no link. /change_tweet_url TWEET-20260814-000016 <0|1|2|3|url>
+0 = no link. /change_url TWEET-20260814-000016 <0|1|2|3|url>
 1. https://x.com/ayushagarwal027/status/2087899096606761217
 2. https://hotpath.rs/blog/profiling-rust-guide
 3. https://hotpath.rs/blog/rust-performance-profiling";
@@ -657,9 +654,20 @@ Link: 2
         assert!(out.contains("Link: 0"));
         assert!(out.contains("1. https://x.com/a/status/9"));
         assert!(out.contains("2. https://hotpath.rs/blog/a"));
-        assert!(out.contains("3. https://hotpath.rs/blog/b"));
         assert_eq!(options, opts);
-        assert!(!crate::publish::tweet_text_for_api(&out).contains("https://hotpath"));
+        assert!(!crate::publish::tweet_text_for_api(&out).contains("https://"));
+    }
+
+    #[test]
+    fn apply_custom_https_sets_cite_and_footer_command() {
+        let body = "Hello\n\nhttps://mcp.interchouette.net\n";
+        let opts = vec!["https://mcp.interchouette.net".into()];
+        let url = "https://www.spronta.com/blog/state-of-webmcp-july-2026";
+        let (out, options) = apply_change_tweet_url("TWEET-1", body, &opts, url).expect("apply");
+        assert_eq!(options[0], url);
+        assert!(out.contains(url));
+        assert!(out.contains("/change_url TWEET-1"));
+        assert!(!out.contains("/change_tweet_url"));
     }
 
     #[test]

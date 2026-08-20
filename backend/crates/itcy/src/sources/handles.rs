@@ -132,6 +132,112 @@ pub fn load_handles_from(path: &Path) -> Result<HandlesIndex, HandlesError> {
     Ok(HandlesIndex { entries })
 }
 
+const BRAND: &str = "Interchouette";
+const BRAND_ITC: &str = "Interchouette ITC";
+const LINKEDIN_BRAND_HANDLE: &str = "@interchouette-itc";
+
+/// When the post already names Interchouette, keep ITC and add `@interchouette-itc`. Does not invent a brand mention.
+#[must_use]
+pub fn ensure_linkedin_brand_mention(body: &str) -> String {
+    if body.to_ascii_lowercase().contains(LINKEDIN_BRAND_HANDLE) {
+        return body.to_string();
+    }
+    if let Some((_, end)) = find_phrase_outside_url(body, BRAND_ITC) {
+        return insert_at(body, end, " (@interchouette-itc)");
+    }
+    if let Some((_, end)) = find_phrase_outside_url(body, BRAND) {
+        return insert_at(body, end, " ITC (@interchouette-itc)");
+    }
+    body.to_string()
+}
+
+/// Put the `LinkedIn` brand handle in the `ResearchPack` when the operator named Interchouette.
+pub fn ensure_pack_linkedin_brand_handle(pack: &mut String, brief: &str) {
+    if find_phrase_outside_url(brief, BRAND).is_none() {
+        return;
+    }
+    if pack
+        .to_ascii_lowercase()
+        .contains("linkedin=@interchouette-itc")
+    {
+        return;
+    }
+    *pack = insert_handles_after_subject(pack, "handles: linkedin=@interchouette-itc");
+}
+
+fn insert_at(body: &str, end: usize, insert: &str) -> String {
+    format!("{}{}{}", &body[..end], insert, &body[end..])
+}
+
+fn insert_handles_after_subject(pack: &str, line: &str) -> String {
+    let mut out = String::new();
+    let mut inserted = false;
+    for raw in pack.lines() {
+        out.push_str(raw);
+        out.push('\n');
+        if !inserted && raw.starts_with("subject:") {
+            out.push_str(line);
+            out.push('\n');
+            inserted = true;
+        }
+    }
+    if !inserted {
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+fn find_phrase_outside_url(hay: &str, phrase: &str) -> Option<(usize, usize)> {
+    let hay_l = hay.to_ascii_lowercase();
+    let needle = phrase.to_ascii_lowercase();
+    let mut from = 0usize;
+    while from < hay_l.len() {
+        let Some(rel) = hay_l.get(from..).and_then(|s| s.find(needle.as_str())) else {
+            break;
+        };
+        let start = from + rel;
+        let end = start + needle.len();
+        if end > hay.len() {
+            break;
+        }
+        if word_boundary(hay, start, end) && !skip_host_or_url(hay, start, end) {
+            return Some((start, end));
+        }
+        from = start.saturating_add(1);
+    }
+    None
+}
+
+fn word_boundary(hay: &str, start: usize, end: usize) -> bool {
+    let before_ok = start == 0
+        || hay
+            .get(..start)
+            .and_then(|s| s.chars().next_back())
+            .is_none_or(|c| !c.is_alphanumeric());
+    let after_ok = end >= hay.len()
+        || hay
+            .get(end..)
+            .and_then(|s| s.chars().next())
+            .is_none_or(|c| !c.is_alphanumeric());
+    before_ok && after_ok
+}
+
+fn skip_host_or_url(hay: &str, start: usize, end: usize) -> bool {
+    if inside_url(hay, start) {
+        return true;
+    }
+    let before = hay.get(..start).and_then(|s| s.chars().next_back());
+    let after = hay.get(end..).and_then(|s| s.chars().next());
+    matches!(before, Some('.' | '/' | ':' | '@')) || matches!(after, Some('.' | '/'))
+}
+
+fn inside_url(hay: &str, idx: usize) -> bool {
+    let prefix = hay.get(..idx).unwrap_or("");
+    let start = prefix.rfind(char::is_whitespace).map_or(0, |i| i + 1);
+    hay.get(start..idx).is_some_and(|s| s.contains("://"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,5 +275,41 @@ mod tests {
         let idx = load_handles();
         // Either loaded from disk or empty - both are valid.
         let _ = idx;
+    }
+
+    #[test]
+    fn linkedin_keeps_itc_and_adds_company_handle() {
+        let out = ensure_linkedin_brand_mention("Interchouette ITC shipped WebMCP on the site.");
+        assert!(out.contains("Interchouette ITC (@interchouette-itc)"));
+        assert!(!out.contains("Interchouette (@interchouette-itc) ITC"));
+    }
+
+    #[test]
+    fn linkedin_completes_brand_name_when_itc_missing() {
+        let out = ensure_linkedin_brand_mention("Interchouette shipped WebMCP.");
+        assert!(out.contains("Interchouette ITC (@interchouette-itc) shipped"));
+    }
+
+    #[test]
+    fn linkedin_does_not_double_handle() {
+        let src = "Interchouette ITC (@interchouette-itc) shipped WebMCP.";
+        assert_eq!(ensure_linkedin_brand_mention(src), src);
+    }
+
+    #[test]
+    fn linkedin_skips_handle_inside_site_url() {
+        let src = "See https://mcp.interchouette.net for the tools.";
+        assert_eq!(ensure_linkedin_brand_mention(src), src);
+    }
+
+    #[test]
+    fn pack_gets_linkedin_handle_when_brief_names_brand() {
+        let mut pack = String::from("## ResearchPack\nsubject: WebMCP\nsummary: spec\n");
+        ensure_pack_linkedin_brand_handle(
+            &mut pack,
+            "WebMCP, Interchouette has integrated it at https://mcp.interchouette.net",
+        );
+        assert!(pack.contains("handles: linkedin=@interchouette-itc"));
+        assert!(pack.contains("subject: WebMCP"));
     }
 }

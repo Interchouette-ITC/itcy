@@ -136,10 +136,7 @@ pub fn compose_draft_message(body: &str, draft_id: &str, links: &[String]) -> St
             let _ = writeln!(out, "Link: 0");
         }
     }
-    let _ = writeln!(
-        out,
-        "0 = no link. /change_draft_url {draft_id} <0|1|2|3|url>"
-    );
+    let _ = writeln!(out, "0 = no link. /change_url {draft_id} <0|1|2|3|url>");
     for (i, u) in links.iter().enumerate() {
         let _ = writeln!(out, "{}. {u}", i + 1);
     }
@@ -311,6 +308,6 @@ mod tests {
         assert!(!prose.contains("Draft ID:"));
         assert!(!prose.contains("Link:"));
         assert!(!prose.contains("0 = no link"));
-        assert!(!prose.contains("change_draft_url"));
+        assert!(!prose.contains("change_url"));
     }
 }

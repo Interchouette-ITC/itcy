@@ -515,7 +515,7 @@ impl GithubClient {
             },
         )
         .await?;
-        self.merge_pull_rebase_on(drafts_owner, fork_pr_number)
+        self.merge_pull_squash_on(drafts_owner, fork_pr_number)
             .await?;
         Ok(PromoteResult {
             draft_id,
@@ -579,7 +579,7 @@ impl GithubClient {
             },
         )
         .await?;
-        self.merge_pull_rebase_on(drafts_owner, fork_pr_number)
+        self.merge_pull_squash_on(drafts_owner, fork_pr_number)
             .await?;
         Ok(PromoteResult {
             draft_id: tweet_id,
@@ -912,12 +912,12 @@ impl GithubClient {
         })
     }
 
-    /// Rebase-merges a PR on `owner`.
+    /// Squash-merges a PR on `owner` (publications forbids rebase merges).
     ///
     /// # Errors
     ///
     /// Returns a [`GithubError`] variant for HTTP, auth, or GitHub API failure.
-    pub async fn merge_pull_rebase_on(&self, owner: &str, number: u64) -> Result<(), GithubError> {
+    pub async fn merge_pull_squash_on(&self, owner: &str, number: u64) -> Result<(), GithubError> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/pulls/{}/merge",
             owner, self.cfg.repo, number
@@ -927,7 +927,7 @@ impl GithubClient {
             .put(&url)
             .header(AUTHORIZATION, format!("Bearer {}", self.cfg.token))
             .json(&json!({
-                "merge_method": "rebase",
+                "merge_method": "squash",
             }))
             .send()
             .await?;

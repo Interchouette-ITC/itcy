@@ -89,7 +89,7 @@ pub async fn rework_stored_draft(
         instructions = %instructions.trim(),
         "rework: start"
     );
-    let pack = if stored.research_pack.trim().is_empty() {
+    let mut pack = if stored.research_pack.trim().is_empty() {
         rework_empty_pack(&stored.subject)
     } else {
         stored.research_pack.clone()
@@ -99,6 +99,10 @@ pub async fn rework_stored_draft(
         .unwrap_or("(none - pick one pack URL)");
     let prose = crate::llm::sanitize_itcy_text(
         &crate::sources::draft_footer::draft_prose_for_rework(&stored.body),
+    );
+    crate::sources::handles::ensure_pack_linkedin_brand_handle(
+        &mut pack,
+        &format!("{}\n{instructions}\n{prose}", stored.subject),
     );
     let user = draft_rework_user_message(
         instructions,
@@ -136,6 +140,7 @@ pub async fn rework_stored_draft(
         body = set_single_in_post_url(&body, &primary);
     }
     body = strip_leading_draft_id(&body);
+    body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     let body = compose_draft_message(&body, &stored.draft_id, &link_options);
     let body = with_disclosure(&body, &trace);
     info!(
