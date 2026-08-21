@@ -31,6 +31,28 @@ export function asOurPostedStatus(s) {
   return null;
 }
 
+/**
+ * X rejection copy after Post (duplicate, rate limit, soft errors).
+ * Pure: pass page innerText / HTML text Content, not a Playwright handle.
+ * @returns {string|null}
+ */
+export function detectPostRejectReason(pageText) {
+  const body = String(pageText || "").replace(/\s+/g, " ").trim();
+  if (!body) return null;
+  const patterns = [
+    /It looks like you already said that![^.]*\./i,
+    /Wait a little while before you post again[^.]*\./i,
+    /Something went wrong\.?\s*Try again[^.]*\./i,
+    /You are over the character limit[^.]*\./i,
+    /Whoops!\s*You already said that[^.]*\./i,
+  ];
+  for (const re of patterns) {
+    const m = body.match(re);
+    if (m) return m[0].trim();
+  }
+  return null;
+}
+
 /** Drop a bare status URL that duplicates an attached cited status. */
 export function stripQuotedStatusUrl(text, qid) {
   const id = String(qid || "").trim();

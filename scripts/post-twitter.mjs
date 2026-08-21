@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  detectPostRejectReason,
   resolvePostedStatus,
   statusIdNewer,
   stripQuotedStatusUrl,
@@ -257,20 +258,27 @@ async function readToastHref(page) {
 }
 
 /**
- * Click Post and return the toast status href when X shows one.
- * Must capture toast HERE: resolveAfterPost navigates away and destroys it.
- * @returns {Promise<string|null>}
+ * Prefer the compose-dialog Post button over the home inline composer.
+ * Combined `.first()` was DOM-order roulette and often hit the wrong control.
  */
-async function clickPost(scope) {
-  const waitPage =
-    typeof scope.waitForTimeout === "function" ? scope : scope.page();
-  const btn = scope
-    .locator('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]')
+async function findPostButton(scope) {
+  const primary = scope.locator('[data-testid="tweetButton"]').first();
+  if (await primary.isVisible().catch(() => false)) {
+    return primary;
+  }
+  const inline = scope.locator('[data-testid="tweetButtonInline"]').first();
+  if (await inline.isVisible().catch(() => false)) {
+    return inline;
+  }
+  return scope
+    .locator('[data-testid="tweetButton"], [data-testid="tweetButtonInline"]')
     .first();
-  await btn.waitFor({ state: "visible", timeout: 15000 });
+}
+
+async function waitPostButtonEnabled(btn, waitPage) {
   for (let i = 0; i < 40; i++) {
     const disabled = await btn.getAttribute("aria-disabled");
-    if (disabled !== "true") break;
+    if (disabled !== "true") return;
     await waitPage.waitForTimeout(250);
   }
   const disabled = await btn.getAttribute("aria-disabled");
@@ -279,24 +287,54 @@ async function clickPost(scope) {
       "Post button stayed disabled (composer rejected the text; often over 280 weighted characters)"
     );
   }
-  await clickOrDump(waitPage, btn, "post");
-  // Confirm X accepted the post: dialog/composer clears or a toast appears.
+}
+
+async function composerStillOpen(scope) {
+  return scope
+    .locator('[data-testid="tweetTextarea_0"]')
+    .first()
+    .isVisible()
+    .catch(() => false);
+}
+
+async function failIfRejected(waitPage, label) {
+  const reason = detectPostRejectReason(await waitPage.evaluate(() => document.body?.innerText || ""));
+  if (!reason) return;
+  const cap = await captureOverlay(waitPage, label);
+  fail(`X rejected Post: ${reason} screenshot=${relArtifact(cap.png)}`);
+}
+
+/**
+ * Submit compose and return the toast status href when X shows one.
+ * Prefer Ctrl+Enter (Draft.js), then the dialog Post button - not force-click
+ * on whichever tweetButton* appears first in the full page DOM.
+ * Must capture toast HERE: resolveAfterPost navigates away and destroys it.
+ * @returns {Promise<string|null>}
+ */
+async function clickPost(scope) {
+  const waitPage =
+    typeof scope.waitForTimeout === "function" ? scope : scope.page();
+  const btn = await findPostButton(scope);
+  await btn.waitFor({ state: "visible", timeout: 15000 });
+  await waitPostButtonEnabled(btn, waitPage);
+
+  const box = scope.locator('[data-testid="tweetTextarea_0"]').first();
+  await box.click({ timeout: 8000 }).catch(() => {});
+  // Native X shortcut - more reliable than force-clicking a covered Post button.
+  await waitPage.keyboard.press("Control+Enter");
+
   let toastHref = null;
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 48; i++) {
     if (looksQuotePaywall(await waitPage.content())) {
       const cap = await captureOverlay(waitPage, "quote-paywall-after-post");
       fail(
         `X blocked Quote after Post click. screenshot=${relArtifact(cap.png)}`
       );
     }
+    await failIfRejected(waitPage, "post-rejected");
     toastHref = await readToastHref(waitPage);
-    const boxUp = await scope
-      .locator('[data-testid="tweetTextarea_0"]')
-      .first()
-      .isVisible()
-      .catch(() => false);
+    const boxUp = await composerStillOpen(scope);
     if (toastHref || !boxUp) {
-      // Composer gone: toast link can lag a beat; keep peeking briefly.
       if (!toastHref) {
         for (let j = 0; j < 12; j++) {
           toastHref = await readToastHref(waitPage);
@@ -306,11 +344,21 @@ async function clickPost(scope) {
       }
       return toastHref;
     }
+    // Ctrl+Enter missed: click the dialog Post once, then keep waiting.
+    if (i === 8) {
+      try {
+        await btn.click({ timeout: 5000 });
+      } catch {
+        await clickOrDump(waitPage, btn, "post");
+      }
+    }
     await waitPage.waitForTimeout(250);
   }
+  await failIfRejected(waitPage, "post-rejected");
   const cap = await captureOverlay(waitPage, "post-no-confirm");
+  const still = await composerStillOpen(scope);
   fail(
-    `Post click did not clear composer or show toast (tweet may not have been created). screenshot=${relArtifact(cap.png)}`
+    `Post did not clear composer or show toast (composer_still_open=${still}; tweet was not created). screenshot=${relArtifact(cap.png)}`
   );
   return null;
 }
