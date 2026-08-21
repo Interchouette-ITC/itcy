@@ -85,7 +85,7 @@ pub struct SlackRuntime {
 }
 
 impl SlackRuntime {
-    /// Opens memory/sources. `tools` must already own a long-lived Playwright MCP (binary boot).
+    /// Opens memory/sources. `tools` must already own a long-lived host browser (binary boot).
     ///
     /// # Errors
     ///
@@ -459,7 +459,9 @@ impl SlackRuntime {
                 }
             }
             OperatorCommand::DailyDigest => self.daily_digest_reply().await,
-            OperatorCommand::AcceptCommentReply { url } => Self::accept_comment_reply_reply(&url),
+            OperatorCommand::AcceptCommentReply { url } => {
+                self.accept_comment_reply_reply(&url).await
+            }
             OperatorCommand::Enrich { url } => self.enrich_reply(&url).await,
             OperatorCommand::Ingest { url } => self.ingest_reply(&url).await,
             OperatorCommand::HandleAdd { raw } => self.handle_add_reply(&raw),
@@ -553,13 +555,12 @@ impl SlackRuntime {
         out
     }
 
-    fn accept_comment_reply_reply(url: &str) -> String {
-        format!(
-            "Not wired yet.\n\n\
-/accept_comment_reply will accept a LinkedIn comment-reply BAT pack for this post URL:\n\
-`{url}`\n\n\
-Comment-reply rework is not implemented."
-        )
+    async fn accept_comment_reply_reply(&self, url: &str) -> String {
+        match crate::sources::linkedin_comment::draft_comment_reply_for_slack(&self.llm, url).await
+        {
+            Ok(msg) => msg,
+            Err(e) => format!("`/accept_comment_reply` failed: {e}"),
+        }
     }
 
     async fn enrich_reply(&self, url: &str) -> String {

@@ -13,7 +13,7 @@ use itcy::logging::init_tracing;
 use itcy::slack::{resolve_slack_runtime, SlackRuntime};
 use itcy::sources::build_embed_client;
 use itcy::sources::embed::EmbedClient;
-use itcy::tools::{resolve_playwright_mcp_cmd, ItcyTools};
+use itcy::tools::{resolve_host_browser_cmd, ItcyTools};
 use std::env;
 use std::path::PathBuf;
 use std::sync::{Arc, Once};
@@ -188,7 +188,7 @@ async fn main() -> Result<()> {
     let tools = Arc::new(ItcyTools::new(
         PathBuf::from(&config.runtime.state_db_path),
         Arc::clone(&embed),
-        resolve_playwright_mcp_cmd(),
+        resolve_host_browser_cmd(),
     ));
     let tools_keepalive = Arc::clone(&tools);
     warm_ollama_or_die(&llm, &embed).await?;

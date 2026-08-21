@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Interchouette-ITC
 // SPDX-License-Identifier: BUSL-1.1
 
-//! Playwright MCP client (stdio child). No Playwright crate in-process.
+//! Host browser bridge for draft research (Brave/Chromium).
+//!
+//! Spawns a product stdio child (`scripts/playwright-mcp.sh` → `@playwright/mcp`).
 
 use crate::llm::client::LlmError;
 use rmcp::model::CallToolRequestParams;
@@ -15,15 +17,15 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
-/// Connected Playwright MCP child (host Brave or Chromium via scripts/playwright-mcp.sh).
-pub struct PlaywrightMcp {
+/// Connected host browser (Brave or Chromium) via the product browse launcher.
+pub struct HostBrowser {
     service: Mutex<RunningService<RoleClient, ()>>,
     /// Root for screenshots when no research session step dir is passed.
     screenshots_dir: PathBuf,
 }
 
-impl PlaywrightMcp {
-    /// Spawns `bash <script>` as MCP stdio server.
+impl HostBrowser {
+    /// Spawns `bash <script>` as the product host-browser stdio bridge.
     ///
     /// # Errors
     ///
@@ -31,7 +33,7 @@ impl PlaywrightMcp {
     pub async fn spawn(script: &Path) -> Result<Self, LlmError> {
         if !script.is_file() {
             return Err(LlmError::ToolProvider(format!(
-                "playwright MCP script missing: {}",
+                "host browser script missing: {}",
                 script.display()
             )));
         }
@@ -52,17 +54,17 @@ impl PlaywrightMcp {
         let profile = resolve_pw_profile_dir();
         let _ = std::fs::create_dir_all(&profile);
         cmd.env("ITCY_PW_USER_DATA_DIR", &profile);
-        info!(browser = %browser, profile = %profile.display(), "tools: spawning Playwright MCP");
+        info!(browser = %browser, profile = %profile.display(), "tools: spawning host browser");
         // Script path must be absolute: we must not chdir before bash finds it.
         let transport = TokioChildProcess::new(cmd).map_err(|e| {
-            error!(error = %e, "tools: failed to spawn playwright MCP");
-            LlmError::ToolProvider(format!("spawn playwright MCP: {e}"))
+            error!(error = %e, "tools: failed to spawn host browser");
+            LlmError::ToolProvider(format!("spawn host browser: {e}"))
         })?;
         let service = serve_client((), transport).await.map_err(|e| {
-            error!(error = %e, "tools: playwright MCP initialize failed");
-            LlmError::ToolProvider(format!("playwright MCP initialize: {e}"))
+            error!(error = %e, "tools: host browser initialize failed");
+            LlmError::ToolProvider(format!("host browser initialize: {e}"))
         })?;
-        info!("tools: browser ready (Playwright MCP)");
+        info!("tools: host browser ready");
         Ok(Self {
             service: Mutex::new(service),
             screenshots_dir,
@@ -322,7 +324,7 @@ Page text / snapshot (truncated):\n{trimmed}"
             .unwrap_or_default();
 
         let ev = crate::tools::serp::split_serp_evaluate(&eval_raw);
-        // NEVER run looks_like_*_block on raw eval_raw: Playwright MCP appends the JS we sent,
+        // NEVER run looks_like_*_block on raw eval_raw: the browse helper appends the JS we sent,
         // and that JS contains captcha detector strings → false "SERP blocked" with real links.
         let prelim_links = crate::tools::serp::extract_serp_links(&ev.links_json, "");
         let mut blocked = serp_blocked_from_signals(serp_engine, ev.blocked, &snap, &ev.href);
@@ -416,7 +418,7 @@ Page text / snapshot (truncated):\n{trimmed}"
         let dest = round.join(format!("{label}.png"));
         let mcp_dir = resolve_pw_mcp_dir();
         let _ = std::fs::create_dir_all(&mcp_dir);
-        // Absolute path under pw/mcp only. Relative names land in Playwright MCP cwd
+        // Absolute path under pw/mcp only. Relative names land in the browse-helper cwd
         // (product root) and litter itcy-*.png at checkout root.
         let staging_path = mcp_dir.join(format!(
             "itcy-{}-{}.png",
@@ -522,15 +524,15 @@ Page text / snapshot (truncated):\n{trimmed}"
             params = params.with_arguments(arguments);
         }
         let result = guard.peer().call_tool(params).await.map_err(|e| {
-            error!(tool = %name, error = %e, "tools: playwright MCP tools/call failed");
-            LlmError::ToolProvider(format!("playwright MCP {name}: {e}"))
+            error!(tool = %name, error = %e, "tools: host browser tools/call failed");
+            LlmError::ToolProvider(format!("host browser {name}: {e}"))
         })?;
         drop(guard);
         let text = call_tool_result_to_string(&result);
         if result.is_error.unwrap_or(false) || looks_like_mcp_browser_error(&text) {
-            error!(tool = %name, detail = %text.chars().take(200).collect::<String>(), "tools: playwright MCP tool returned error");
+            error!(tool = %name, detail = %text.chars().take(200).collect::<String>(), "tools: host browser tool returned error");
             return Err(LlmError::ToolProvider(format!(
-                "playwright MCP {name}: {text}"
+                "host browser {name}: {text}"
             )));
         }
         Ok(text)
@@ -792,7 +794,7 @@ pub fn resolve_pw_screenshots_dir_pub() -> PathBuf {
     resolve_pw_subdir("screenshots")
 }
 
-/// Playwright MCP `--output-dir` (only path MCP may write screenshots into).
+/// Host-browser `--output-dir` (only path the browse helper may write screenshots into).
 fn resolve_pw_mcp_dir() -> PathBuf {
     let dir = std::env::var("ITCY_PW_MCP_DIR").map_or_else(
         |_| crate::paths::product_join("pw/mcp"),
@@ -816,7 +818,7 @@ fn write_step_text(round: &Path, name: &str, body: &str) {
     }
 }
 
-/// Host browser for Playwright MCP: `brave` (default) or `chromium`.
+/// Host browser binary choice: `brave` (default) or `chromium`.
 #[must_use]
 pub fn pw_browser_name() -> String {
     match std::env::var("ITCY_PW_BROWSER")
@@ -1081,7 +1083,7 @@ fn write_round_meta(round: &Path, fields: &[(&str, &str)]) {
 
 /// Strips MCP markdown / quotes and returns a bare http(s) URL when present.
 fn normalize_evaluated_url(raw: &str) -> Option<String> {
-    // Playwright MCP wraps evaluate as: ### Result\n"https://..."\n### Ran Playwright code
+    // Browse helper wraps evaluate as: ### Result\n"https://..."\n### Ran Playwright code
     for token in raw.split_whitespace() {
         let t = token.trim_matches(|c| c == '"' || c == '\'' || c == '`' || c == ',');
         if t.starts_with("http://") || t.starts_with("https://") {
@@ -1210,10 +1212,10 @@ fn call_tool_result_to_string(result: &rmcp::model::CallToolResult) -> String {
     out
 }
 
-/// Resolves playwright MCP launch script to an **absolute** path.
+/// Resolves the product host-browser launch script to an **absolute** path.
 /// Relative paths break when the MCP child cwd changes (e.g. pw/screenshots).
 #[must_use]
-pub fn resolve_playwright_mcp_cmd() -> PathBuf {
+pub fn resolve_host_browser_cmd() -> PathBuf {
     let mut candidates: Vec<PathBuf> = Vec::new();
     candidates.push(crate::paths::product_join("scripts/playwright-mcp.sh"));
     if let Ok(cwd) = std::env::current_dir() {
@@ -1242,8 +1244,8 @@ mod path_tests {
     use super::*;
 
     #[test]
-    fn resolve_playwright_returns_absolute_existing_script() {
-        let p = resolve_playwright_mcp_cmd();
+    fn resolve_host_browser_returns_absolute_existing_script() {
+        let p = resolve_host_browser_cmd();
         assert!(
             p.is_absolute(),
             "expected absolute path, got {}",
@@ -1279,7 +1281,7 @@ mod path_tests {
 
     #[test]
     fn absolute_script_still_exists_from_screenshots_cwd() {
-        let script = resolve_playwright_mcp_cmd();
+        let script = resolve_host_browser_cmd();
         let shots = resolve_pw_screenshots_dir();
         let _ = std::fs::create_dir_all(&shots);
         let prev = std::env::current_dir().expect("cwd");

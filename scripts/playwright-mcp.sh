@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Launch Playwright MCP for ITCy browse (product child). Cursor IDE uses global Playwright MCP.
+# Product browse launcher for ITCy draft research (Brave/Chromium).
+# Stdio child: npx @playwright/mcp.
 # Host browser: ITCY_PW_BROWSER=brave|chromium (default brave).
 # Profile dirs stay under the product tree (not a live browser profile).
 set -euo pipefail
@@ -34,7 +35,7 @@ if [[ ! -f "${CONFIG}" ]]; then
   CONFIG="${ROOT}/scripts/playwright-mcp.config.json"
 fi
 if [[ ! -f "${CONFIG}" ]]; then
-  echo "missing Playwright MCP config: ${CONFIG}" >&2
+  echo "missing host-browser config: ${CONFIG}" >&2
   exit 1
 fi
 
@@ -77,7 +78,7 @@ mkdir -p "${PW_MCP_DIR}"
 PW_PROFILE_DIR="${ITCY_PW_USER_DATA_DIR:-${DEFAULT_PROFILE}}"
 mkdir -p "${PW_PROFILE_DIR}"
 
-echo "playwright-mcp: browser=${BROWSER_NAME} bin=${BROWSER_BIN} profile=${PW_PROFILE_DIR} output=${PW_MCP_DIR}" >&2
+echo "host-browser: launcher=playwright-mcp browser=${BROWSER_NAME} bin=${BROWSER_BIN} profile=${PW_PROFILE_DIR} output=${PW_MCP_DIR}" >&2
 
 cd "${ROOT}"
 exec "${NPX}" -y @playwright/mcp@latest \

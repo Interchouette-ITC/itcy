@@ -16,6 +16,7 @@ pub mod ingest;
 pub mod intent;
 pub mod itc_catalog;
 pub mod itc_digest;
+pub mod linkedin_comment;
 pub mod linkedin_extract;
 pub mod live_sites;
 pub mod portability;
