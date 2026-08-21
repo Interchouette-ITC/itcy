@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  pickLatestOwnPost,
+  resolvePostedStatus,
   statusIdNewer,
   stripQuotedStatusUrl,
 } from "./lib/x-ship-resolve.mjs";
@@ -243,6 +243,24 @@ async function openQuoteComposer(page, qid) {
   return quoteComposerScope(page, qid);
 }
 
+async function readToastHref(page) {
+  try {
+    return await page.evaluate(() => {
+      const a = document.querySelector(
+        '[data-testid="toast"] a[href*="/status/"]'
+      );
+      return a ? a.getAttribute("href") : null;
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Click Post and return the toast status href when X shows one.
+ * Must capture toast HERE: resolveAfterPost navigates away and destroys it.
+ * @returns {Promise<string|null>}
+ */
 async function clickPost(scope) {
   const waitPage =
     typeof scope.waitForTimeout === "function" ? scope : scope.page();
@@ -263,6 +281,7 @@ async function clickPost(scope) {
   }
   await clickOrDump(waitPage, btn, "post");
   // Confirm X accepted the post: dialog/composer clears or a toast appears.
+  let toastHref = null;
   for (let i = 0; i < 40; i++) {
     if (looksQuotePaywall(await waitPage.content())) {
       const cap = await captureOverlay(waitPage, "quote-paywall-after-post");
@@ -270,23 +289,30 @@ async function clickPost(scope) {
         `X blocked Quote after Post click. screenshot=${relArtifact(cap.png)}`
       );
     }
-    const toastUp = await waitPage
-      .locator('[data-testid="toast"]')
-      .first()
-      .isVisible()
-      .catch(() => false);
+    toastHref = await readToastHref(waitPage);
     const boxUp = await scope
       .locator('[data-testid="tweetTextarea_0"]')
       .first()
       .isVisible()
       .catch(() => false);
-    if (toastUp || !boxUp) return;
+    if (toastHref || !boxUp) {
+      // Composer gone: toast link can lag a beat; keep peeking briefly.
+      if (!toastHref) {
+        for (let j = 0; j < 12; j++) {
+          toastHref = await readToastHref(waitPage);
+          if (toastHref) break;
+          await waitPage.waitForTimeout(200);
+        }
+      }
+      return toastHref;
+    }
     await waitPage.waitForTimeout(250);
   }
   const cap = await captureOverlay(waitPage, "post-no-confirm");
   fail(
     `Post click did not clear composer or show toast (tweet may not have been created). screenshot=${relArtifact(cap.png)}`
   );
+  return null;
 }
 
 async function scanProfileTimeline(page) {
@@ -316,19 +342,38 @@ async function scanProfileTimeline(page) {
 
 async function latestOwnOnProfile(page, excludeIds, beforeId) {
   const scan = await scanProfileTimeline(page);
-  return pickLatestOwnPost(scan, excludeIds, beforeId || "");
+  return resolvePostedStatus({
+    toastHref: null,
+    scan,
+    excludeIds,
+    beforeId: beforeId || "",
+  });
 }
 
-/** Reload profile Posts and wait until a newer own (non-pinned) status appears. */
-async function resolveAfterPost(page, excludeIds, beforeId) {
-  await page.goto("https://x.com/Interchouette", {
-    waitUntil: "domcontentloaded",
-    timeout: 60000,
+/**
+ * Prefer toast href from clickPost. Profile poll is fallback (reload, longer wait).
+ * @param {string|null} toastHref
+ */
+async function resolveAfterPost(page, excludeIds, beforeId, toastHref) {
+  const fromToast = resolvePostedStatus({
+    toastHref,
+    scan: { toast: null, articles: [] },
+    excludeIds,
+    beforeId: beforeId || "",
   });
-  for (let i = 0; i < 20; i++) {
+  if (fromToast) return fromToast;
+
+  for (let i = 0; i < 30; i++) {
+    if (i === 0 || i % 5 === 0) {
+      await page.goto("https://x.com/Interchouette", {
+        waitUntil: "domcontentloaded",
+        timeout: 60000,
+      });
+      await page.waitForTimeout(900);
+    }
     const found = await latestOwnOnProfile(page, excludeIds, beforeId);
     if (found) return found;
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(1000);
   }
   return null;
 }
@@ -344,9 +389,9 @@ async function postReply(page, replyText, parent, excludeIds) {
   await btn.click();
   await page.waitForTimeout(800);
   await fillComposer(page, replyText);
-  await clickPost(page);
+  const toastHref = await clickPost(page);
   const skip = excludeIds.concat([parent.id]);
-  return resolveAfterPost(page, skip, parent.id);
+  return resolveAfterPost(page, skip, parent.id, toastHref);
 }
 
 async function main() {
@@ -372,10 +417,11 @@ async function main() {
     const beforeId = before && before.id ? before.id : "0";
     const excludeIds = quoteId ? [quoteId] : [];
 
+    let rootToastHref = null;
     if (quoteId) {
       const scope = await openQuoteComposer(page, quoteId);
       await fillComposer(page, text, scope);
-      await clickPost(scope);
+      rootToastHref = await clickPost(scope);
     } else {
       await clickProfilePost(page);
       if (looksLoggedOut(page.url(), await page.content())) {
@@ -390,16 +436,21 @@ async function main() {
         .first();
       const scope = (await dialog.isVisible().catch(() => false)) ? dialog : page;
       await fillComposer(page, text, scope);
-      await clickPost(scope);
+      rootToastHref = await clickPost(scope);
     }
 
-    // Always: reload profile, take newest non-pinned own tweet newer than before.
-    // No phrase search. Reply only if Rust handed a split second file.
-    const found = await resolveAfterPost(page, excludeIds, beforeId);
+    // Toast first (captured before navigation). Profile reload is fallback only.
+    // Reply only if Rust handed a split second file.
+    const found = await resolveAfterPost(
+      page,
+      excludeIds,
+      beforeId,
+      rootToastHref
+    );
     if (!found) {
       const cap = await captureOverlay(page, "resolve-miss");
       fail(
-        `posted but profile has no newer own tweet than ${beforeId}. screenshot=${relArtifact(cap.png)}`
+        `posted but could not resolve status (toast=${rootToastHref || "none"}; no newer own than ${beforeId}). screenshot=${relArtifact(cap.png)}`
       );
     }
     if (!statusIdNewer(found.id, beforeId)) {

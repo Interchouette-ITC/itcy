@@ -214,10 +214,69 @@ pub fn sanitize_rework_instructions(raw: &str) -> String {
     t.replace('*', "").trim().to_string()
 }
 
-/// Long operator notes are a new brief (`/tweet_about` style), not a copy-edit of the old body.
+/// Long operator notes that assert new facts are a new brief (`/tweet_about` style).
+///
+/// Imperative copy-edits (`remove …`, `add emojis`, `shorten`) keep the previous body
+/// even when they run past the length threshold. A bare char count of 40 wrongly treated
+/// `remove Comment "…" for the GitHub link.` as a full rewrite and omitted the tweet.
 #[must_use]
 pub fn rework_is_new_brief(instructions: &str) -> bool {
-    sanitize_rework_instructions(instructions).chars().count() >= 40
+    let inst = sanitize_rework_instructions(instructions);
+    if inst.is_empty() || rework_is_copy_edit(&inst) {
+        return false;
+    }
+    inst.chars().count() >= 40
+}
+
+/// Imperative polish / surgical edit (keep previous tweet; apply the note).
+#[must_use]
+fn rework_is_copy_edit(instructions: &str) -> bool {
+    const PREFIXES: &[&str] = &[
+        "remove ",
+        "drop ",
+        "delete ",
+        "cut ",
+        "strip ",
+        "omit ",
+        "take out ",
+        "get rid of ",
+        "no more ",
+        "without ",
+        "add ",
+        "insert ",
+        "include ",
+        "put ",
+        "shorten",
+        "trim ",
+        "tighten",
+        "compress",
+        "expand ",
+        "lengthen",
+        "fix ",
+        "change ",
+        "replace ",
+        "swap ",
+        "rewrite ",
+        "rephrase ",
+        "edit ",
+        "update ",
+        "make ",
+        "don't ",
+        "do not ",
+        "never ",
+        "keep ",
+        "preserve ",
+        "use ",
+        "tone ",
+        "less ",
+        "more ",
+        "punchier",
+        "funnier",
+        "cooler",
+        "clearer",
+    ];
+    let t = instructions.trim_start().to_ascii_lowercase();
+    PREFIXES.iter().any(|p| t.starts_with(p))
 }
 
 fn tweet_rework_needs_tools(instructions: &str) -> bool {
@@ -537,6 +596,46 @@ Cite = option 1 (publisher URL in body).\n\
         let short = merge_rework_subject("rust policy", "add emojis");
         assert!(short.contains("rust policy"));
         assert!(short.contains("[operator rework]"));
+    }
+
+    #[test]
+    fn surgical_remove_line_keeps_previous_tweet_not_new_brief() {
+        let instructions = "remove Comment \"obscura\" for the GitHub link.";
+        assert!(
+            instructions.chars().count() >= 40,
+            "regression needs a long-enough remove note"
+        );
+        assert!(
+            !rework_is_new_brief(instructions),
+            "remove-line edits must not omit the previous tweet"
+        );
+        let prior = "📜 A solo dev built a Rust browser.\n\n🦀 Obscura’s footprint crushes headless Chrome.\n\nhttps://x.com/thevibefounder/status/1\n";
+        let user = tweet_rework_user_prompt(
+            "TWEET-1",
+            "Obscura Rust browser | cite https://x.com/thevibefounder/status/1",
+            "## ResearchPack\n",
+            prior,
+            "https://x.com/thevibefounder/status/1",
+            instructions,
+            false,
+        );
+        assert!(
+            !user.contains("previous draft omitted"),
+            "surgical remove must keep previous body: {user}"
+        );
+        assert!(
+            user.contains("Obscura"),
+            "previous commentary must stay in the prompt: {user}"
+        );
+        let merged = merge_rework_subject(
+            "Obscura Rust browser | cite https://x.com/thevibefounder/status/1",
+            instructions,
+        );
+        assert!(
+            merged.contains("Obscura Rust browser"),
+            "subject must not be replaced by the remove note alone: {merged}"
+        );
+        assert!(merged.contains("[operator rework]"));
     }
 
     #[test]

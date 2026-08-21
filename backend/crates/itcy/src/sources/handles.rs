@@ -635,9 +635,10 @@ pub fn ensure_linkedin_handle_from_pack(body: &str, pack: &str, index: &HandlesI
     ensure_named_handle_in_body(body, &handle, index, HandleMatch::LinkedIn)
 }
 
-/// Put the pack's X `@handle` in the tweet body (name to handle, or lead mention).
+/// Put the pack's X `@handle` in the tweet body when the entity name is already present.
 ///
 /// Skips the own account handle (`@Interchouette`). Never injects a `LinkedIn` handle on X.
+/// Does **not** invent a leading `@Handle:` when the name is absent (avoids wrong entity + UTF-8 panics).
 #[must_use]
 pub fn ensure_x_handle_from_pack(body: &str, pack: &str, index: &HandlesIndex) -> String {
     let Some(handle) = handle_from_pack(pack, "x=") else {
@@ -684,8 +685,12 @@ fn ensure_named_handle_in_body(
         return handle.to_string();
     }
     match kind {
+        // LinkedIn: lead line is fine (posts often open with the company @).
         HandleMatch::LinkedIn => format!("From {handle}.\n\n{trimmed}"),
-        HandleMatch::X => format!("{handle}: {trimmed}"),
+        // X: never invent `@Handle:` when the name was absent. A tangential pack match
+        // (brief named Cloudflare while the tweet is about Obscura) used to prefix
+        // `@Cloudflare: 🦉…`, then strip_own_x_handle panicked mid-emoji.
+        HandleMatch::X => body.to_string(),
     }
 }
 
@@ -958,7 +963,10 @@ mod tests {
         assert!(!out.contains("Isaac Sacolick"));
         assert!(!out.contains("@isaacsacolick"));
         let missing = ensure_x_handle_from_pack("DX that sticks.", pack, &idx);
-        assert!(missing.starts_with("@nyike:"));
+        assert_eq!(
+            missing, "DX that sticks.",
+            "X must not invent a leading @handle when the name is absent"
+        );
     }
 
     #[test]

@@ -22,7 +22,9 @@ pub use client::{
     LlmUsage,
 };
 pub use clock::{today_context_line, today_prompt_date};
-pub use disclosure::{format_disclosure, strip_trailing_disclosures, with_disclosure};
+pub use disclosure::{
+    ensure_stored_disclosure, format_disclosure, strip_trailing_disclosures, with_disclosure,
+};
 pub use registry::build_router;
 pub use router::{ChainCandidate, FailoverRouter, TaskChains, TaskKind};
 pub use sanitize::{

@@ -64,12 +64,18 @@ impl SlackRuntime {
         };
         match store.get(id) {
             Ok(Some(row)) => {
-                let body = if row.body.trim().is_empty() {
+                let restored = crate::llm::disclosure::ensure_stored_disclosure(
+                    row.body.trim(),
+                    &row.model,
+                    row.tokens_in,
+                    row.tokens_out,
+                );
+                let body = if restored.trim().is_empty() {
                     "(empty body)".to_string()
                 } else if row.draft_id.starts_with("DRAFT-") {
-                    crate::sources::draft_footer::slack_paste_safe_linkedin_message(row.body.trim())
+                    crate::sources::draft_footer::slack_paste_safe_linkedin_message(&restored)
                 } else {
-                    row.body.trim().to_string()
+                    restored
                 };
                 format!(
                     "{kind} `{id}`  status=`{st}`  updated=`{upd}`\n\n{body}",
