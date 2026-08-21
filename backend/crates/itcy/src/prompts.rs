@@ -462,6 +462,10 @@ mod tests {
         let f = fallback_commentary("topic-x");
         assert!(f.contains("topic-x"));
         assert!(!f.contains("{topic}"));
+        assert!(
+            f.contains('🦉') && f.contains('🦀'),
+            "fallback must meet emoji bar: {f}"
+        );
         let dr =
             draft_rework_user_message("shorter", "DRAFT-1", "subj", "PACK", "body", "https://a");
         assert!(dr.contains("shorter") && dr.contains("DRAFT-1") && dr.contains("PACK"));

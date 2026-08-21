@@ -521,7 +521,36 @@ pub(crate) fn scrub_and_validate_writer_body(
         );
         body = fallback_subject_commentary(subject, primary.as_deref());
     }
+    body = ensure_draft_emoji_bar(&body);
     Ok(body)
+}
+
+/// `LinkedIn` drafts: at least two unique emoji glyphs (same bar as tweets).
+fn ensure_draft_emoji_bar(body: &str) -> String {
+    if crate::llm::tweet_emoji_ok(body) {
+        return body.to_string();
+    }
+    let mut out = body.trim_end().to_string();
+    if !out.contains('🦀') {
+        // Weave crab near the first sentence break when missing.
+        if let Some(i) = out.find(". ") {
+            out.insert_str(i + 1, " 🦀");
+        } else {
+            out.push_str(" 🦀");
+        }
+    }
+    if !out.contains('🦉') {
+        if let Some(i) = out.rfind('.') {
+            out.insert_str(i, " 🦉");
+        } else {
+            out.push_str(" 🦉");
+        }
+    }
+    // Still short of two unique glyphs: force the signature pair.
+    if !crate::llm::tweet_emoji_ok(&out) {
+        out.push_str("\n\n🦉 🦀");
+    }
+    out
 }
 
 /// Load phase then draft writer. LOAD may `web_search` / `browse_url`. The writer
@@ -803,11 +832,15 @@ fn body_copies_operator_subject(body: &str, subject: &str) -> bool {
     false
 }
 
-/// Compact topic for fallback: first clause, word-capped (no phrase lists).
+/// Compact topic for fallback: first clause, word-capped (no phrase lists, no URLs).
 #[must_use]
 fn short_topic_for_fallback(subject: &str) -> String {
-    let s = subject.trim();
-    let clause = s.split([',', ';', '\n']).next().unwrap_or(s).trim();
+    let mut s = subject.trim().to_string();
+    for u in extract_http_urls(&s) {
+        s = s.replace(&u, " ");
+    }
+    let s = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    let clause = s.split([',', ';', '\n']).next().unwrap_or(&s).trim();
     let words: Vec<_> = clause.split_whitespace().take(10).collect();
     let t = words.join(" ");
     if t.is_empty() {
@@ -1365,5 +1398,16 @@ I'm watching 🦉 how this lands for systems teams that want polish without a se
         );
         assert!(out.contains('🦉') && out.contains('🦀'));
         assert_eq!(crate::llm::count_emoji(&out), 2);
+    }
+
+    #[test]
+    fn scrub_injects_emoji_when_fallback_or_writer_omits_them() {
+        let pack = ["https://x.com/a/status/1".to_string()];
+        let out = scrub_and_validate_writer_body("short", &pack, "Rust Glancer LSP").expect("ok");
+        assert!(
+            crate::llm::tweet_emoji_ok(&out),
+            "fallback/scrub must force emoji bar: {out}"
+        );
+        assert!(out.contains('🦉') && out.contains('🦀'), "{out}");
     }
 }
