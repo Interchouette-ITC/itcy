@@ -4457,11 +4457,6 @@ x = "@DrySsHD"
 x_url = "https://x.com/DrySsHD"
 
 [[handle]]
-name = "gui"
-x = "@gui"
-x_url = "https://x.com/gui"
-
-[[handle]]
 name = "headjs"
 x = "@headjs"
 x_url = "https://x.com/headjs"

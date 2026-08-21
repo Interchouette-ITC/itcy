@@ -1054,7 +1054,7 @@ notes: model={model}"
                 )
             } else {
                 format!(
-                    "DRAFT commentary as ITCy on the news. Rust async runtimes keep \
+                    "DRAFT commentary as ITCy on the news. Rust async runtimes 🦀 keep \
 services responsive under load when tasks share a well-tuned executor and backpressure \
 is honest about queue depth. Teams that measure latency budgets and cancel abandoned \
 work see fewer cascading timeouts in production. Operators who pin versions, surface \
@@ -1063,6 +1063,7 @@ work-stealing queues and bounded channels stop one slow dependency from filling 
 When cancellation is polite and metrics name the stall, the room stays boring in the \
 best way. Peer notes like this belong on LinkedIn: precise verbs, no slogan mush, and \
 room for a single on-topic publisher cite under AI CMO craft for builders who read carefully. \
+I'm watching 🦉 how those queues behave under real traffic. \
 model={model} ctx_len={}",
                     blob.len()
                 )
@@ -1322,7 +1323,43 @@ https://example.com/policy";
             .body
             .contains("Written by AI - ITCy - model mock/draft-model"));
         assert!(reply.body.to_ascii_lowercase().contains("rust"));
+        assert!(
+            crate::llm::tweet_emoji_ok(&reply.body),
+            "writer emoji must survive scrub/compose (got <2 glyphs): {}",
+            reply.body
+        );
+        assert!(
+            reply.body.contains('🦉') && reply.body.contains('🦀'),
+            "owl + crab must survive the LinkedIn draft pipeline"
+        );
         assert!(reply.model.contains("load=mock/load-model"));
         assert!(reply.model.contains("draft=mock/draft-model"));
+    }
+
+    #[test]
+    fn scrub_preserves_woven_emoji_bar() {
+        // Keep well above the thin-body fallback threshold so scrub does not replace prose.
+        let body = "\
+GPUI Component is a bold step for Rust desktop UI 🦀 without Electron overhead for teams \
+that already live in native toolchains. Longbridge shipped sixty plus components with data \
+tables, dock layouts, and a code editor that leans on Tree-sitter and LSP, all aimed at \
+GPU accelerated rendering rather than a browser shell. That framing matters for builders \
+who have paid the Electron tax in memory and startup time and want a Rust-first desktop \
+stack that still feels modern. The design language borrows from macOS, Windows, and \
+shadcn-style component catalogs without pretending the web is the only UI substrate. \
+Virtualized lists, native Markdown, and HTML rendering make the library a serious option \
+for professional workloads where frame budget and CJK coverage are not optional. \
+I'm watching 🦉 how this lands for systems teams that want polish without a second runtime.";
+        assert!(
+            prose_word_count(body) >= 120,
+            "fixture must stay above thin-body fallback"
+        );
+        let out = scrub_and_validate_writer_body(body, &[], "gpui rust desktop").expect("ok");
+        assert!(
+            crate::llm::tweet_emoji_ok(&out),
+            "scrub must keep >=2 glyphs"
+        );
+        assert!(out.contains('🦉') && out.contains('🦀'));
+        assert_eq!(crate::llm::count_emoji(&out), 2);
     }
 }
