@@ -5,12 +5,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   asOurPostedStatus,
+  detectPostRejectReason,
   pickLatestOwnPost,
   resolvePostedStatus,
   statusFromHref,
   statusIdNewer,
   stripQuotedStatusUrl,
 } from "./lib/x-ship-resolve.mjs";
+
+test("detectPostRejectReason catches duplicate-post copy", () => {
+  const t =
+    "It looks like you already said that! Let's give other folks a chance to say their piece. Wait a little while before you post again. Not helpful?";
+  assert.match(detectPostRejectReason(t), /already said that/i);
+  assert.equal(detectPostRejectReason("Home timeline For you Following"), null);
+});
 
 test("statusFromHref keeps /i/ as handle i", () => {
   const s = statusFromHref("/i/status/2090577804115021919");

@@ -226,11 +226,19 @@ async fn brave_x_post(request: &XPublishRequest) -> Result<PublishResult, Publis
     })
 }
 
-/// Keep `quote_tweet_id` when set. A bare X status URL in the body is the
-/// operator Link choice - do not clear the quote and do not strip that URL.
-const fn prepare_x_publish_request(_request: &mut XPublishRequest) {
-    // Intentionally empty: previous code cleared quote whenever an X status URL
-    // remained in the body. That was wrong (URL ≠ Quote Tweet on X).
+/// When the ship body already has an X status URL (operator Link), clear
+/// `quote_tweet_id`. X will quote from that URL in the text. A separate quote
+/// composer would strip the same URL and fight the Link choice.
+fn prepare_x_publish_request(request: &mut XPublishRequest) {
+    if ship_body_has_x_status_url(&request.body) {
+        request.quote_tweet_id = None;
+    }
+}
+
+fn ship_body_has_x_status_url(body: &str) -> bool {
+    tweet_text_for_api(body)
+        .lines()
+        .any(|l| crate::sources::url_hygiene::is_x_status_url(l.trim()))
 }
 
 fn ship_texts(body: &str) -> Result<(String, Option<String>), PublishError> {
@@ -699,9 +707,9 @@ Link: 1
     }
 
     #[test]
-    fn quote_ship_keeps_quote_and_operator_link_url() {
-        // Regression: XPOST-20260820-000046 — quote + Link:1 = X status.
-        // Must keep quote AND keep the operator-chosen URL (do not strip / do not clear quote).
+    fn x_url_in_body_clears_quote_and_keeps_link_on_overflow_reply() {
+        // Link:1 X status in body → clear quote_tweet_id (no second quote composer).
+        // Over 280 → root commentary, reply = tags + URL.
         let body = "\
 Tweet ID: TWEET-20260820-000046
 
@@ -722,7 +730,10 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
             quote_tweet_id: Some("2089811385899160055".into()),
         };
         prepare_x_publish_request(&mut req);
-        assert_eq!(req.quote_tweet_id.as_deref(), Some("2089811385899160055"));
+        assert!(
+            req.quote_tweet_id.is_none(),
+            "X URL already in body: clear quote so Brave does not strip the Link"
+        );
         assert!(
             ship_text_has_x_status(&req.body),
             "operator Link:1 X URL must stay in the body"
@@ -740,9 +751,10 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
             "reply keeps the cite URL: {reply}"
         );
         assert!(
-            reply.contains("#CloudOps") || text.contains("#CloudOps"),
-            "tags still ship: root={text} reply={reply}"
+            reply.contains("#CloudOps"),
+            "tags on reply when split: {reply}"
         );
+        assert!(!text.contains('#'), "root is commentary only: {text}");
     }
 
     #[test]
