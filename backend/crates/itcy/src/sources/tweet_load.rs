@@ -28,8 +28,6 @@ pub async fn run_short_cite_load(
     tools: Option<&ItcyTools>,
 ) -> Result<(String, Vec<String>, CompletionTrace), RagError> {
     crate::sources::rag::log_pipeline_banner("LOAD (short cite)");
-    let web_q = web_search_query(subject);
-    let x_q = x_search_query(subject);
 
     crate::sources::rag::log_pipeline_step("1/4 cite");
     let (cite_text, cite_via) = fetch_subject_url(subject_url, tools).await;
@@ -41,17 +39,34 @@ pub async fn run_short_cite_load(
     );
 
     crate::sources::rag::log_pipeline_step("2/4 brave web_search");
-    let (overview, extracted_n) = brave_and_extra_browse(tools, &web_q, subject_url).await;
+    // X status cite: fetch that status only. Brave SERP on "Rust LSP …" etc. pulls
+    // unrelated malware/news into the pack and the writer follows it.
+    let (overview, extracted_n) = if is_x_status_url(subject_url) {
+        info!("load_tweet: subject is X status; skip brave web_search");
+        crate::sources::rag::log_pipeline_step("3/4 extra publisher browse");
+        info!("load_tweet: skipped (x status cite)");
+        (String::new(), 0)
+    } else {
+        let web_q = web_search_query(subject);
+        brave_and_extra_browse(tools, &web_q, subject_url).await
+    };
 
     crate::sources::rag::log_pipeline_step("4/4 X search");
-    info!(query = %x_q, "load_tweet: X query");
-    let (x_extra, x_hits) = extra_x_status(&x_q, subject_url).await;
-    info!(
-        query = %x_q,
-        hits = x_hits,
-        picked = x_extra.as_deref().unwrap_or("(none)"),
-        "load_tweet: X results"
-    );
+    let (x_extra, x_hits) = if is_x_status_url(subject_url) {
+        info!("load_tweet: subject is X status; skip X keyword search");
+        (None, 0)
+    } else {
+        let x_q = x_search_query(subject);
+        info!(query = %x_q, "load_tweet: X query");
+        let pair = extra_x_status(&x_q, subject_url).await;
+        info!(
+            query = %x_q,
+            hits = pair.1,
+            picked = pair.0.as_deref().unwrap_or("(none)"),
+            "load_tweet: X results"
+        );
+        pair
+    };
 
     let mut urls = vec![subject_url.to_string()];
     // Subject X status: pack is that URL (+ optional other X hit). Do not stuff random Brave
