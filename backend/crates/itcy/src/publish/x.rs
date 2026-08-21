@@ -746,6 +746,37 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
     }
 
     #[test]
+    fn gpui_quote_body_ships_as_single_tweet() {
+        // TWEET-20260821-000047 style: commentary + tags + same X URL as quote.
+        // Fits 280 weighted → one Brave post, no reply file.
+        let body = "\
+Tweet ID: TWEET-20260821-000047
+
+📜 Rust GUI just got a GPU-powered upgrade.
+🦀 GPUI brings 60+ solid components, huge-data tables, and a smooth 200K-line code editor, no more wrestling with Qt.
+🦉 Native feel, dock layouts, themes… all in one.
+
+#Rust #GUI #OpenSource
+
+https://x.com/milonspace/status/2089661151529574481
+
+Link: 1
+0 = no link. /change_url TWEET-20260821-000047 <0|1|2|3|url>
+1. https://x.com/milonspace/status/2089661151529574481
+2. https://x.com/huacnlee/status/2090424183683797119
+
+Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:98";
+        let (text, reply) = ship_texts(body).expect("ship texts");
+        assert!(reply.is_none(), "must be one tweet, got reply: {reply:?}");
+        assert!(crate::sources::tweet_thread::fits_x_limit(&text), "{text}");
+        assert!(text.contains("Rust GUI"), "{text}");
+        assert!(
+            text.contains("2089661151529574481"),
+            "operator link URL stays in body for API; Brave strips when quoting: {text}"
+        );
+    }
+
+    #[test]
     fn ship_texts_refuses_inline_own_handle() {
         let err = ship_texts("Builders ping @Interchouette for help").unwrap_err();
         assert!(err.to_string().contains("@Interchouette"), "{err}");

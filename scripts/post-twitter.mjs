@@ -7,6 +7,11 @@ import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  pickLatestOwnPost,
+  statusIdNewer,
+  stripQuotedStatusUrl,
+} from "./lib/x-ship-resolve.mjs";
 
 const requireFrom = process.env.PLAYWRIGHT_REQUIRE_FROM;
 if (!requireFrom) {
@@ -284,144 +289,64 @@ async function clickPost(scope) {
   );
 }
 
-function statusFromHref(href) {
-  if (!href) return null;
-  const path = String(href).split("?")[0];
-  const m = path.match(/\/(i|[A-Za-z0-9_]+)\/status\/(\d+)/);
-  if (!m) return null;
-  const handle = m[1];
-  const id = m[2];
-  const url =
-    handle.toLowerCase() === "i"
-      ? `https://x.com/i/status/${id}`
-      : `https://x.com/${handle}/status/${id}`;
-  return { id, handle: handle.toLowerCase(), url };
-}
-
-function statusIdNewer(a, b) {
-  try {
-    return BigInt(a) > BigInt(b);
-  } catch {
-    return a > b;
-  }
-}
-
-function pickPostedStatus(candidates, excludeIds, needle) {
-  const skip = (s) => excludeIds.includes(s.id);
-  const own = candidates.filter(
-    (s) => s.handle === "interchouette" && !skip(s)
-  );
-  if (!own.length) return null;
-  // Prefer newest own status (snowflake). Never fall back to another account.
-  own.sort((a, b) => (statusIdNewer(a.id, b.id) ? -1 : statusIdNewer(b.id, a.id) ? 1 : 0));
-  if (!needle) return own[0];
-  const matched = own.find((s) => (s.snippet || "").includes(needle));
-  return matched || null;
-}
-
-function normalizeMatchText(s) {
-  return String(s || "")
-    .replace(/[''\u2018\u2019]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function textNeedle(text) {
-  // Prefer a latin phrase so leading emoji / curly quotes do not break matching.
-  const compact = normalizeMatchText(text);
-  const latin = compact.match(/[A-Za-z][A-Za-z0-9 ,.-]{19,79}/);
-  if (latin) return latin[0].slice(0, 48).trim();
-  if (compact.length < 12) return "";
-  return compact.slice(0, Math.min(40, compact.length));
-}
-
-function ownStatusFromArticle(hrefs) {
-  for (const href of hrefs || []) {
-    const s = statusFromHref(href);
-    if (s && s.handle === "interchouette") return s;
-  }
-  return null;
-}
-
-async function readStatusFromPage(page, excludeIds, tries, needle) {
-  const want = (needle || "").trim();
-  for (let i = 0; i < tries; i++) {
-    const hrefs = await page.evaluate((need) => {
-      const toast = document.querySelector(
-        '[data-testid="toast"] a[href*="/status/"]'
-      );
-      const articles = [...document.querySelectorAll("article")].map((art) => {
-        const raw = (art.innerText || "").replace(/\s+/g, " ").trim();
-        const flat = raw.replace(/[''\u2018\u2019]/g, "");
-        const needFlat = String(need || "").replace(/[''\u2018\u2019]/g, "");
-        // Quote cards list the *cited* /status/ link first - collect all.
-        const statusHrefs = [
-          ...art.querySelectorAll('a[href*="/status/"]'),
-        ].map((a) => a.getAttribute("href"));
-        return {
-          statusHrefs,
-          snippet: raw.slice(0, 280),
-          matches: needFlat ? flat.includes(needFlat) : false,
-        };
-      });
+async function scanProfileTimeline(page) {
+  return page.evaluate(() => {
+    const toastEl = document.querySelector(
+      '[data-testid="toast"] a[href*="/status/"]'
+    );
+    const articles = [...document.querySelectorAll("article")].map((art) => {
+      const raw = (art.innerText || "").replace(/\s+/g, " ").trim();
+      const head = raw.slice(0, 96);
+      const pinned = /pinned|épinglé/i.test(head);
+      const statusHrefs = [
+        ...art.querySelectorAll('a[href*="/status/"]'),
+      ].map((a) => a.getAttribute("href"));
       return {
-        page: location.href,
-        toast: toast ? toast.getAttribute("href") : null,
-        articles,
+        pinned,
+        statusHrefs,
+        snippet: raw.slice(0, 280),
       };
-    }, want);
-    const toast = statusFromHref(hrefs.toast);
-    if (toast && toast.handle === "interchouette" && !excludeIds.includes(toast.id)) {
-      return toast;
-    }
-    for (const art of hrefs.articles || []) {
-      if (want && !art.matches) continue;
-      const own = ownStatusFromArticle(art.statusHrefs);
-      if (own && !excludeIds.includes(own.id)) {
-        own.snippet = art.snippet || "";
-        if (!want || art.matches) return own;
-      }
-    }
-    if (!want) {
-      const fromArticles = [];
-      for (const art of hrefs.articles || []) {
-        const own = ownStatusFromArticle(art.statusHrefs);
-        if (own) fromArticles.push(own);
-      }
-      const fromUrl = statusFromHref(hrefs.page);
-      if (fromUrl && fromUrl.handle === "interchouette") fromArticles.push(fromUrl);
-      const picked = pickPostedStatus(fromArticles, excludeIds, "");
-      if (picked) return picked;
-    }
-    await page.waitForTimeout(500);
+    });
+    return {
+      toast: toastEl ? toastEl.getAttribute("href") : null,
+      articles,
+    };
+  });
+}
+
+async function latestOwnOnProfile(page, excludeIds, beforeId) {
+  const scan = await scanProfileTimeline(page);
+  return pickLatestOwnPost(scan, excludeIds, beforeId || "");
+}
+
+/** Reload profile Posts and wait until a newer own (non-pinned) status appears. */
+async function resolveAfterPost(page, excludeIds, beforeId) {
+  await page.goto("https://x.com/Interchouette", {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
+  for (let i = 0; i < 20; i++) {
+    const found = await latestOwnOnProfile(page, excludeIds, beforeId);
+    if (found) return found;
+    await page.waitForTimeout(400);
   }
   return null;
 }
 
-async function postReply(page, replyText, parent, excludeIds, needle) {
+async function postReply(page, replyText, parent, excludeIds) {
   await page.goto(parent.url, {
     waitUntil: "domcontentloaded",
     timeout: 60000,
   });
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(1000);
   const btn = page.locator('[data-testid="reply"]').first();
   await btn.waitFor({ state: "visible", timeout: 20000 });
   await btn.click();
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(800);
   await fillComposer(page, replyText);
   await clickPost(page);
-  await page.waitForTimeout(2000);
   const skip = excludeIds.concat([parent.id]);
-  let found = await readStatusFromPage(page, skip, 12, needle || "");
-  if (!found) {
-    await page.goto("https://x.com/Interchouette", {
-      waitUntil: "domcontentloaded",
-      timeout: 60000,
-    });
-    await page.waitForTimeout(3500);
-    found = await readStatusFromPage(page, skip, 16, needle || "");
-  }
-  return found;
+  return resolveAfterPost(page, skip, parent.id);
 }
 
 async function main() {
@@ -433,18 +358,25 @@ async function main() {
     fail(`read tweet file: ${e}`);
   }
   if (!text) fail("empty tweet text");
+  // Cited status already attached in composer; do not also paste that URL.
+  text = stripQuotedStatusUrl(text, quoteId);
 
   const browser = await chromium.connectOverCDP(cdpUrl);
   const context = browser.contexts()[0] || (await browser.newContext());
   const page = context.pages()[0] || (await context.newPage());
 
   try {
+    // Baseline: newest own post before we click Post (so we never claim an old one).
+    await goProfile(page);
+    const before = await latestOwnOnProfile(page, [], "");
+    const beforeId = before && before.id ? before.id : "0";
+    const excludeIds = quoteId ? [quoteId] : [];
+
     if (quoteId) {
       const scope = await openQuoteComposer(page, quoteId);
       await fillComposer(page, text, scope);
       await clickPost(scope);
     } else {
-      await goProfile(page);
       await clickProfilePost(page);
       if (looksLoggedOut(page.url(), await page.content())) {
         fail("logged out on compose");
@@ -461,29 +393,19 @@ async function main() {
       await clickPost(scope);
     }
 
-    await page.waitForTimeout(2500);
-    const excludeIds = quoteId ? [quoteId] : [];
-    const needle = textNeedle(text);
-    // Quote compose stays on the source status; go to profile for our card.
-    // Prefer toast, then article text match with *our* /status/ link (not the cited one).
-    let found = null;
-    if (!quoteId) {
-      found = await readStatusFromPage(page, excludeIds, 12, needle);
-    }
-    if (!found) {
-      await page.goto("https://x.com/Interchouette", {
-        waitUntil: "domcontentloaded",
-        timeout: 60000,
-      });
-      await page.waitForTimeout(4000);
-      found = await readStatusFromPage(page, excludeIds, 24, needle);
-    }
+    // Always: reload profile, take newest non-pinned own tweet newer than before.
+    // No phrase search. Reply only if Rust handed a split second file.
+    const found = await resolveAfterPost(page, excludeIds, beforeId);
     if (!found) {
       const cap = await captureOverlay(page, "resolve-miss");
       fail(
-        `posted but could not resolve status URL (needle=${JSON.stringify(needle)}; no toast / no profile text match); refusing to guess an old tweet. screenshot=${relArtifact(cap.png)}`
+        `posted but profile has no newer own tweet than ${beforeId}. screenshot=${relArtifact(cap.png)}`
       );
     }
+    if (!statusIdNewer(found.id, beforeId)) {
+      fail(`resolve picked non-newer id ${found.id} (before=${beforeId})`);
+    }
+
     let replyFound = null;
     if (replyFile) {
       let replyText = "";
@@ -493,7 +415,13 @@ async function main() {
         fail(`read reply file: ${e}`);
       }
       if (replyText) {
-        replyFound = await postReply(page, replyText, found, excludeIds, textNeedle(replyText));
+        replyFound = await postReply(page, replyText, found, excludeIds);
+        if (!replyFound) {
+          const cap = await captureOverlay(page, "reply-resolve-miss");
+          fail(
+            `reply posted but profile has no newer own tweet than ${found.id}. screenshot=${relArtifact(cap.png)}`
+          );
+        }
       }
     }
     ok(
@@ -512,5 +440,6 @@ async function main() {
     }
   }
 }
+
 
 main();
