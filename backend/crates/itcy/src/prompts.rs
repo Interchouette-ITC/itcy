@@ -412,6 +412,40 @@ mod tests {
     }
 
     #[test]
+    fn linkedin_craft_locks_owl_emoji_baseline() {
+        // LinkedIn identity: owl is baseline voice, not optional "when earned".
+        assert!(
+            !FORM_CRAFT_LINKEDIN.contains("only when earned"),
+            "LinkedIn Form craft must not teach owl/crab as optional 'when earned'"
+        );
+        assert!(
+            !CREATIVE_LINKEDIN.contains("only when earned"),
+            "LinkedIn Creative must not teach owl/crab as optional 'when earned'"
+        );
+        assert!(
+            !DRAFT_SYSTEM_CORE.contains("only when earned")
+                && !DRAFT_USER_TMPL.contains("only when earned"),
+            "draft writer prompts must not teach owl/crab as optional 'when earned'"
+        );
+        assert!(
+            FORM_CRAFT_LINKEDIN.contains("Zero emoji is a fail")
+                || FORM_CRAFT_LINKEDIN.contains("you are the owl"),
+            "LinkedIn Form craft must lock zero-emoji fail / owl identity"
+        );
+        assert!(
+            CREATIVE_LINKEDIN.contains("Zero emoji is a fail")
+                || CREATIVE_LINKEDIN.contains("you are the owl")
+                || CREATIVE_LINKEDIN.contains("**owl** AI CMO"),
+            "LinkedIn Creative must lock owl AI CMO + emoji fail"
+        );
+        assert!(
+            DRAFT_SYSTEM_CORE.contains("zero emoji is a fail")
+                || DRAFT_USER_TMPL.contains("Zero emoji is a fail"),
+            "draft writer must say zero emoji fails"
+        );
+    }
+
+    #[test]
     fn templates_substitute_placeholders() {
         let u = load_user_message("rust async");
         assert!(u.contains("rust async"));
