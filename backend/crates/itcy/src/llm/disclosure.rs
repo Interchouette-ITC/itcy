@@ -12,11 +12,57 @@ pub const DISCLOSURE_PREFIX: &str = "Written by AI - ITCy - model ";
 /// Formats the mandatory AI disclosure footer.
 #[must_use]
 pub fn format_disclosure(trace: &CompletionTrace) -> String {
-    format!(
-        "{DISCLOSURE_PREFIX}{} - tokens in:{} out:{}",
-        trace.model_label(),
+    format_disclosure_parts(
+        &trace.model_label(),
         trace.prompt_tokens,
-        trace.completion_tokens
+        trace.completion_tokens,
+    )
+}
+
+/// Disclosure line from stored draft/tweet columns (no live `CompletionTrace`).
+#[must_use]
+pub fn format_disclosure_parts(model_label: &str, tokens_in: u32, tokens_out: u32) -> String {
+    let label = disclosure_model_label(model_label);
+    format!("{DISCLOSURE_PREFIX}{label} - tokens in:{tokens_in} out:{tokens_out}")
+}
+
+/// Prefer the writer/rework segment from a compound `model` column (`load=… | tweet=…`).
+#[must_use]
+pub fn disclosure_model_label(model: &str) -> &str {
+    let m = model.trim();
+    for key in ["tweet=", "draft=", "rework=", "farce="] {
+        if let Some(i) = m.rfind(key) {
+            let rest = m[i + key.len()..].trim();
+            if !rest.is_empty() {
+                return rest;
+            }
+        }
+    }
+    if m.is_empty() {
+        "unknown"
+    } else {
+        m
+    }
+}
+
+/// Re-attach disclosure from stored `model` / token columns after `/change_url`, `/show`, etc.
+///
+/// Compose helpers rebuild the Link footer and drop the trailing `Written by AI` line; this
+/// restores tokens from SQLite so operator commands do not wipe the count.
+#[must_use]
+pub fn ensure_stored_disclosure(
+    body: &str,
+    model: &str,
+    tokens_in: u32,
+    tokens_out: u32,
+) -> String {
+    let clean = strip_trailing_disclosures(body).trim_end();
+    if model.trim().is_empty() && tokens_in == 0 && tokens_out == 0 {
+        return clean.to_string();
+    }
+    format!(
+        "{clean}\n\n{}",
+        format_disclosure_parts(model, tokens_in, tokens_out)
     )
 }
 
@@ -117,5 +163,22 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:3900 out:110";
         assert!(full.contains('🚀'));
         assert!(!full.contains(":owl:"));
         assert!(!full.contains(":rocket:"));
+    }
+
+    #[test]
+    fn ensure_stored_disclosure_restores_tokens_after_compose() {
+        let composed = "Tweet ID: TWEET-1\n\nHello.\n\nLink: 1\n0 = no link. /change_url TWEET-1 <0|1|2|3|url>\n1. https://example.com/a";
+        let out = ensure_stored_disclosure(
+            composed,
+            "load=ollama/qwen3:8b | tweet=ollama/qwen3:8b",
+            6146,
+            119,
+        );
+        assert!(
+            out.contains("tokens in:6146 out:119"),
+            "tokens must come back from columns: {out}"
+        );
+        assert!(out.contains("model ollama/qwen3:8b"));
+        assert_eq!(out.matches(DISCLOSURE_PREFIX).count(), 1);
     }
 }

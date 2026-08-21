@@ -257,11 +257,17 @@ fn strip_leading_own_handle(line: &str) -> String {
     let Some(after_at) = line.strip_prefix('@') else {
         return line.to_string();
     };
-    if after_at.len() >= X_PUBLIC_HANDLE.len() {
-        let (handle, rest) = after_at.split_at(X_PUBLIC_HANDLE.len());
-        if handle.eq_ignore_ascii_case(X_PUBLIC_HANDLE) {
-            return rest.trim_start().to_string();
-        }
+    // `get` returns None mid-UTF-8 (e.g. `@Cloudflare: 🦉…` where byte 13 sits inside the emoji).
+    // Never `split_at(Interchouette.len())` on an unrelated @handle + emoji line.
+    let Some(handle) = after_at.get(..X_PUBLIC_HANDLE.len()) else {
+        return line.to_string();
+    };
+    if handle.eq_ignore_ascii_case(X_PUBLIC_HANDLE) {
+        let rest = after_at[X_PUBLIC_HANDLE.len()..].trim_start();
+        return rest
+            .strip_prefix(':')
+            .map_or(rest, str::trim_start)
+            .to_string();
     }
     line.to_string()
 }
@@ -739,5 +745,18 @@ Recommended reading order next.\n"
         assert_eq!(out, "Hello!\n\nI’m ITCy.\n\nLet’s build something fun.");
         let already = "Hello!\n\nI’m ITCy.";
         assert_eq!(aerate_tweet_commentary(already), already);
+    }
+
+    #[test]
+    fn strip_own_handle_keeps_other_handle_then_emoji() {
+        // Regression: `@Cloudflare: 🦉…` — byte 13 sits inside the owl emoji when naively
+        // splitting at `Interchouette`.len() (13). Must not panic; must keep the line.
+        let raw = "@Cloudflare: 🦉 Obscura is 70MB and stealthy.";
+        let out = strip_own_x_handle(raw);
+        assert!(out.contains("@Cloudflare"), "{out}");
+        assert!(out.contains("🦉"), "{out}");
+        assert!(out.contains("Obscura"), "{out}");
+        let own = strip_own_x_handle("@Interchouette: keep the rest 🦀");
+        assert_eq!(own, "keep the rest 🦀");
     }
 }

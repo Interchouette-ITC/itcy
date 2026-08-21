@@ -991,8 +991,12 @@ Next:\n\n\
                     "change_draft_url: clearing link"
                 );
                 before_options = set_single_in_post_url(before_options.trim(), "");
-                stored.body =
-                    compose_draft_message(before_options.trim(), draft_id, &stored.link_options);
+                stored.body = crate::llm::disclosure::ensure_stored_disclosure(
+                    &compose_draft_message(before_options.trim(), draft_id, &stored.link_options),
+                    &stored.model,
+                    stored.tokens_in,
+                    stored.tokens_out,
+                );
                 stored.status = status::OPEN.into();
                 stored.updated_at = chrono::Local::now().to_rfc3339();
                 if let Err(e) = store.upsert(&stored) {
@@ -1016,8 +1020,12 @@ Next:\n\n\
                 );
                 before_options = set_single_in_post_url(before_options.trim(), &new_url);
                 promote_link_option(&mut stored.link_options, &new_url);
-                stored.body =
-                    compose_draft_message(before_options.trim(), draft_id, &stored.link_options);
+                stored.body = crate::llm::disclosure::ensure_stored_disclosure(
+                    &compose_draft_message(before_options.trim(), draft_id, &stored.link_options),
+                    &stored.model,
+                    stored.tokens_in,
+                    stored.tokens_out,
+                );
                 stored.status = status::OPEN.into();
                 stored.updated_at = chrono::Local::now().to_rfc3339();
                 if let Err(e) = store.upsert(&stored) {

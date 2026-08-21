@@ -746,6 +746,28 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
     }
 
     #[test]
+    fn dump_ship_texts_from_env_file() {
+        let Ok(path) = std::env::var("ITCY_DUMP_SHIP_BODY") else {
+            return;
+        };
+        let body = std::fs::read_to_string(&path).expect("read body");
+        let (text, reply) = ship_texts(&body).expect("ship texts");
+        let root_path = std::env::temp_dir().join("itcy-x-root.txt");
+        std::fs::write(&root_path, text.as_bytes()).expect("write root");
+        eprintln!("ROOT_FILE={}", root_path.display());
+        eprintln!("ROOT_LEN={}", text.len());
+        eprintln!("ROOT=\n{text}\n---");
+        if let Some(r) = reply {
+            let reply_path = std::env::temp_dir().join("itcy-x-reply.txt");
+            std::fs::write(&reply_path, r.as_bytes()).expect("write reply");
+            eprintln!("REPLY_FILE={}", reply_path.display());
+            eprintln!("REPLY=\n{r}\n---");
+        } else {
+            eprintln!("REPLY_FILE=");
+        }
+    }
+
+    #[test]
     fn gpui_quote_body_ships_as_single_tweet() {
         // TWEET-20260821-000047 style: commentary + tags + same X URL as quote.
         // Fits 280 weighted → one Brave post, no reply file.

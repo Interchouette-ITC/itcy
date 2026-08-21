@@ -6,7 +6,9 @@ import test from "node:test";
 import {
   asOurPostedStatus,
   pickLatestOwnPost,
+  resolvePostedStatus,
   statusFromHref,
+  statusIdNewer,
   stripQuotedStatusUrl,
 } from "./lib/x-ship-resolve.mjs";
 
@@ -103,4 +105,78 @@ test("pickLatestOwnPost uses toast when present and newer", () => {
   );
   assert.equal(found.id, ours);
   assert.equal(found.handle, "interchouette");
+});
+
+test("resolvePostedStatus prefers clickPost toast over empty/stale profile", () => {
+  // Regression: post-twitter used to navigate to profile before reading toast,
+  // then fail with "no newer own tweet" even though Post succeeded.
+  const before = "2090601395795718223";
+  const ours = "2090700000000000001";
+  const cited = "2089199040403820928";
+  const found = resolvePostedStatus({
+    toastHref: `/i/status/${ours}`,
+    scan: {
+      toast: null,
+      articles: [
+        {
+          pinned: false,
+          snippet: "old GPU tweet still on top of stale DOM",
+          statusHrefs: [`/Interchouette/status/${before}`],
+        },
+      ],
+    },
+    excludeIds: [cited],
+    beforeId: before,
+  });
+  assert.equal(found.id, ours);
+  assert.equal(found.via, "toast");
+  assert.ok(statusIdNewer(found.id, before));
+});
+
+test("resolvePostedStatus root then reply: reply must be newer than parent", () => {
+  const root = "2090700000000000001";
+  const reply = "2090700000000000002";
+  const cited = "2089199040403820928";
+  const replyFound = resolvePostedStatus({
+    toastHref: `/i/status/${reply}`,
+    scan: { toast: null, articles: [] },
+    excludeIds: [cited, root],
+    beforeId: root,
+  });
+  assert.equal(replyFound.id, reply);
+  assert.equal(replyFound.via, "toast");
+  assert.ok(statusIdNewer(replyFound.id, root));
+});
+
+test("resolvePostedStatus falls back to profile when toast missing", () => {
+  const before = "2090000000000000000";
+  const ours = "2091000000000000000";
+  const found = resolvePostedStatus({
+    toastHref: null,
+    scan: {
+      toast: null,
+      articles: [
+        {
+          pinned: false,
+          snippet: "new",
+          statusHrefs: [`/Interchouette/status/${ours}`],
+        },
+      ],
+    },
+    excludeIds: [],
+    beforeId: before,
+  });
+  assert.equal(found.id, ours);
+  assert.equal(found.via, "profile");
+});
+
+test("resolvePostedStatus ignores toast that is not newer than beforeId", () => {
+  const before = "2091000000000000000";
+  const found = resolvePostedStatus({
+    toastHref: `/i/status/${before}`,
+    scan: { toast: null, articles: [] },
+    excludeIds: [],
+    beforeId: before,
+  });
+  assert.equal(found, null);
 });

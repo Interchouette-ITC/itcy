@@ -527,7 +527,12 @@ Next:\n\n\
             from = ?prior,
             "change_tweet_url: applied"
         );
-        stored.body = body;
+        stored.body = crate::llm::disclosure::ensure_stored_disclosure(
+            &body,
+            &stored.model,
+            stored.tokens_in,
+            stored.tokens_out,
+        );
         stored.link_options = options;
         stored.status = status::OPEN.into();
         stored.updated_at = chrono::Local::now().to_rfc3339();
