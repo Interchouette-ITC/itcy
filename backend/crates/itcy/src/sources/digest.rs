@@ -7,8 +7,9 @@ use crate::sources::ingest::{HttpPageFetcher, HttpThenPublicPlaywright, PageFetc
 use crate::sources::live_sites::{load_live_sites, LiveSite};
 use crate::sources::twitter::{TwitterHit, TwitterTool};
 use crate::sqlite::open_configured;
-use chrono::Local;
+use chrono::{Days, Local, NaiveDate};
 use rusqlite::params;
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -39,6 +40,10 @@ const LIST_ITEMS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../sql/digest_items_list.sql"
 ));
+const RECENT_ITEM_KEYS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../sql/digest_recent_item_keys.sql"
+));
 
 const MAX_SITE_ITEMS: usize = 20;
 const MAX_TWITTER_ITEMS: usize = 20;
@@ -47,12 +52,16 @@ const MAX_FOLLOWING_ITEMS: usize = 20;
 const MAX_ITC_ITEMS: usize = 10;
 const MAX_PER_HUB: usize = 2;
 const HUB_CANDIDATES: usize = 12;
+/// Scan ceiling per hub extract (`DoS` guard only; not a freshness knob).
+const HUB_LINK_SCAN_MAX: usize = 100;
 /// Over-fetch press so listing drops after blurbs can still fill PRESS 20.
 const PRESS_POOL: usize = 40;
 /// Search-lane author spam cap (home lanes have no author hard-cap).
 const MAX_SEARCH_PER_AUTHOR: usize = 2;
 /// Fair mix: at most this many hits kept per planned search query in the first pass.
 const MAX_PER_SEARCH_QUERY: usize = 3;
+/// Prior calendar days whose digest URLs/titles are excluded from today's build.
+const SEEN_LOOKBACK_DAYS: u64 = 7;
 
 /// One numbered digest choice.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -517,8 +526,9 @@ fn clip_reason(s: &str, max: usize) -> String {
 ///
 /// Returns [`DigestError`] when persistence fails (lane fetch failures are skipped).
 pub async fn build_daily_digest(db_path: &Path) -> Result<DigestRecord, DigestError> {
+    let seen = load_prior_day_seen_keys(db_path)?;
     let mut candidates: Vec<Candidate> = Vec::new();
-    candidates.extend(collect_live_site_candidates().await);
+    candidates.extend(collect_live_site_candidates(&seen).await);
     candidates.extend(collect_twitter_candidates().await);
     candidates.extend(collect_itc_lane_candidates().await);
 
@@ -526,6 +536,12 @@ pub async fn build_daily_digest(db_path: &Path) -> Result<DigestRecord, DigestEr
     dedupe_twitter_near_body(&mut candidates);
     dedupe_twitter_search_authors(&mut candidates);
     dedupe_candidates(&mut candidates);
+    let excluded = filter_prior_day_seen(&mut candidates, &seen);
+    info!(
+        excluded,
+        seen_keys = seen.len(),
+        "digest: prior-day freshness filter"
+    );
 
     let lanes = partition_lanes(candidates);
     let press_pool = fair_press_by_host(lanes.live, PRESS_POOL, MAX_PER_HUB);
@@ -545,6 +561,10 @@ pub async fn build_daily_digest(db_path: &Path) -> Result<DigestRecord, DigestEr
     fill_press_blurbs(&mut press_items).await;
     drop_listing_press_items(&mut press_items);
     press_items.truncate(MAX_SITE_ITEMS);
+    warn_short_lane("press", press_items.len(), MAX_SITE_ITEMS);
+    warn_short_lane("for_you", for_you.len(), MAX_FOR_YOU_ITEMS);
+    warn_short_lane("following", following.len(), MAX_FOLLOWING_ITEMS);
+    warn_short_lane("twitter", tweets.len(), MAX_TWITTER_ITEMS);
     info!(
         press = press_items.len(),
         for_you = for_you.len(),
@@ -626,7 +646,7 @@ fn partition_lanes(candidates: Vec<Candidate>) -> LaneBuckets {
     }
 }
 
-async fn collect_live_site_candidates() -> Vec<Candidate> {
+async fn collect_live_site_candidates(seen: &HashSet<String>) -> Vec<Candidate> {
     let sites = match load_live_sites() {
         Ok(s) => s,
         Err(e) => {
@@ -637,7 +657,7 @@ async fn collect_live_site_candidates() -> Vec<Candidate> {
     let fetcher = HttpThenPublicPlaywright::new();
     let mut out = Vec::new();
     for site in sites {
-        match fetch_hub_candidates(&fetcher, &site).await {
+        match fetch_hub_candidates(&fetcher, &site, seen).await {
             Ok(mut batch) => out.append(&mut batch),
             Err(e) => warn!(url = %site.url, error = %e, "digest: hub fetch failed"),
         }
@@ -648,6 +668,7 @@ async fn collect_live_site_candidates() -> Vec<Candidate> {
 async fn fetch_hub_candidates(
     fetcher: &HttpThenPublicPlaywright,
     site: &LiveSite,
+    seen: &HashSet<String>,
 ) -> Result<Vec<Candidate>, String> {
     use crate::sources::ingest::PageFetcher;
     let html = fetcher
@@ -655,8 +676,9 @@ async fn fetch_hub_candidates(
         .await
         .map_err(|e| e.to_string())?;
     let links = extract_article_links(&html, &site.url);
+    let links = select_unseen_hub_links(links, seen, HUB_CANDIDATES);
     let mut out = Vec::new();
-    for (url, title) in links.into_iter().take(HUB_CANDIDATES) {
+    for (url, title) in links {
         let subject = crate::sources::html::infer_subject(&title, "");
         out.push(Candidate {
             title: title.clone(),
@@ -725,7 +747,7 @@ fn extract_article_links(body: &str, hub_url: &str) -> Vec<(String, String)> {
             .cmp(&press_prefer_score(&a.0, &a.1))
             .then_with(|| a.1.cmp(&b.1))
     });
-    out.truncate(HUB_CANDIDATES);
+    out.truncate(HUB_LINK_SCAN_MAX);
     out
 }
 
@@ -1664,6 +1686,117 @@ fn dedupe_candidates(items: &mut Vec<Candidate>) {
     });
 }
 
+/// `DIGEST-YYYYMMDD` lex bounds: include lookback day, exclude today onward.
+fn digest_id_range_bounds(today: NaiveDate) -> (String, String) {
+    let lookback = today
+        .checked_sub_days(Days::new(SEEN_LOOKBACK_DAYS))
+        .unwrap_or(today);
+    (
+        format!("DIGEST-{}", lookback.format("%Y%m%d")),
+        format!("DIGEST-{}", today.format("%Y%m%d")),
+    )
+}
+
+fn normalize_digest_url(raw: &str) -> String {
+    let s = raw.trim().trim_end_matches('/');
+    let Some(scheme_end) = s.find("://") else {
+        return s.to_ascii_lowercase();
+    };
+    let scheme = &s[..scheme_end];
+    let after = &s[scheme_end + 3..];
+    let (host, path) = after
+        .find('/')
+        .map_or((after, ""), |i| (&after[..i], &after[i..]));
+    format!(
+        "{}://{}{}",
+        scheme.to_ascii_lowercase(),
+        host.to_ascii_lowercase(),
+        path
+    )
+}
+
+fn normalize_digest_title(title: &str) -> String {
+    title
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase()
+}
+
+fn digest_item_seen_key(url: Option<&str>, title: &str) -> String {
+    if let Some(u) = url.map(str::trim).filter(|u| !u.is_empty()) {
+        return format!("u:{}", normalize_digest_url(u));
+    }
+    format!("t:{}", normalize_digest_title(title))
+}
+
+fn candidate_seen_key(c: &Candidate) -> String {
+    digest_item_seen_key(c.url.as_deref(), &c.title)
+}
+
+/// Loads URL/title keys from digests in `[today-7d, today)` (prior calendar days only).
+///
+/// # Errors
+///
+/// Returns [`DigestError`] on `SQLite` failure.
+fn load_prior_day_seen_keys(db_path: &Path) -> Result<HashSet<String>, DigestError> {
+    load_prior_day_seen_keys_on(db_path, Local::now().date_naive())
+}
+
+fn load_prior_day_seen_keys_on(
+    db_path: &Path,
+    today: NaiveDate,
+) -> Result<HashSet<String>, DigestError> {
+    ensure_digest_schema(db_path)?;
+    let conn = open_configured(db_path)?;
+    let (lower, upper) = digest_id_range_bounds(today);
+    let mut stmt = conn.prepare(RECENT_ITEM_KEYS)?;
+    let rows = stmt.query_map(params![lower, upper], |r| {
+        Ok((r.get::<_, Option<String>>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let mut set = HashSet::new();
+    for row in rows {
+        let (url, title) = row?;
+        set.insert(digest_item_seen_key(url.as_deref(), &title));
+    }
+    Ok(set)
+}
+
+fn filter_prior_day_seen(items: &mut Vec<Candidate>, seen: &HashSet<String>) -> usize {
+    let before = items.len();
+    items.retain(|c| !seen.contains(&candidate_seen_key(c)));
+    before.saturating_sub(items.len())
+}
+
+/// Keep up to `max_keep` hub links whose URL/title is not in the prior-day seen set.
+fn select_unseen_hub_links(
+    links: Vec<(String, String)>,
+    seen: &HashSet<String>,
+    max_keep: usize,
+) -> Vec<(String, String)> {
+    let mut out = Vec::with_capacity(max_keep.min(links.len()));
+    for (url, title) in links {
+        let key = digest_item_seen_key(Some(&url), &title);
+        if seen.contains(&key) {
+            continue;
+        }
+        out.push((url, title));
+        if out.len() >= max_keep {
+            break;
+        }
+    }
+    out
+}
+
+fn warn_short_lane(lane: &str, got: usize, target: usize) {
+    if got < target {
+        warn!(
+            lane,
+            got, target, "digest: lane short after freshness filter"
+        );
+    }
+}
+
 /// Resolve item indices from a digest (1-based).
 ///
 /// # Errors
@@ -1816,6 +1949,139 @@ mod tests {
         let got = get_digest(&db, &id).unwrap().unwrap();
         assert_eq!(got.items.len(), 1);
         assert_eq!(latest_open_digest(&db).unwrap().unwrap().digest_id, id);
+    }
+
+    fn sample_item(title: &str, url: Option<&str>) -> DigestItem {
+        DigestItem {
+            idx: 1,
+            title: title.into(),
+            url: url.map(str::to_string),
+            subject: title.into(),
+            lane: "live_site".into(),
+            weight: 5,
+            detail: String::new(),
+        }
+    }
+
+    fn digest_id_days_ago(days_ago: u64, seq: u32) -> String {
+        let day = Local::now()
+            .date_naive()
+            .checked_sub_days(Days::new(days_ago))
+            .unwrap();
+        format!("DIGEST-{}-{seq:06}", day.format("%Y%m%d"))
+    }
+
+    fn freshness_cand(title: &str, url: Option<&str>) -> Candidate {
+        Candidate {
+            title: title.into(),
+            url: url.map(str::to_string),
+            subject: title.into(),
+            lane: "live_site".into(),
+            weight: 5,
+            detail: String::new(),
+            query: String::new(),
+        }
+    }
+
+    #[test]
+    fn prior_day_url_excluded() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = dir.path().join("d.db");
+        let id = digest_id_days_ago(1, 1);
+        insert_digest(
+            &db,
+            &id,
+            &[sample_item("Old story", Some("https://example.com/a"))],
+        )
+        .unwrap();
+        let seen = load_prior_day_seen_keys(&db).unwrap();
+        let mut items = vec![freshness_cand("Old story", Some("https://example.com/a"))];
+        assert_eq!(filter_prior_day_seen(&mut items, &seen), 1);
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn same_day_url_not_excluded() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = dir.path().join("d.db");
+        let id = digest_id_days_ago(0, 1);
+        insert_digest(
+            &db,
+            &id,
+            &[sample_item(
+                "Today story",
+                Some("https://example.com/today"),
+            )],
+        )
+        .unwrap();
+        let seen = load_prior_day_seen_keys(&db).unwrap();
+        let mut items = vec![freshness_cand(
+            "Today story",
+            Some("https://example.com/today"),
+        )];
+        assert_eq!(filter_prior_day_seen(&mut items, &seen), 0);
+        assert_eq!(items.len(), 1);
+    }
+
+    #[test]
+    fn outside_seven_day_window_kept() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = dir.path().join("d.db");
+        let id = digest_id_days_ago(8, 1);
+        insert_digest(
+            &db,
+            &id,
+            &[sample_item("Ancient", Some("https://example.com/old"))],
+        )
+        .unwrap();
+        let seen = load_prior_day_seen_keys(&db).unwrap();
+        let mut items = vec![freshness_cand("Ancient", Some("https://example.com/old"))];
+        assert_eq!(filter_prior_day_seen(&mut items, &seen), 0);
+        assert_eq!(items.len(), 1);
+    }
+
+    #[test]
+    fn title_key_when_no_url() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = dir.path().join("d.db");
+        let id = digest_id_days_ago(1, 1);
+        insert_digest(&db, &id, &[sample_item("  Same   Title  ", None)]).unwrap();
+        let seen = load_prior_day_seen_keys(&db).unwrap();
+        let mut items = vec![freshness_cand("same title", None)];
+        assert_eq!(filter_prior_day_seen(&mut items, &seen), 1);
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn url_normalize_trailing_slash_and_host_case() {
+        assert_eq!(
+            normalize_digest_url("https://Example.COM/path/"),
+            normalize_digest_url("https://example.com/path")
+        );
+        assert_eq!(
+            digest_item_seen_key(Some("https://Example.COM/a/"), "x"),
+            digest_item_seen_key(Some("https://example.com/a"), "y")
+        );
+    }
+
+    #[test]
+    fn press_hub_walk_skips_seen_tops() {
+        let seen: HashSet<String> = [
+            digest_item_seen_key(Some("https://news.example/a"), "A"),
+            digest_item_seen_key(Some("https://news.example/b"), "B"),
+        ]
+        .into_iter()
+        .collect();
+        let links = vec![
+            ("https://news.example/a".into(), "A".into()),
+            ("https://news.example/b".into(), "B".into()),
+            ("https://news.example/c".into(), "C".into()),
+            ("https://news.example/d".into(), "D".into()),
+        ];
+        let kept = select_unseen_hub_links(links, &seen, 2);
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept[0].0, "https://news.example/c");
+        assert_eq!(kept[1].0, "https://news.example/d");
     }
 
     #[test]
