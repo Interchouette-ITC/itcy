@@ -544,8 +544,15 @@ pub async fn build_grounded_draft(
     let session_dir = begin_load_session_dir(tools, db_path, subject).await;
     let tools_dyn: Option<&dyn ToolProvider> = tools.map(|t| t as &dyn ToolProvider);
 
-    let (mut research_pack, pack_urls, load_trace) =
-        run_load_phase(router, subject, tools, tools_dyn, session_dir.as_ref()).await?;
+    // Same rule as tweets: https already in the operator brief is the cite.
+    // Free LOAD web_search on a short stub (e.g. truncated digest subject) attaches
+    // off-topic SERP rows and the writer follows them.
+    let prefer = crate::sources::tweet_footer::extract_brief_cite(subject);
+    let (mut research_pack, pack_urls, load_trace) = if let Some(url) = prefer.as_deref() {
+        crate::sources::tweet_load::run_short_cite_load(subject, url, tools).await?
+    } else {
+        run_load_phase(router, subject, tools, tools_dyn, session_dir.as_ref()).await?
+    };
     crate::sources::handles::ensure_pack_linkedin_brand_handle(&mut research_pack, subject);
 
     checkpoint_building_pack(db_path, tools, subject, &research_pack, &pack_urls).await;
@@ -588,9 +595,8 @@ pub async fn build_grounded_draft(
     body = ensure_body_handles_from_pack(tools, &body, &research_pack);
     let mut link_options = crate::sources::draft_footer::pick_link_options(&pack_urls, &body);
     if let Some(cite) = crate::sources::tweet_footer::extract_brief_cite(subject) {
-        if !crate::sources::url_hygiene::is_x_status_url(&cite) {
-            crate::sources::draft_url::promote_link_option(&mut link_options, &cite);
-        }
+        // Digest / operator cite wins Link:1 (including X status URLs).
+        crate::sources::draft_url::promote_link_option(&mut link_options, &cite);
     }
     body = crate::sources::draft_footer::ensure_primary_link_line(
         &body,
@@ -663,9 +669,7 @@ pub async fn build_grounded_draft_from_pack(
     body = ensure_body_handles_from_pack(tools, &body, &research_pack);
     let mut link_options = crate::sources::draft_footer::pick_link_options(&urls, &body);
     if let Some(cite) = crate::sources::tweet_footer::extract_brief_cite(subject) {
-        if !crate::sources::url_hygiene::is_x_status_url(&cite) {
-            crate::sources::draft_url::promote_link_option(&mut link_options, &cite);
-        }
+        crate::sources::draft_url::promote_link_option(&mut link_options, &cite);
     }
     body = crate::sources::draft_footer::ensure_primary_link_line(
         &body,

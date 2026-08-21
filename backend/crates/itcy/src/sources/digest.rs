@@ -75,6 +75,43 @@ pub struct DigestItem {
     pub detail: String,
 }
 
+/// Operator brief for `/propose_draft` / `/propose_tweet` from a digest row.
+///
+/// Uses the full card `detail` (not the truncated `subject` column alone) plus the
+/// item URL so LOAD cannot "search" a short stub and attach off-topic SERP cites.
+#[must_use]
+pub fn digest_propose_brief(it: &DigestItem) -> (String, String) {
+    let detail = it.detail.trim();
+    let subject_col = it.subject.trim();
+    let title = it.title.trim();
+    let topic = detail
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .or(if subject_col.is_empty() {
+            None
+        } else {
+            Some(subject_col)
+        })
+        .or(if title.is_empty() { None } else { Some(title) })
+        .unwrap_or("digest item")
+        .to_string();
+    let mut instructions = if detail.is_empty() {
+        subject_col.to_string()
+    } else {
+        detail.to_string()
+    };
+    if let Some(url) = it.url.as_deref().map(str::trim).filter(|u| !u.is_empty()) {
+        if !instructions.contains(url) {
+            if !instructions.is_empty() {
+                instructions.push_str("\n\n");
+            }
+            instructions.push_str(url);
+        }
+    }
+    (topic, instructions)
+}
+
 /// Stored digest header + items.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DigestRecord {
@@ -2521,6 +2558,32 @@ mod tests {
         let bar = msgs.iter().position(|m| m == DIGEST_ITEM_GREY_BAR).unwrap();
         let second = msgs.iter().position(|m| m.contains("article/b")).unwrap();
         assert!(first < bar && bar < second);
+    }
+
+    #[test]
+    fn digest_propose_brief_uses_detail_and_url() {
+        let it = DigestItem {
+            idx: 40,
+            title: "ayush @ayushagarwal027 · Came across a Rust LSP".into(),
+            url: Some("https://x.com/ayushagarwal027/status/2090736100025504071".into()),
+            subject: "Came across a Rust LSP that stays under".into(),
+            lane: "for_you".into(),
+            weight: 1,
+            detail: "Came across a Rust LSP that stays under 100MB of RAM, and instantly resumes indexing after restart.\n\nRust Glancer is a 4-month-old alternative to rust-analyzer.\n\nThe motivation was".into(),
+        };
+        let (topic, instructions) = digest_propose_brief(&it);
+        assert!(
+            topic.contains("100MB"),
+            "topic from full detail, not truncated subject: {topic}"
+        );
+        assert!(
+            instructions.contains("Rust Glancer"),
+            "instructions keep card body: {instructions}"
+        );
+        assert!(
+            instructions.contains("2090736100025504071"),
+            "instructions keep item URL: {instructions}"
+        );
     }
 
     #[test]

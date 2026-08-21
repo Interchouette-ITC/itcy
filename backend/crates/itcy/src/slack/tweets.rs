@@ -399,8 +399,7 @@ Tweet `{tweet_id}` marked failed."
             n = picked.len()
         );
         for it in picked {
-            let subject = it.subject.clone();
-            let instructions = it.url.clone().unwrap_or_default();
+            let (subject, instructions) = crate::sources::digest::digest_propose_brief(it);
             let reply = self.tweet_reply(&subject, &instructions).await;
             let _ = write!(out, "\n--- item {} ---\n{reply}\n", it.idx);
         }
