@@ -744,22 +744,14 @@ fn ensure_named_handle_in_body(
     }
     match kind {
         HandleMatch::LinkedIn => {
-            let lead = entry.map_or_else(
-                || format!("From {handle}."),
-                |e| linkedin_lead_for_entry(e, handle),
-            );
+            if entry.is_some_and(use_publisher_name_lead) {
+                // Publishers: cite via URL in prose; no `From @handle.` or `Name:` lead line.
+                return body.to_string();
+            }
+            let lead = format!("From {handle}.");
             format!("{lead}\n\n{trimmed}")
         }
         HandleMatch::X => body.to_string(),
-    }
-}
-
-/// Publisher brands get a readable lead (`InfoQ:`); people keep `From @handle.`
-fn linkedin_lead_for_entry(entry: &HandleEntry, handle: &str) -> String {
-    if use_publisher_name_lead(entry) {
-        format!("{}:", entry.name.trim())
-    } else {
-        format!("From {handle}.")
     }
 }
 
@@ -1123,13 +1115,14 @@ mod tests {
     }
 
     #[test]
-    fn publisher_lead_uses_display_name_not_from_at() {
+    fn publisher_skips_lead_line_when_name_absent() {
         let idx = infoworld_index();
         let pack = "subject: Opus\nhandles: linkedin=@infoworld x=@InfoWorld\n";
         let body = "Anthropic Opus corrections are costing enterprise teams.";
         let out = ensure_linkedin_handle_from_pack(body, pack, &idx);
-        assert!(out.starts_with("InfoWorld:\n\n"), "out: {out}");
-        assert!(!out.starts_with("From @infoworld"));
+        assert_eq!(out, body);
+        assert!(!out.contains("From @infoworld"));
+        assert!(!out.starts_with("InfoWorld:"));
     }
 
     #[test]
