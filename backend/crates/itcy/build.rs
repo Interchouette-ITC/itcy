@@ -41,6 +41,8 @@ const PROMPT_FILES: &[&str] = &[
     "tweet_pack_note_normal.md",
     "draft_pack_note_empty.md",
     "draft_pack_note_normal.md",
+    "draft_pack_note_subject_https.md",
+    "draft_user_subject_https.md",
     "self_system.md",
     "self_user.md",
     "draft_rework_system.md",

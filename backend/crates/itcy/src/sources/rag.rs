@@ -393,22 +393,34 @@ async fn run_draft_phase(
     research_pack: &str,
     pack_urls: &[String],
     tools: Option<&ItcyTools>,
-    tools_dyn: Option<&dyn ToolProvider>,
+    brief_has_cite: bool,
     session_dir: Option<&PathBuf>,
 ) -> Result<(LlmResponse, CompletionTrace), RagError> {
     if let Some(t) = tools {
-        t.set_draft_policy(pack_urls).await;
+        if brief_has_cite {
+            t.set_draft_subject_https_writer_policy().await;
+        } else {
+            t.set_draft_policy(pack_urls).await;
+        }
     }
+
+    let tools_dyn: Option<&dyn ToolProvider> = if brief_has_cite {
+        None
+    } else {
+        tools.map(|t| t as &dyn ToolProvider)
+    };
 
     log_pipeline_banner("DRAFT (writer)");
 
+    let pack_note = draft_pack_note(pack_urls.is_empty(), brief_has_cite);
+    let user = if brief_has_cite {
+        crate::prompts::draft_user_message_subject_https(research_pack, pack_note, subject)
+    } else {
+        draft_user_message(research_pack, pack_note, subject)
+    };
     let draft_messages = vec![
         LlmMessage::system(draft_system_prompt()),
-        LlmMessage::user(draft_user_message(
-            research_pack,
-            draft_pack_note(pack_urls.is_empty()),
-            subject,
-        )),
+        LlmMessage::user(user),
     ];
     match router
         .complete_with_tools(TaskKind::Draft, &draft_messages, tools_dyn, MAX_TOOL_ROUNDS)
@@ -487,6 +499,7 @@ pub(crate) fn scrub_and_validate_writer_body(
     body_raw: &str,
     pack_urls: &[String],
     subject: &str,
+    brief_has_cite: bool,
 ) -> Result<String, RagError> {
     info!(
         draft_chars = body_raw.trim().len(),
@@ -501,13 +514,22 @@ pub(crate) fn scrub_and_validate_writer_body(
     body = scrub_urls_outside_pack(&body, pack_urls);
     body = crate::sources::draft_url::strip_sources_section(&body);
     if looks_like_writer_scratchpad(&body) {
-        warn!(
-            prose_words = prose_word_count(&body),
-            "load_draft: writer returned planning/monologue; refusing to post"
-        );
-        return Err(RagError::Store(
-            "writer returned planning monologue instead of a LinkedIn post".into(),
-        ));
+        if brief_has_cite {
+            let primary = pack_urls.first().cloned();
+            warn!(
+                prose_words = prose_word_count(&body),
+                "load_draft: planning/monologue on cite path; injecting subject-safe fallback prose"
+            );
+            body = fallback_subject_commentary(subject, primary.as_deref());
+        } else {
+            warn!(
+                prose_words = prose_word_count(&body),
+                "load_draft: writer returned planning/monologue; refusing to post"
+            );
+            return Err(RagError::Store(
+                "writer returned planning monologue instead of a LinkedIn post".into(),
+            ));
+        }
     }
     let words = prose_word_count(&body);
     let x_shaped = looks_like_x_shaped_linkedin(&body);
@@ -577,12 +599,13 @@ pub async fn build_grounded_draft(
     // Free LOAD web_search on a short stub (e.g. truncated digest subject) attaches
     // off-topic SERP rows and the writer follows them.
     let prefer = crate::sources::tweet_footer::extract_brief_cite(subject);
+    let brief_has_cite = prefer.is_some();
     let (mut research_pack, pack_urls, load_trace) = if let Some(url) = prefer.as_deref() {
         crate::sources::tweet_load::run_short_cite_load(subject, url, tools).await?
     } else {
         run_load_phase(router, subject, tools, tools_dyn, session_dir.as_ref()).await?
     };
-    crate::sources::handles::ensure_pack_linkedin_brand_handle(&mut research_pack, subject);
+    apply_pack_handles(tools, subject, &mut research_pack);
 
     checkpoint_building_pack(db_path, tools, subject, &research_pack, &pack_urls).await;
 
@@ -592,7 +615,7 @@ pub async fn build_grounded_draft(
         &research_pack,
         &pack_urls,
         tools,
-        tools_dyn,
+        brief_has_cite,
         session_dir.as_ref(),
     )
     .await?;
@@ -618,8 +641,12 @@ pub async fn build_grounded_draft(
         load_trace.model_label(),
         draft_trace.model_label()
     );
-    let mut body =
-        scrub_and_validate_writer_body(&draft_response.message.content, &pack_urls, subject)?;
+    let mut body = scrub_and_validate_writer_body(
+        &draft_response.message.content,
+        &pack_urls,
+        subject,
+        brief_has_cite,
+    )?;
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = ensure_body_handles_from_pack(tools, &body, &research_pack);
     let mut link_options = crate::sources::draft_footer::pick_link_options(&pack_urls, &body);
@@ -668,10 +695,10 @@ pub async fn build_grounded_draft_from_pack(
     tools: Option<&ItcyTools>,
 ) -> Result<GroundedDraft, RagError> {
     let session_dir = begin_load_session_dir(tools, db_path, subject).await;
-    let tools_dyn: Option<&dyn ToolProvider> = tools.map(|t| t as &dyn ToolProvider);
+    let brief_has_cite = crate::sources::tweet_footer::extract_brief_cite(subject).is_some();
     let urls: Vec<String> = pack_urls.to_vec();
     let mut research_pack = research_pack.to_string();
-    crate::sources::handles::ensure_pack_linkedin_brand_handle(&mut research_pack, subject);
+    apply_pack_handles(tools, subject, &mut research_pack);
     checkpoint_building_pack(db_path, tools, subject, &research_pack, &urls).await;
     let (draft_response, draft_trace) = run_draft_phase(
         router,
@@ -679,7 +706,7 @@ pub async fn build_grounded_draft_from_pack(
         &research_pack,
         &urls,
         tools,
-        tools_dyn,
+        brief_has_cite,
         session_dir.as_ref(),
     )
     .await?;
@@ -693,7 +720,12 @@ pub async fn build_grounded_draft_from_pack(
         ),
     )
     .await;
-    let mut body = scrub_and_validate_writer_body(&draft_response.message.content, &urls, subject)?;
+    let mut body = scrub_and_validate_writer_body(
+        &draft_response.message.content,
+        &urls,
+        subject,
+        brief_has_cite,
+    )?;
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = ensure_body_handles_from_pack(tools, &body, &research_pack);
     let mut link_options = crate::sources::draft_footer::pick_link_options(&urls, &body);
@@ -1391,7 +1423,8 @@ I'm watching 🦉 how this lands for systems teams that want polish without a se
             prose_word_count(body) >= 120,
             "fixture must stay above thin-body fallback"
         );
-        let out = scrub_and_validate_writer_body(body, &[], "gpui rust desktop").expect("ok");
+        let out =
+            scrub_and_validate_writer_body(body, &[], "gpui rust desktop", false).expect("ok");
         assert!(
             crate::llm::tweet_emoji_ok(&out),
             "scrub must keep >=2 glyphs"
@@ -1403,11 +1436,68 @@ I'm watching 🦉 how this lands for systems teams that want polish without a se
     #[test]
     fn scrub_injects_emoji_when_fallback_or_writer_omits_them() {
         let pack = ["https://x.com/a/status/1".to_string()];
-        let out = scrub_and_validate_writer_body("short", &pack, "Rust Glancer LSP").expect("ok");
+        let out =
+            scrub_and_validate_writer_body("short", &pack, "Rust Glancer LSP", false).expect("ok");
         assert!(
             crate::llm::tweet_emoji_ok(&out),
             "fallback/scrub must force emoji bar: {out}"
         );
         assert!(out.contains('🦉') && out.contains('🦀'), "{out}");
+    }
+
+    #[test]
+    fn scratchpad_on_cite_path_uses_fallback_not_err() {
+        use crate::sources::digest_propose_fixtures::{fixture_c_brief, FIXTURE_C_BAD_BODY};
+        let pack = ["https://www.infoq.com/news/2026/08/aws-bench-agent-evaluation".to_string()];
+        let out =
+            scrub_and_validate_writer_body(FIXTURE_C_BAD_BODY, &pack, &fixture_c_brief(), true)
+                .expect("cite path must deliver fallback prose, not Err");
+        assert!(
+            !out.to_ascii_lowercase().contains("corpus search returned"),
+            "fallback must not keep monologue: {out}"
+        );
+        assert!(
+            out.to_ascii_lowercase().contains("aws")
+                || out.to_ascii_lowercase().contains("bench")
+                || out.to_ascii_lowercase().contains("agent"),
+            "fallback should stay on brief topic: {out}"
+        );
+    }
+
+    #[test]
+    fn scratchpad_without_cite_still_errors() {
+        let err = scrub_and_validate_writer_body(
+            "The corpus search returned hits. I will write a LinkedIn post.",
+            &[],
+            "some subject",
+            false,
+        )
+        .expect_err("non-cite path keeps hard fail on monologue");
+        assert!(err.to_string().contains("planning monologue"), "{err}");
+    }
+
+    #[test]
+    fn brief_has_cite_when_digest_url_present() {
+        use crate::sources::digest_propose_fixtures::fixture_b_brief;
+        let brief = fixture_b_brief();
+        assert!(crate::sources::tweet_footer::extract_brief_cite(&brief).is_some());
+    }
+
+    #[test]
+    fn fixture_a_brief_has_x_cite_for_subject_lock() {
+        use crate::sources::digest_propose_fixtures::fixture_a_brief;
+        let cite = crate::sources::tweet_footer::extract_brief_cite(&fixture_a_brief());
+        assert!(cite.is_some());
+        assert!(cite.unwrap().contains("x.com"));
+    }
+
+    #[test]
+    fn fixture_b_bad_body_tokens_off_topic_for_open_weights() {
+        use crate::sources::digest_propose_fixtures::{fixture_b_brief, FIXTURE_B_BAD_BODY};
+        let brief = fixture_b_brief().to_ascii_lowercase();
+        let body = FIXTURE_B_BAD_BODY.to_ascii_lowercase();
+        assert!(brief.contains("open weights"));
+        assert!(body.contains("oxish"));
+        assert!(!body.contains("open weights"));
     }
 }
