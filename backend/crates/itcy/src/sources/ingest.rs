@@ -388,7 +388,7 @@ pub async fn ingest_html(
         url = %url,
         model = %model,
         n_chunks = chunks.len(),
-        "ingest: embedding via Ollama (not Playwright MCP)"
+        "ingest: embedding via Ollama"
     );
     for chunk in &chunks {
         let embedding = embed

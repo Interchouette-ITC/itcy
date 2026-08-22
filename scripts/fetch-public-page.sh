@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Public-page HTML fetch for ingest thin→PW (no login; not draft Playwright MCP).
+# Public-page HTML fetch for ingest thin→PW (no login).
 # Usage: scripts/fetch-public-page.sh <url>
 # Prints HTML to stdout. Uses system Brave/Chromium + already-cached playwright
 # under ~/.npm/_npx (same resolve path as fetch-twitter-pulse.sh).

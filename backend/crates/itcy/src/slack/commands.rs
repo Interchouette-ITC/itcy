@@ -46,7 +46,7 @@ pub enum OperatorCommand {
     },
     /// Build + post numbered subject digest to `#daily-digest`.
     DailyDigest,
-    /// Accept `LinkedIn` comment-reply BAT pack by post URL (not wired yet).
+    /// Fetch `LinkedIn` comment URL and draft a short paste reply (no BAT / no ship).
     AcceptCommentReply {
         url: String,
     },
@@ -225,8 +225,8 @@ pub fn slash_reply_headline(reply: &str) -> String {
 
 /// Short Slack ack posted before long-running slash work starts.
 ///
-/// Convention: **executed** slash names and IDs go in `` `code` ``; next-step
-/// command hints in final replies stay plain text (easy copy-paste).
+/// Plain text only (no backticks / italics). Args stay visible; join subject and
+/// instructions with `, ` (never ` | `).
 #[must_use]
 pub fn command_ack_text(cmd: &OperatorCommand) -> String {
     match cmd {
@@ -240,36 +240,36 @@ pub fn command_ack_text(cmd: &OperatorCommand) -> String {
             instructions,
         } => ack_itc_subject("/draft_about_itc", subject, instructions),
         OperatorCommand::Accept { draft_id } => {
-            format!("Received `/accept` `{draft_id}`")
+            format!("Received /accept {draft_id}")
         }
         OperatorCommand::RetryBat { draft_id } => {
-            format!("Received `/retry_bat` `{draft_id}`")
+            format!("Received /retry_bat {draft_id}")
         }
         OperatorCommand::Rework {
             draft_id,
             instructions,
         } => {
             if instructions.is_empty() {
-                format!("Received `/rework` `{draft_id}`")
+                format!("Received /rework {draft_id}")
             } else {
-                format!("Received `/rework` `{draft_id}` | {instructions}")
+                format!("Received /rework {draft_id}, {instructions}")
             }
         }
         OperatorCommand::ChangeUrl { draft_id, choice } => {
-            format!("Received `/change_url` `{draft_id}` | choice={choice}")
+            format!("Received /change_url {draft_id}, {choice}")
         }
         OperatorCommand::ProposeDraft { digest_id, indices } => {
             ack_propose("/propose_draft", digest_id.as_deref(), indices)
         }
-        OperatorCommand::DailyDigest => "Received `/daily_digest`".into(),
+        OperatorCommand::DailyDigest => "Received /daily_digest".into(),
         OperatorCommand::AcceptCommentReply { url } => {
-            format!("Received `/accept_comment_reply` `{url}`")
+            format!("Received /accept_comment_reply {url}")
         }
-        OperatorCommand::Enrich { url } => format!("Received `/enrich` `{url}`"),
-        OperatorCommand::Ingest { url } => format!("Received `/ingest` `{url}`"),
+        OperatorCommand::Enrich { url } => format!("Received /enrich {url}"),
+        OperatorCommand::Ingest { url } => format!("Received /ingest {url}"),
         OperatorCommand::HandleAdd { raw } => {
             let preview = raw.chars().take(80).collect::<String>();
-            format!("Received `/handle_add` | {preview}")
+            format!("Received /handle_add {preview}")
         }
         OperatorCommand::TweetAbout {
             subject,
@@ -277,10 +277,10 @@ pub fn command_ack_text(cmd: &OperatorCommand) -> String {
         } => ack_subject_cmd("/tweet_about", subject, instructions),
         OperatorCommand::TweetFarce { theme } => {
             if theme.trim().is_empty() {
-                "Received `/tweet_farce`".into()
+                "Received /tweet_farce".into()
             } else {
                 let preview: String = theme.chars().take(80).collect();
-                format!("Received `/tweet_farce` | {preview}")
+                format!("Received /tweet_farce {preview}")
             }
         }
         OperatorCommand::DraftTweetAboutItc {
@@ -289,47 +289,43 @@ pub fn command_ack_text(cmd: &OperatorCommand) -> String {
         } => ack_itc_subject("/draft_tweet_about_itc", subject, instructions),
         OperatorCommand::DraftAboutItcy { instructions } => {
             if instructions.is_empty() {
-                "Received `/draft_about_itcy`".into()
+                "Received /draft_about_itcy".into()
             } else {
-                format!("Received `/draft_about_itcy` | {instructions}")
+                format!("Received /draft_about_itcy {instructions}")
             }
         }
         OperatorCommand::TweetAboutItcy { instructions } => {
             if instructions.is_empty() {
-                "Received `/tweet_about_itcy`".into()
+                "Received /tweet_about_itcy".into()
             } else {
-                format!("Received `/tweet_about_itcy` | {instructions}")
+                format!("Received /tweet_about_itcy {instructions}")
             }
         }
         OperatorCommand::ProposeTweet { digest_id, indices } => {
             ack_propose("/propose_tweet", digest_id.as_deref(), indices)
         }
-        OperatorCommand::List => "Received `/list`".into(),
+        OperatorCommand::List => "Received /list".into(),
         OperatorCommand::Show { ids } => ack_ids("/show", ids),
         OperatorCommand::Delete { ids } => ack_ids("/delete", ids),
     }
 }
 
 fn ack_ids(cmd: &str, ids: &[String]) -> String {
-    let listed = ids
-        .iter()
-        .map(|id| format!("`{id}`"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!("Received `{cmd}` {listed}")
+    let listed = ids.join(", ");
+    format!("Received {cmd} {listed}")
 }
 
 fn ack_subject_cmd(cmd: &str, subject: &str, instructions: &str) -> String {
     if instructions.is_empty() {
-        format!("Received `{cmd}` *{subject}*")
+        format!("Received {cmd} {subject}")
     } else {
-        format!("Received `{cmd}` *{subject}* | {instructions}")
+        format!("Received {cmd} {subject}, {instructions}")
     }
 }
 
 fn ack_itc_subject(cmd: &str, subject: &str, instructions: &str) -> String {
     if subject.is_empty() {
-        format!("Received `{cmd}`")
+        format!("Received {cmd}")
     } else {
         ack_subject_cmd(cmd, subject, instructions)
     }
@@ -337,18 +333,17 @@ fn ack_itc_subject(cmd: &str, subject: &str, instructions: &str) -> String {
 
 fn ack_propose(cmd: &str, digest_id: Option<&str>, indices: &[i32]) -> String {
     if digest_id.is_none() && indices.is_empty() {
-        return format!("Received `{cmd}`");
+        return format!("Received {cmd}");
     }
-    let id = digest_id.unwrap_or("(latest)");
     let idx = indices
         .iter()
         .map(ToString::to_string)
         .collect::<Vec<_>>()
         .join(",");
-    if digest_id.is_some() {
-        format!("Received `{cmd}` `{id}` items={idx}")
-    } else {
-        format!("Received `{cmd}` (latest) items={idx}")
+    match digest_id {
+        Some(id) if indices.is_empty() => format!("Received {cmd} {id}"),
+        Some(id) => format!("Received {cmd} {id}, {idx}"),
+        None => format!("Received {cmd} {idx}"),
     }
 }
 
@@ -971,7 +966,7 @@ pub const fn help_text() -> &'static str {
      • `/tweet_about_itcy` or `/tweet_about_itcy <instructions>` - X self-introduction tweet as ITCy (first-person, stack disclosure)\n\
      • `/propose_tweet` - new tweet from corpus\n\
      • `/propose_tweet <DIGEST-…>, <1|1,3>` or `/propose_tweet <N>` - new tweets from that digest's propositions\n\
-     • `/accept_comment_reply <https://…>` - LinkedIn comment-reply BAT (not wired yet; not a tweet reply)\n\
+     • `/accept_comment_reply <https://…>` - fetch LinkedIn comment, draft a short paste reply (no ship)\n\
      *Freeform chat:* anything else (informal / informational; tools OK). No draft/BAT/corpus ingest here."
 }
 
@@ -1685,7 +1680,7 @@ mod tests {
         });
         assert_eq!(
             ack,
-            "Received `/delete` `TWEET-20990101-000001`, `TWEET-20990101-000002`"
+            "Received /delete TWEET-20990101-000001, TWEET-20990101-000002"
         );
     }
 
@@ -1748,8 +1743,10 @@ mod tests {
         let ack = command_ack_text(&OperatorCommand::Enrich {
             url: "https://www.linkedin.com/posts/gregoryroussac_x".into(),
         });
-        assert!(ack.contains("Received `/enrich`"));
+        assert!(ack.contains("Received /enrich"));
         assert!(ack.contains("https://www.linkedin.com/posts/gregoryroussac_x"));
+        assert!(!ack.contains('`'), "no pink code spans in ack: {ack}");
+        assert!(!ack.contains(" | "), "no pipe join in ack: {ack}");
         assert!(!ack.to_ascii_lowercase().contains("30-90"));
         assert!(command_ack_text(&OperatorCommand::Help).is_empty());
     }
@@ -1762,66 +1759,66 @@ mod tests {
                     subject: "rtk-ai labs new CEO".into(),
                     instructions: "find news".into(),
                 },
-                "Received `/draft_about` *rtk-ai labs new CEO* | find news",
+                "Received /draft_about rtk-ai labs new CEO, find news",
             ),
             (
                 OperatorCommand::Accept {
                     draft_id: "DRAFT-20990101-000001".into(),
                 },
-                "Received `/accept` `DRAFT-20990101-000001`",
+                "Received /accept DRAFT-20990101-000001",
             ),
             (
                 OperatorCommand::RetryBat {
                     draft_id: "DRAFT-20990101-000001".into(),
                 },
-                "Received `/retry_bat` `DRAFT-20990101-000001`",
+                "Received /retry_bat DRAFT-20990101-000001",
             ),
             (
                 OperatorCommand::Rework {
                     draft_id: "DRAFT-20990101-000001".into(),
                     instructions: "shorter".into(),
                 },
-                "Received `/rework` `DRAFT-20990101-000001` | shorter",
+                "Received /rework DRAFT-20990101-000001, shorter",
             ),
             (
                 OperatorCommand::ChangeUrl {
                     draft_id: "DRAFT-20990101-000001".into(),
                     choice: "2".into(),
                 },
-                "Received `/change_url` `DRAFT-20990101-000001` | choice=2",
+                "Received /change_url DRAFT-20990101-000001, 2",
             ),
             (
                 OperatorCommand::ProposeDraft {
                     digest_id: None,
                     indices: vec![],
                 },
-                "Received `/propose_draft`",
+                "Received /propose_draft",
             ),
             (
                 OperatorCommand::ProposeDraft {
                     digest_id: Some("DIGEST-20990101-000001".into()),
                     indices: vec![1],
                 },
-                "Received `/propose_draft` `DIGEST-20990101-000001` items=1",
+                "Received /propose_draft DIGEST-20990101-000001, 1",
             ),
-            (OperatorCommand::DailyDigest, "Received `/daily_digest`"),
+            (OperatorCommand::DailyDigest, "Received /daily_digest"),
             (
                 OperatorCommand::AcceptCommentReply {
                     url: "https://www.linkedin.com/feed/update/urn:li:activity:1".into(),
                 },
-                "Received `/accept_comment_reply` `https://www.linkedin.com/feed/update/urn:li:activity:1`",
+                "Received /accept_comment_reply https://www.linkedin.com/feed/update/urn:li:activity:1",
             ),
             (
                 OperatorCommand::Enrich {
                     url: "https://www.linkedin.com/posts/gregoryroussac_x".into(),
                 },
-                "Received `/enrich` `https://www.linkedin.com/posts/gregoryroussac_x`",
+                "Received /enrich https://www.linkedin.com/posts/gregoryroussac_x",
             ),
             (
                 OperatorCommand::Ingest {
                     url: "https://www.implicator.ai/a".into(),
                 },
-                "Received `/ingest` `https://www.implicator.ai/a`",
+                "Received /ingest https://www.implicator.ai/a",
             ),
         ];
         assert_acks(&cases);
@@ -1835,83 +1832,83 @@ mod tests {
                     subject: "owl merge".into(),
                     instructions: "short".into(),
                 },
-                "Received `/tweet_about` *owl merge* | short",
+                "Received /tweet_about owl merge, short",
             ),
             (
                 OperatorCommand::DraftAboutItc {
                     subject: String::new(),
                     instructions: String::new(),
                 },
-                "Received `/draft_about_itc`",
+                "Received /draft_about_itc",
             ),
             (
                 OperatorCommand::DraftAboutItc {
                     subject: "itcy-tui".into(),
                     instructions: "short".into(),
                 },
-                "Received `/draft_about_itc` *itcy-tui* | short",
+                "Received /draft_about_itc itcy-tui, short",
             ),
             (
                 OperatorCommand::DraftTweetAboutItc {
                     subject: String::new(),
                     instructions: String::new(),
                 },
-                "Received `/draft_tweet_about_itc`",
+                "Received /draft_tweet_about_itc",
             ),
             (
                 OperatorCommand::DraftTweetAboutItc {
                     subject: "tvscreener-rs".into(),
                     instructions: String::new(),
                 },
-                "Received `/draft_tweet_about_itc` *tvscreener-rs*",
+                "Received /draft_tweet_about_itc tvscreener-rs",
             ),
             (
                 OperatorCommand::ProposeTweet {
                     digest_id: None,
                     indices: vec![],
                 },
-                "Received `/propose_tweet`",
+                "Received /propose_tweet",
             ),
             (
                 OperatorCommand::ProposeTweet {
                     digest_id: Some("DIGEST-20990101-000001".into()),
                     indices: vec![2],
                 },
-                "Received `/propose_tweet` `DIGEST-20990101-000001` items=2",
+                "Received /propose_tweet DIGEST-20990101-000001, 2",
             ),
             (
                 OperatorCommand::Rework {
                     draft_id: "TWEET-20990101-000001".into(),
                     instructions: "shorter".into(),
                 },
-                "Received `/rework` `TWEET-20990101-000001` | shorter",
+                "Received /rework TWEET-20990101-000001, shorter",
             ),
             (
                 OperatorCommand::ChangeUrl {
                     draft_id: "TWEET-20990101-000001".into(),
                     choice: "0".into(),
                 },
-                "Received `/change_url` `TWEET-20990101-000001` | choice=0",
+                "Received /change_url TWEET-20990101-000001, 0",
             ),
             (
                 OperatorCommand::Accept {
                     draft_id: "TWEET-20990101-000001".into(),
                 },
-                "Received `/accept` `TWEET-20990101-000001`",
+                "Received /accept TWEET-20990101-000001",
             ),
             (
                 OperatorCommand::Delete {
                     ids: vec!["TWEET-20990101-000001".into()],
                 },
-                "Received `/delete` `TWEET-20990101-000001`",
+                "Received /delete TWEET-20990101-000001",
             ),
             (
                 OperatorCommand::Delete {
                     ids: vec!["DRAFT-20990101-000001".into()],
                 },
-                "Received `/delete` `DRAFT-20990101-000001`",
+                "Received /delete DRAFT-20990101-000001",
             ),
-            (OperatorCommand::DailyDigest, "Received `/daily_digest`"),
+            (OperatorCommand::DailyDigest, "Received /daily_digest"),
         ];
         assert_acks(&cases);
         for (cmd, _) in &cases {
@@ -1930,13 +1927,13 @@ mod tests {
                 OperatorCommand::TweetFarce {
                     theme: String::new(),
                 },
-                "Received `/tweet_farce`",
+                "Received /tweet_farce",
             ),
             (
                 OperatorCommand::TweetFarce {
                     theme: "Mars Wi-Fi".into(),
                 },
-                "Received `/tweet_farce` | Mars Wi-Fi",
+                "Received /tweet_farce Mars Wi-Fi",
             ),
         ];
         assert_acks(&cases);
@@ -1951,6 +1948,8 @@ mod tests {
                 "no ETA fluff: {ack}"
             );
             assert!(!ack.contains('…'), "no ellipsis fluff in ack: {ack}");
+            assert!(!ack.contains('`'), "no code spans in ack: {ack}");
+            assert!(!ack.contains(" | "), "no pipe join in ack: {ack}");
         }
     }
 
@@ -1969,7 +1968,7 @@ mod tests {
         );
         assert_eq!(posts[1], "FINAL DRAFT BODY");
         assert!(
-            posts[0].contains("Received `/draft_about`"),
+            posts[0].contains("Received /draft_about"),
             "first post is the receipt, not the draft"
         );
         assert!(
@@ -1997,6 +1996,12 @@ mod tests {
         let ack = slash_immediate_ack(&cmd).unwrap();
         assert!(ack.contains("rtk-ai labs new CEO"));
         assert!(ack.contains("try to find a relevent news article"));
+        assert!(
+            ack.contains(", "),
+            "subject and instructions joined with comma"
+        );
+        assert!(!ack.contains('`'), "no code spans in ack: {ack}");
+        assert!(!ack.contains(" | "), "no pipe join in ack: {ack}");
         assert!(!ack.to_ascii_lowercase().contains("several minutes"));
         assert!(!ack.to_ascii_lowercase().contains("running load"));
     }

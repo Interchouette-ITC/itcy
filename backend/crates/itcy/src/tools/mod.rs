@@ -9,7 +9,7 @@ mod draft;
 mod serp;
 mod session;
 
-pub use browse::{resolve_playwright_mcp_cmd, PlaywrightMcp};
+pub use browse::{resolve_host_browser_cmd, HostBrowser};
 pub use corpus::CorpusSearch;
 pub use draft::{
     format_stored_draft_status, lookup_draft_status, operator_draft_status_reply,
@@ -33,22 +33,22 @@ pub struct ItcyTools {
     state_db: PathBuf,
     corpus: CorpusSearch,
     handles: Arc<RwLock<HandlesIndex>>,
-    playwright: Mutex<Option<Arc<PlaywrightMcp>>>,
-    playwright_cmd: PathBuf,
+    host_browser: Mutex<Option<Arc<HostBrowser>>>,
+    host_browser_cmd: PathBuf,
     session: Mutex<Option<ResearchSession>>,
     policy: Mutex<ToolPolicy>,
 }
 
 impl ItcyTools {
     #[must_use]
-    pub fn new(db_path: PathBuf, embed: Arc<dyn EmbedClient>, playwright_cmd: PathBuf) -> Self {
+    pub fn new(db_path: PathBuf, embed: Arc<dyn EmbedClient>, host_browser_cmd: PathBuf) -> Self {
         let handles = crate::sources::handles::load_handles().unwrap_or_default();
         Self {
             state_db: db_path.clone(),
             corpus: CorpusSearch::new(db_path, embed),
             handles: Arc::new(RwLock::new(handles)),
-            playwright: Mutex::new(None),
-            playwright_cmd,
+            host_browser: Mutex::new(None),
+            host_browser_cmd,
             session: Mutex::new(None),
             policy: Mutex::new(ToolPolicy::default()),
         }
@@ -211,13 +211,13 @@ impl ItcyTools {
 
     async fn ensure_playwright(&self) -> Result<(), LlmError> {
         {
-            let guard = self.playwright.lock().await;
+            let guard = self.host_browser.lock().await;
             if guard.is_some() {
                 return Ok(());
             }
         }
-        let client = Arc::new(PlaywrightMcp::spawn(&self.playwright_cmd).await?);
-        let mut guard = self.playwright.lock().await;
+        let client = Arc::new(HostBrowser::spawn(&self.host_browser_cmd).await?);
+        let mut guard = self.host_browser.lock().await;
         if guard.is_none() {
             *guard = Some(client);
         }
@@ -225,7 +225,7 @@ impl ItcyTools {
         Ok(())
     }
 
-    /// Spawn Playwright MCP (if needed) and open the configured browser; keep the MCP child alive.
+    /// Spawn the host browser bridge (if needed) and open Brave/Chromium; keep the child alive.
     ///
     /// # Errors
     ///
@@ -233,12 +233,12 @@ impl ItcyTools {
     pub async fn warmup_browse(&self) -> Result<(), LlmError> {
         self.ensure_playwright().await?;
         let mcp = {
-            let guard = self.playwright.lock().await;
+            let guard = self.host_browser.lock().await;
             guard.as_ref().cloned()
         };
         let Some(mcp) = mcp else {
             return Err(LlmError::ToolProvider(
-                "playwright MCP failed to start during warmup".into(),
+                "host browser failed to start during warmup".into(),
             ));
         };
         mcp.warmup().await
@@ -256,12 +256,12 @@ impl ItcyTools {
             guard.as_ref().map(|s| s.next_step_dir("browse"))
         };
         let mcp = {
-            let guard = self.playwright.lock().await;
+            let guard = self.host_browser.lock().await;
             guard.as_ref().cloned()
         };
         let Some(mcp) = mcp else {
             return Err(LlmError::ToolProvider(
-                "playwright MCP failed to start".into(),
+                "host browser failed to start".into(),
             ));
         };
         match mcp.browse_url(&url, step_dir.as_deref()).await {
@@ -327,12 +327,12 @@ Call browse_url on an on-topic publisher link before searching again."
             guard.as_ref().map(|s| s.next_step_dir("web_search"))
         };
         let mcp = {
-            let guard = self.playwright.lock().await;
+            let guard = self.host_browser.lock().await;
             guard.as_ref().cloned()
         };
         let Some(mcp) = mcp else {
             return Err(LlmError::ToolProvider(
-                "playwright MCP failed to start".into(),
+                "host browser failed to start".into(),
             ));
         };
         match mcp.web_search(&query, step_dir.as_deref()).await {

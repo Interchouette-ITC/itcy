@@ -76,7 +76,11 @@ const DRAFT_USER_SUBJECT_HTTPS_TMPL: &str = prompt!("draft_user_subject_https.md
 pub const SELF_SYSTEM_CORE: &str = prompt!("self_system.md");
 pub const DRAFT_REWORK_SYSTEM_CORE: &str = prompt!("draft_rework_system.md");
 
+/// `LinkedIn` comment-reply system (`/accept_comment_reply`).
+pub const COMMENT_REPLY_SYSTEM_CORE: &str = prompt!("comment_reply_system.md");
+
 const SELF_USER_TMPL: &str = prompt!("self_user.md");
+const COMMENT_REPLY_USER_TMPL: &str = prompt!("comment_reply_user.md");
 
 fn fill(tmpl: &str, key: &str, value: &str) -> String {
     tmpl.replace(&format!("{{{key}}}"), value)
@@ -146,6 +150,18 @@ pub fn self_user_message(surface: &str, instructions: &str) -> String {
     let mut s = fill(SELF_USER_TMPL, "surface", surface);
     s = fill(&s, "instructions", instructions.trim());
     s
+}
+
+/// `/accept_comment_reply` user turn (full parent post + comment).
+#[must_use]
+pub fn comment_reply_user_message(
+    parent_post: &str,
+    comment_author: &str,
+    comment_body: &str,
+) -> String {
+    let mut s = fill(COMMENT_REPLY_USER_TMPL, "parent_post", parent_post);
+    s = fill(&s, "comment_author", comment_author);
+    fill(&s, "comment_body", comment_body)
 }
 
 /// Subject-locked fallback when the writer returns thin / scratchpad text.

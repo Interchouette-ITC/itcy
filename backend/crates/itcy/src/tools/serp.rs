@@ -178,7 +178,7 @@ fn push_from_text_urls(out: &mut Vec<SerpLink>, text: &str) {
     }
 }
 
-/// Pull JSON from Playwright MCP evaluate text.
+/// Pull JSON from host-browser evaluate text.
 /// Prefer the `### Result` block (ignore `### Ran Playwright code` which embeds our detector JS).
 fn extract_mcp_evaluate_json(raw: &str) -> String {
     let chunk = raw.find("### Result").map_or_else(
@@ -624,7 +624,7 @@ mod tests {
 
     #[test]
     fn mcp_evaluate_wrapper_with_detector_js_still_extracts_links() {
-        // Playwright MCP appends the evaluate JS (which contains captcha detector strings).
+        // Host-browser evaluate appends the JS (which contains captcha detector strings).
         // That must NOT wipe real EXTRACTED links.
         let raw = r#"### Result
 "{\"blocked\":false,\"href\":\"https://search.brave.com/search?q=x\",\"ai_overview\":\"AI says hello\",\"links\":[{\"url\":\"https://www.rtk-ai.app/team/\",\"title\":\"Team\"},{\"url\":\"https://www.crunchbase.com/organization/rtk-ai-labs-ltd\",\"title\":\"CB\"}]}"
