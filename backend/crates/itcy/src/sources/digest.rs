@@ -112,6 +112,37 @@ pub fn digest_propose_brief(it: &DigestItem) -> (String, String) {
     (topic, instructions)
 }
 
+/// Load a digest and pick items for `/propose_draft` / `/propose_tweet`.
+///
+/// # Errors
+///
+/// Returns an operator-facing message when the digest is missing or indices are invalid.
+pub fn load_digest_pick(
+    db_path: &std::path::Path,
+    digest_id: Option<&str>,
+    indices: &[i32],
+    cmd: &str,
+) -> Result<(DigestRecord, Vec<DigestItem>), String> {
+    let rec = match digest_id {
+        Some(id) => match get_digest(db_path, id) {
+            Ok(Some(r)) => r,
+            Ok(None) => return Err(format!("No digest `{id}` in runtime.db.")),
+            Err(e) => return Err(format!("`{cmd}` failed: {e}")),
+        },
+        None => match latest_open_digest(db_path) {
+            Ok(Some(r)) => r,
+            Ok(None) => return Err("No open digest.\n\nRun /daily_digest first.".into()),
+            Err(e) => return Err(format!("`{cmd}` failed: {e}")),
+        },
+    };
+    let picked: Vec<DigestItem> = pick_items(&rec, indices)
+        .map_err(|e| format!("`{cmd}` failed: {e}"))?
+        .into_iter()
+        .cloned()
+        .collect();
+    Ok((rec, picked))
+}
+
 /// Stored digest header + items.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DigestRecord {
