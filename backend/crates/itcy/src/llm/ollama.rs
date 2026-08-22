@@ -105,8 +105,7 @@ impl OllamaClient {
 
     /// Unload every model currently resident in Ollama (`keep_alive: 0`).
     ///
-    /// Used before boot warm so a stale Forever-pinned runner (or a dead CUDA
-    /// context) does not fight the fresh load.
+    /// Used after CUDA runner death so a stale context does not block rewarm.
     ///
     /// # Errors
     ///
@@ -212,38 +211,43 @@ impl OllamaClient {
         Ok(())
     }
 
-    /// Fail when `model` is missing from `/api/ps` or resident with `size_vram=0` (CPU-only).
-    ///
-    /// Used after chat warm so a CPU-only pin cannot pass as success.
-    async fn require_chat_on_gpu(&self, model: &str) -> Result<OllamaPsModel, LlmError> {
+    async fn fetch_ps(&self) -> Result<OllamaPsResponse, LlmError> {
         let res = self
             .http
             .get(self.ps_url())
             .send()
             .await
-            .map_err(|e| LlmError::Provider(format!("ollama ps after warm: {e}")))?;
+            .map_err(|e| LlmError::Provider(format!("ollama ps: {e}")))?;
         let status = res.status();
         let text = res.text().await.unwrap_or_default();
         if !status.is_success() {
-            return Err(format_provider_http_error(
-                "ollama ps after warm",
-                status,
-                &text,
-            ));
+            return Err(format_provider_http_error("ollama ps", status, &text));
         }
-        let parsed: OllamaPsResponse =
-            serde_json::from_str(&text).unwrap_or(OllamaPsResponse { models: Vec::new() });
-        let Some(resident) = lookup_resident(&parsed, model).cloned() else {
-            return Err(LlmError::Provider(format!(
-                "ollama warm {model}: HTTP ok but model not in /api/ps (not pinned)"
-            )));
-        };
-        if resident.size_vram == 0 {
-            return Err(LlmError::Provider(format!(
+        Ok(serde_json::from_str(&text).unwrap_or(OllamaPsResponse { models: Vec::new() }))
+    }
+
+    /// `Some` when `model` is in `/api/ps` with `size_vram > 0`.
+    async fn chat_on_gpu(&self, model: &str) -> Result<Option<OllamaPsModel>, LlmError> {
+        let parsed = self.fetch_ps().await?;
+        Ok(lookup_resident(&parsed, model)
+            .filter(|m| m.size_vram > 0)
+            .cloned())
+    }
+
+    /// Fail when `model` is missing from `/api/ps` or resident with `size_vram=0` (CPU-only).
+    ///
+    /// Used after chat warm so a CPU-only pin cannot pass as success.
+    async fn require_chat_on_gpu(&self, model: &str) -> Result<OllamaPsModel, LlmError> {
+        let parsed = self.fetch_ps().await?;
+        match lookup_resident(&parsed, model) {
+            Some(m) if m.size_vram > 0 => Ok(m.clone()),
+            Some(_) => Err(LlmError::Provider(format!(
                 "ollama warm {model}: resident but size_vram=0 (CPU-only); refusing boot"
-            )));
+            ))),
+            None => Err(LlmError::Provider(format!(
+                "ollama warm {model}: HTTP ok but model not in /api/ps (not pinned)"
+            ))),
         }
-        Ok(resident)
     }
 
     async fn chat_once(
@@ -529,6 +533,15 @@ impl LlmClient for OllamaClient {
     }
 
     async fn warm_model(&self, model: &str) -> Result<(), LlmError> {
+        if let Some(resident) = self.chat_on_gpu(model).await? {
+            info!(
+                model = %model,
+                size_bytes = resident.size,
+                size_vram_bytes = resident.size_vram,
+                "ollama: chat already on GPU; skipping warm"
+            );
+            return Ok(());
+        }
         self.preload(model).await
     }
 

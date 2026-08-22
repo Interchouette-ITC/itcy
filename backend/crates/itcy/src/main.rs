@@ -98,7 +98,10 @@ fn skip_ollama_warm() -> bool {
         .is_some_and(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
 }
 
-/// Warm Ollama chat + embed models required by live routes. Hard-fails boot on error.
+/// Warm Ollama chat (+ brief embed ping). Hard-fails boot on error.
+///
+/// Does **not** unload resident chat weights on restart. Embed uses `keep_alive` 0
+/// so nomic does not stay pinned next to chat.
 async fn warm_ollama_or_die(
     llm: &Arc<itcy::llm::FailoverRouter>,
     embed: &Arc<dyn EmbedClient>,
@@ -107,17 +110,11 @@ async fn warm_ollama_or_die(
         warn!("ollama: boot warm skipped (ITCY_SKIP_OLLAMA_WARM)");
         return Ok(());
     }
-    llm.unload_ollama_models()
-        .await
-        .context("ollama unload before warm failed; refusing to start")?;
     let embed_model = itcy::sources::embed::default_embed_model();
     if embed.provider_id() == "ollama" {
         embed.warm_model(&embed_model).await.with_context(|| {
             format!("ollama embed warm failed for model={embed_model}; refusing to start")
         })?;
-        llm.unload_ollama_models()
-            .await
-            .context("ollama unload after embed warm failed; refusing to start")?;
     }
     llm.warm_ollama_chat_models()
         .await
