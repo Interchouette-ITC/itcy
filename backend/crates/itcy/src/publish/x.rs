@@ -758,6 +758,86 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
     }
 
     #[test]
+    fn agentpay_ship_texts_forward_word_split() {
+        // XPOST-20260822-000062: forward word split from the top; reply = rest + tags + link.
+        let body = "\
+Tweet ID: TWEET-20260822-000062
+
+📜 CSPR AgentPay Guard is the firewall before an AI agent pays, HTTP 402 rules, allowlists, and replay protection all in one. 🚀
+
+It's not just about spending limits, it's about securing the whole flow: budget, expiry, audit trails, and even mock local tests with real Casper Testnet proof. 🐚
+
+MVP, not production custody. But if you're building on Casper, this is your guardrail. 🔐
+
+#CSPR #AgentPay #OnChain #AI
+
+https://alsaecas.dev/projects/cspr-agentpay-guard
+
+Link: 1
+0 = no link. /change_url TWEET-20260822-000062 <0|1|2|3|url>
+1. https://alsaecas.dev/projects/cspr-agentpay-guard
+
+Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
+        let (root, reply) = ship_texts(body).expect("ship texts");
+        let reply = reply.expect("overflow must ship a reply");
+        assert!(
+            root.starts_with('📜') && root.contains("spending limits"),
+            "root: {root}"
+        );
+        assert!(!root.contains('#'), "root: {root}");
+        assert!(
+            reply.contains("Testnet proof") && reply.contains("guardrail"),
+            "reply: {reply}"
+        );
+        assert!(
+            reply.contains("#CSPR") && reply.contains("alsaecas.dev"),
+            "reply tags+link: {reply}"
+        );
+        assert!(
+            !root.trim_end().ends_with("building on"),
+            "root must not mid-cut: {root}"
+        );
+        assert!(
+            crate::sources::tweet_thread::fits_x_limit(&root),
+            "{}",
+            crate::sources::tweet_thread::x_weighted_len(&root)
+        );
+        assert!(
+            crate::sources::tweet_thread::fits_x_limit(&reply),
+            "{}",
+            crate::sources::tweet_thread::x_weighted_len(&reply)
+        );
+    }
+
+    #[test]
+    fn agentpay_tweet_texts_for_api_matches_ship_texts() {
+        let body = "\
+Tweet ID: TWEET-20260822-000062
+
+📜 CSPR AgentPay Guard is the firewall before an AI agent pays, HTTP 402 rules, allowlists, and replay protection all in one. 🚀
+
+It's not just about spending limits, it's about securing the whole flow: budget, expiry, audit trails, and even mock local tests with real Casper Testnet proof. 🐚
+
+MVP, not production custody. But if you're building on Casper, this is your guardrail. 🔐
+
+#CSPR #AgentPay #OnChain #AI
+
+https://alsaecas.dev/projects/cspr-agentpay-guard
+
+Link: 1
+0 = no link. /change_url TWEET-20260822-000062 <0|1|2|3|url>
+1. https://alsaecas.dev/projects/cspr-agentpay-guard
+
+Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
+        let texts = tweet_texts_for_api(body);
+        assert_eq!(texts.len(), 2, "{texts:?}");
+        let (root, reply) = ship_texts(body).expect("ship texts");
+        let reply = reply.expect("reply");
+        assert_eq!(texts[0], root);
+        assert_eq!(texts[1], reply);
+    }
+
+    #[test]
     fn dump_ship_texts_from_env_file() {
         let Ok(path) = std::env::var("ITCY_DUMP_SHIP_BODY") else {
             return;

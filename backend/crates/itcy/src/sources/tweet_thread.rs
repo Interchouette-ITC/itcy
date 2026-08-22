@@ -39,9 +39,10 @@ pub fn fits_x_limit(text: &str) -> bool {
     x_weighted_len(text) <= X_CHAR_LIMIT
 }
 
-/// Commentary on tweet 1; hashtags + publisher URL on tweet 2 when 280 is tight.
+/// Root = forward from the top (paragraphs first, word-split within a beat when needed), up to 280.
 ///
-/// Order is locked: root first (start of the copy), then reply (trailer / leftover).
+/// Reply = everything left + tags + URL, unchanged. Root is grown until reply fits;
+/// no word-trim on reply (that caused the dangling "But if you're building on" cut).
 /// Never invent a self-reply that is only leftover prose with no tags/URL.
 #[must_use]
 pub fn layout_x_thread(text: &str) -> Vec<String> {
@@ -58,20 +59,223 @@ pub fn layout_x_thread(text: &str) -> Vec<String> {
     if peeled.trailer.is_empty() {
         return vec![fit_by_dropping_beats(&peeled.head)];
     }
-    let (tweet1, leftover) = take_beats_fitting(&peeled.head, X_CHAR_LIMIT);
-    let tweet2 = pack_tweet_two(&leftover, &peeled.trailer);
+    forward_fill_split(&peeled.head, &peeled.trailer)
+}
+
+fn forward_fill_split(head: &str, trailer: &str) -> Vec<String> {
+    let (mut root, mut leftover) = take_beats_fitting(head, X_CHAR_LIMIT);
+    grow_root_until_reply_fits(&mut root, &mut leftover, trailer);
+    rebalance_dangling_root_tail(&mut root, &mut leftover, trailer);
+    let reply = pack_tweet_two(&leftover, trailer);
     let mut out = Vec::new();
-    if !tweet1.is_empty() {
-        out.push(tweet1);
+    if !root.is_empty() {
+        out.push(root);
     }
-    if !tweet2.is_empty() {
-        out.push(tweet2);
+    if !reply.is_empty() {
+        out.push(reply);
     }
     if out.is_empty() {
-        vec![trim_to_limit(&text, X_CHAR_LIMIT)]
+        vec![trim_to_limit(head, X_CHAR_LIMIT)]
     } else {
         out
     }
+}
+
+/// Move words from leftover onto root while root has room and reply+trailer would overflow.
+///
+/// Word-by-word only while root is mid-sentence. After `.` / `?` / `!`, pull the next sentence
+/// (or word-split inside that sentence) instead of dribbling bare words across the boundary.
+fn grow_root_until_reply_fits(root: &mut String, leftover: &mut String, trailer: &str) {
+    while !leftover.trim().is_empty() && !reply_fits(leftover, trailer) {
+        if !root.is_empty() && !fits_x_limit(root) {
+            break;
+        }
+        if root_ends_sentence(root) {
+            let (sentence, rest) = take_leading_sentence(leftover);
+            if sentence.is_empty() {
+                break;
+            }
+            if try_grow_root_with_chunk(root, leftover, &sentence, &rest) {
+                continue;
+            }
+            break;
+        }
+        let (word, rest) = take_first_word(leftover);
+        if word.is_empty() {
+            break;
+        }
+        if is_dangling_root_tail_word(&word) {
+            break;
+        }
+        let grown = append_word(root, &word);
+        if !fits_x_limit(&grown) {
+            break;
+        }
+        *root = grown;
+        *leftover = rest;
+    }
+}
+
+fn try_grow_root_with_chunk(
+    root: &mut String,
+    leftover: &mut String,
+    chunk: &str,
+    rest_after_chunk: &str,
+) -> bool {
+    let grown = append_word(root, chunk);
+    if fits_x_limit(&grown) {
+        *root = grown;
+        *leftover = rest_after_chunk.to_string();
+        return true;
+    }
+    let cap = remaining_root_capacity(root);
+    let (piece, chunk_rest) = split_word_prefix(chunk, cap);
+    if piece.is_empty() {
+        return false;
+    }
+    *root = append_word(root, &piece);
+    *leftover = join_rest(chunk_rest, &[rest_after_chunk.to_string()]);
+    true
+}
+
+fn remaining_root_capacity(root: &str) -> usize {
+    if root.trim().is_empty() {
+        return X_CHAR_LIMIT;
+    }
+    x_weighted_len(root)
+        .checked_add(1)
+        .and_then(|used| X_CHAR_LIMIT.checked_sub(used))
+        .unwrap_or(0)
+}
+
+fn root_ends_sentence(root: &str) -> bool {
+    root.trim_end()
+        .chars()
+        .last()
+        .is_some_and(|c| matches!(c, '.' | '!' | '?'))
+}
+
+/// First sentence (through `.` / `?` / `!`, plus trailing emoji on the same line) and the rest.
+fn take_leading_sentence(text: &str) -> (String, String) {
+    let text = text.trim_start();
+    if text.is_empty() {
+        return (String::new(), String::new());
+    }
+    let Some((end, _punct)) = find_sentence_end(text) else {
+        if let Some(pos) = text.find("\n\n") {
+            return (
+                text[..pos].trim().to_string(),
+                text[pos..].trim_start().to_string(),
+            );
+        }
+        return (text.to_string(), String::new());
+    };
+    let mut tail = end;
+    for (i, ch) in text[end..].char_indices() {
+        if ch == '\n' {
+            break;
+        }
+        if ch.is_whitespace() {
+            tail = end + i + ch.len_utf8();
+            continue;
+        }
+        if is_emoji_or_symbol_char(ch) {
+            tail = end + i + ch.len_utf8();
+            continue;
+        }
+        break;
+    }
+    let sentence = text[..tail].trim().to_string();
+    let rest = text[tail..].trim_start().to_string();
+    (sentence, rest)
+}
+
+fn find_sentence_end(text: &str) -> Option<(usize, char)> {
+    for (i, ch) in text.char_indices() {
+        if matches!(ch, '.' | '!' | '?') {
+            return Some((i + ch.len_utf8(), ch));
+        }
+    }
+    None
+}
+
+fn is_emoji_or_symbol_char(ch: char) -> bool {
+    x_cp_weight(ch as u32) > 1 && !ch.is_alphanumeric()
+}
+
+fn reply_fits(leftover: &str, trailer: &str) -> bool {
+    fits_x_limit(&join_head_trailer(leftover.trim(), trailer))
+}
+
+fn take_first_word(text: &str) -> (String, String) {
+    let text = text.trim_start();
+    let Some(first) = text.split_whitespace().next() else {
+        return (String::new(), String::new());
+    };
+    let rest = text[first.len()..].trim_start().to_string();
+    (first.to_string(), rest)
+}
+
+fn append_word(root: &str, word: &str) -> String {
+    if root.is_empty() {
+        word.to_string()
+    } else {
+        format!("{root} {word}")
+    }
+}
+
+/// Articles/determiners that must not dangle alone at the end of a root tweet.
+fn is_dangling_root_tail_word(word: &str) -> bool {
+    let w = word.trim_matches(|c: char| c.is_ascii_punctuation());
+    matches!(w.to_ascii_lowercase().as_str(), "the" | "a" | "an" | "one")
+}
+
+/// Move a trailing article (`The`, `a`, …) from root onto leftover when reply still fits.
+fn rebalance_dangling_root_tail(root: &mut String, leftover: &mut String, trailer: &str) {
+    while let Some(last) = root.split_whitespace().last() {
+        if !is_dangling_root_tail_word(last) || leftover.trim().is_empty() {
+            break;
+        }
+        let (new_root, Some(word)) = pop_last_word(root) else {
+            break;
+        };
+        let new_leftover = prepend_word(&word, leftover.trim());
+        if !reply_fits(&new_leftover, trailer) {
+            break;
+        }
+        *root = new_root;
+        *leftover = new_leftover;
+    }
+}
+
+fn pop_last_word(text: &str) -> (String, Option<String>) {
+    let trimmed = text.trim_end();
+    if trimmed.is_empty() {
+        return (String::new(), None);
+    }
+    let Some(last_ws) = trimmed.rfind(char::is_whitespace) else {
+        return (String::new(), Some(trimmed.to_string()));
+    };
+    let word = trimmed[last_ws + 1..].trim().to_string();
+    let root = trimmed[..last_ws].trim_end().to_string();
+    (root, Some(word))
+}
+
+fn prepend_word(word: &str, rest: &str) -> String {
+    let rest = rest.trim();
+    if rest.is_empty() {
+        word.to_string()
+    } else {
+        format!("{word} {rest}")
+    }
+}
+
+/// Drop a trailing article from `prefix` when `suffix` continues the sentence.
+fn trim_dangling_prefix_tail(words: &[&str], mut n: usize) -> usize {
+    while n > 0 && n < words.len() && is_dangling_root_tail_word(words[n - 1]) {
+        n -= 1;
+    }
+    n
 }
 
 #[must_use]
@@ -269,6 +473,51 @@ fn remaining_after(kept: &[String], limit: usize) -> usize {
     limit.saturating_sub(used).saturating_sub(2)
 }
 
+fn remaining_after_lines(kept: &[String], limit: usize) -> usize {
+    if kept.is_empty() {
+        return limit;
+    }
+    limit
+        .saturating_sub(x_weighted_len(&kept.join("\n")))
+        .saturating_sub(1)
+}
+
+/// Prefix fits `limit` at word boundaries; suffix is the remaining words/lines.
+fn split_word_prefix(text: &str, limit: usize) -> (String, String) {
+    let text = text.trim();
+    if text.is_empty() {
+        return (String::new(), String::new());
+    }
+    if fits_limit(text, limit) {
+        return (text.to_string(), String::new());
+    }
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let mut n = 0usize;
+    while n < words.len() {
+        let candidate = words[..=n].join(" ");
+        if !fits_limit(&candidate, limit) {
+            break;
+        }
+        n += 1;
+    }
+    n = trim_dangling_prefix_tail(&words, n);
+    if n == 0 {
+        let prefix = trim_to_limit(text, limit);
+        if prefix.is_empty() {
+            return (String::new(), text.to_string());
+        }
+        let suffix = text
+            .strip_prefix(prefix.as_str())
+            .unwrap_or("")
+            .trim_start()
+            .to_string();
+        return (prefix, suffix);
+    }
+    let prefix = words[..n].join(" ");
+    let suffix = words[n..].join(" ");
+    (prefix, suffix)
+}
+
 fn join_rest(rest_beat: String, more: &[String]) -> String {
     let mut parts = Vec::new();
     if !rest_beat.trim().is_empty() {
@@ -290,49 +539,41 @@ fn take_prefix_fitting(text: &str, limit: usize) -> (String, String) {
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .collect();
-    let mut kept: Vec<&str> = Vec::new();
+    if lines.is_empty() {
+        return (String::new(), String::new());
+    }
+    let mut kept: Vec<String> = Vec::new();
     let mut i = 0;
     while i < lines.len() {
         let mut candidate = kept.clone();
-        candidate.push(lines[i]);
+        candidate.push(lines[i].to_string());
         let joined = candidate.join("\n");
         if fits_limit(&joined, limit) {
-            kept.push(lines[i]);
+            kept.push(lines[i].to_string());
             i += 1;
             continue;
+        }
+        let remain = remaining_after_lines(&kept, limit);
+        let (piece, rest_line) = split_word_prefix(lines[i], remain);
+        if !piece.is_empty() {
+            kept.push(piece);
+            let mut tail: Vec<String> = Vec::new();
+            if !rest_line.is_empty() {
+                tail.push(rest_line);
+            }
+            tail.extend(lines[i + 1..].iter().map(|s| (*s).to_string()));
+            return (kept.join("\n"), tail.join("\n"));
         }
         break;
     }
     if kept.is_empty() {
-        return (String::new(), text.trim().to_string());
+        return split_word_prefix(text, limit);
     }
     (kept.join("\n"), lines[i..].join("\n"))
 }
 
 fn pack_tweet_two(leftover: &str, trailer: &str) -> String {
-    let leftover = leftover.trim();
-    let trailer = trailer.trim();
-    if leftover.is_empty() {
-        return trailer.to_string();
-    }
-    if trailer.is_empty() {
-        return trim_to_limit(leftover, X_CHAR_LIMIT);
-    }
-    let both = format!("{leftover}\n\n{trailer}");
-    if fits_x_limit(&both) {
-        return both;
-    }
-    let trailer_len = x_weighted_len(trailer);
-    if trailer_len >= X_CHAR_LIMIT {
-        return trim_to_limit(trailer, X_CHAR_LIMIT);
-    }
-    let budget = X_CHAR_LIMIT.saturating_sub(trailer_len.saturating_add(2));
-    let head = trim_to_limit(leftover, budget);
-    if head.is_empty() {
-        trailer.to_string()
-    } else {
-        format!("{head}\n\n{trailer}")
-    }
+    join_head_trailer(leftover.trim(), trailer)
 }
 
 fn fits_limit(text: &str, limit: usize) -> bool {
@@ -427,6 +668,59 @@ fn x_cp_weight(cp: u32) -> usize {
 mod tests {
     use super::*;
 
+    /// Shipped wrong on XPOST-20260822-000062: hook + two insight beats + tag trailer.
+    const AGENTPAY_HOOK_INSIGHT: &str = "\
+📜 CSPR AgentPay Guard is the firewall before an AI agent pays, HTTP 402 rules, allowlists, and replay protection all in one. 🚀
+
+It's not just about spending limits, it's about securing the whole flow: budget, expiry, audit trails, and even mock local tests with real Casper Testnet proof. 🐚
+
+MVP, not production custody. But if you're building on Casper, this is your guardrail. 🔐
+
+#CSPR #AgentPay #OnChain #AI";
+
+    const AGENTPAY_PUBLISHER_URL: &str = "https://alsaecas.dev/projects/cspr-agentpay-guard";
+
+    fn assert_agentpay_forward_word_split(parts: &[String], expect_url_on_reply: bool) {
+        assert_eq!(parts.len(), 2, "{parts:?}");
+        let root = &parts[0];
+        let reply = &parts[1];
+        assert!(fits_x_limit(root), "root {} chars", x_weighted_len(root));
+        assert!(fits_x_limit(reply), "reply {} chars", x_weighted_len(reply));
+        assert!(
+            root.starts_with('📜') && root.contains("AgentPay Guard"),
+            "root starts from the top: {root}"
+        );
+        assert!(
+            root.contains("spending limits"),
+            "root fills forward through word boundary: {root}"
+        );
+        assert!(!root.contains('#'), "root has no tags: {root}");
+        assert!(
+            !reply.trim_end().ends_with("building on"),
+            "reply must not dangling mid-sentence trim: {reply}"
+        );
+        assert!(
+            reply.contains("Testnet proof")
+                || reply.contains("it's about")
+                || reply.contains("securing the whole flow"),
+            "reply continues from root word split: {reply}"
+        );
+        assert!(
+            reply.contains("guardrail") && reply.contains("#CSPR"),
+            "reply has rest + tags: {reply}"
+        );
+        assert!(
+            !root.trim_end().ends_with("building on"),
+            "root must not mid-cut dangling: {root}"
+        );
+        if expect_url_on_reply {
+            assert!(
+                reply.contains("alsaecas.dev"),
+                "reply carries publisher link: {reply}"
+            );
+        }
+    }
+
     const SAMPLE: &str = "\
 🦉 GitHub Models' retirement feels like a quiet end to a promising experiment.
 Sad to see such a tool fade-especially when free alternatives are scarce.
@@ -475,11 +769,90 @@ https://blog.dante.company/en/articles/github-models-retirement-migration-2026-0
         assert!(!parts[0].contains("#AI"));
         assert!(parts[1].contains("#AI #GitHub #ModelRetirement"));
         assert!(parts[1].contains("https://blog.dante.company/"));
+        assert!(
+            !parts[0]
+                .split_whitespace()
+                .last()
+                .is_some_and(is_dangling_root_tail_word),
+            "root must not end on a dangling article: {}",
+            parts[0]
+        );
+        assert!(
+            parts[1].starts_with("The future"),
+            "reply carries the peeled article: {}",
+            parts[1]
+        );
         assert!(x_weighted_len(&parts[0]) > 200);
         assert!(
             parts[0].contains("future of AI tools is still in flux")
                 || parts[1].contains("future of AI tools is still in flux")
         );
+    }
+
+    #[test]
+    fn root_never_ends_on_dangling_article() {
+        let cases = [
+            SAMPLE,
+            AGENTPAY_HOOK_INSIGHT,
+            "Builders keep an eye on the path.\n\nThe next wave is here.\n\n#AI\n\nhttps://example.com/x",
+        ];
+        for text in cases {
+            for part in layout_x_thread(text) {
+                if let Some(last) = part.split_whitespace().last() {
+                    assert!(
+                        !is_dangling_root_tail_word(last),
+                        "dangling tail `{last}` in: {part}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn trim_dangling_prefix_tail_peels_the() {
+        let words: Vec<&str> = "paths. The future unfolds".split_whitespace().collect();
+        assert_eq!(trim_dangling_prefix_tail(&words, 2), 1);
+    }
+
+    #[test]
+    fn grow_stops_at_sentence_boundary_not_bare_words() {
+        let head = "\
+🦉 GitHub Models' retirement feels like a quiet end to a promising experiment.
+Sad to see such a tool fade-especially when free alternatives are scarce.
+
+Microsoft Foundry and Copilot?
+Not exactly the open-source dream we hoped for.
+
+Builders, keep an eye on migration paths.
+The future of AI tools is still in flux.";
+        let trailer = "#AI #GitHub #ModelRetirement\n\nhttps://blog.dante.company/en/articles/github-models-retirement-migration-2026-07-02";
+        let parts = forward_fill_split_only(head, trailer);
+        assert_eq!(parts.len(), 2);
+        assert!(
+            parts[0].trim_end().ends_with("migration paths."),
+            "root ends on sentence boundary: {}",
+            parts[0]
+        );
+        assert!(
+            parts[1].starts_with("The future"),
+            "reply opens the next sentence: {}",
+            parts[1]
+        );
+    }
+
+    #[test]
+    fn take_leading_sentence_includes_trailing_emoji() {
+        let (sent, rest) = take_leading_sentence("Testnet proof. 🐚\n\nMVP next.");
+        assert_eq!(sent, "Testnet proof. 🐚");
+        assert_eq!(rest, "MVP next.");
+    }
+
+    fn forward_fill_split_only(head: &str, trailer: &str) -> Vec<String> {
+        let (mut root, mut leftover) = take_beats_fitting(head, X_CHAR_LIMIT);
+        grow_root_until_reply_fits(&mut root, &mut leftover, trailer);
+        rebalance_dangling_root_tail(&mut root, &mut leftover, trailer);
+        let reply = pack_tweet_two(&leftover, trailer);
+        vec![root, reply]
     }
 
     #[test]
@@ -574,6 +947,170 @@ https://x.com/AstraKernel/status/2088224406187413962";
             "must not start from the end: {}",
             parts[0]
         );
+    }
+
+    #[test]
+    fn agentpay_reply_is_full_remainder_not_word_trimmed() {
+        let text = format!("{AGENTPAY_HOOK_INSIGHT}\n\n{AGENTPAY_PUBLISHER_URL}");
+        let parts = layout_x_thread(&text);
+        assert_eq!(parts.len(), 2);
+        assert!(
+            !parts[1].trim_end().ends_with("building on"),
+            "reply must not be word-trimmed mid-sentence: {}",
+            parts[1]
+        );
+        assert!(
+            parts[1].contains("guardrail") && parts[1].contains("#CSPR"),
+            "reply keeps full tail: {}",
+            parts[1]
+        );
+        assert!(
+            x_weighted_len(&parts[0]) > 200,
+            "root near 280, not hook-only: {}",
+            x_weighted_len(&parts[0])
+        );
+    }
+
+    #[test]
+    fn agentpay_forward_word_split_with_publisher_url() {
+        let text = format!("{AGENTPAY_HOOK_INSIGHT}\n\n{AGENTPAY_PUBLISHER_URL}");
+        let parts = layout_x_thread(&text);
+        assert_agentpay_forward_word_split(&parts, true);
+    }
+
+    #[test]
+    fn agentpay_forward_word_split_tags_only() {
+        let parts = layout_x_thread(AGENTPAY_HOOK_INSIGHT);
+        assert_agentpay_forward_word_split(&parts, false);
+    }
+
+    #[test]
+    fn split_word_prefix_respects_weighted_limit() {
+        let (prefix, suffix) = split_word_prefix(
+            "It's not just about spending limits, it's about securing the whole flow.",
+            40,
+        );
+        assert!(fits_x_limit(&prefix));
+        assert!(!suffix.is_empty());
+        assert!(prefix.ends_with("limits,") || prefix.contains("spending"));
+    }
+
+    #[test]
+    fn agentpay_forward_split_puts_hook_on_root() {
+        let text = format!("{AGENTPAY_HOOK_INSIGHT}\n\n{AGENTPAY_PUBLISHER_URL}");
+        assert_agentpay_forward_word_split(&layout_x_thread(&text), true);
+    }
+
+    #[test]
+    #[ignore = "manual: cargo test -p itcy split_showcase_dump -- --ignored --nocapture"]
+    fn split_showcase_dump() {
+        fn dump(name: &str, text: &str) {
+            let parts = layout_x_thread(text);
+            eprintln!("\n========== {name} ==========");
+            eprintln!("INPUT weighted {} / 280", x_weighted_len(text));
+            eprintln!("SPLIT: {} tweet(s)", parts.len());
+            for (i, p) in parts.iter().enumerate() {
+                let label = if i == 0 { "ROOT" } else { "REPLY" };
+                eprintln!("--- {label} (weighted {} / 280) ---", x_weighted_len(p));
+                eprintln!("{p}");
+            }
+        }
+
+        dump(
+            "AgentPay XPOST-000062 (layout only, tags+URL)",
+            &format!("{AGENTPAY_HOOK_INSIGHT}\n\n{AGENTPAY_PUBLISHER_URL}"),
+        );
+        dump(
+            "AgentPay tags only (no publisher URL)",
+            AGENTPAY_HOOK_INSIGHT,
+        );
+        dump("GitHub Models SAMPLE", SAMPLE);
+        dump(
+            "GitHub outage TWEET-000046 (inline trailing tags)",
+            "📜 @github's 2026 outage crisis is real, 257 incidents, 48 major outages, and a 50% repo download error rate. 🚀 The root? Autoscaling fails + VS Code retry storms. 🦀 But they're not just fixing it, they're shipping fixes and new features like stacked PRs. #CloudOps #DevTools #GitHub #OutageFixes",
+        );
+        let tinyboot = "\
+⚡ tinyboot is a clever Rust bootloader that fits in just 1920 bytes-perfect for microcontrollers with tight memory.
+
+It leaves every byte of user flash free, which means more room for your app.
+
+That's the kind of smart engineering that makes embedded systems easier to build.
+
+#Rust #Embedded #OpenSource
+
+https://x.com/AstraKernel/status/2088224406187413962";
+        dump("tinyboot + X status URL", tinyboot);
+        dump(
+            "GPUI TWEET-000047 (fits one tweet)",
+            "📜 Rust GUI just got a GPU-powered upgrade.\n🦀 GPUI brings 60+ solid components, huge-data tables, and a smooth 200K-line code editor, no more wrestling with Qt.\n🦉 Native feel, dock layouts, themes… all in one.\n\n#Rust #GUI #OpenSource\n\nhttps://x.com/milonspace/status/2089661151529574481",
+        );
+        dump(
+            "Short (stays one)",
+            "Hello builders.\n\nhttps://labs.sogeti.com/a",
+        );
+
+        // Full ship path (Slack compose footer stripped by tweet_text_for_api).
+        let agentpay_ship = "\
+Tweet ID: TWEET-20260822-000062
+
+📜 CSPR AgentPay Guard is the firewall before an AI agent pays, HTTP 402 rules, allowlists, and replay protection all in one. 🚀
+
+It's not just about spending limits, it's about securing the whole flow: budget, expiry, audit trails, and even mock local tests with real Casper Testnet proof. 🐚
+
+MVP, not production custody. But if you're building on Casper, this is your guardrail. 🔐
+
+#CSPR #AgentPay #OnChain #AI
+
+https://alsaecas.dev/projects/cspr-agentpay-guard
+
+Link: 1
+0 = no link. /change_url TWEET-20260822-000062 <0|1|2|3|url>
+1. https://alsaecas.dev/projects/cspr-agentpay-guard
+
+Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
+        let api_text = crate::publish::tweet_text_for_api(agentpay_ship);
+        eprintln!("\n========== AgentPay full ship body (tweet_text_for_api) ==========");
+        eprintln!("CLEANED:\n{api_text}\n");
+        dump("AgentPay ship split (via layout_x_thread)", &api_text);
+        let ship_parts = crate::publish::tweet_texts_for_api(agentpay_ship);
+        eprintln!(
+            "tweet_texts_for_api: {} part(s), matches layout: {}",
+            ship_parts.len(),
+            ship_parts == layout_x_thread(&api_text)
+        );
+    }
+
+    #[test]
+    #[ignore = "manual: cargo test -p itcy agentpay_split_debug_dump -- --ignored --nocapture"]
+    fn agentpay_split_debug_dump() {
+        let raw = "\
+:scroll: CSPR AgentPay Guard is the firewall before an AI agent pays, HTTP 402 rules, allowlists, and replay protection all in one. :rocket:
+
+It's not just about spending limits, it's about securing the whole flow: budget, expiry, audit trails, and even mock local tests with real Casper Testnet proof. :shell:
+
+MVP, not production custody. But if you're building on Casper, this is your guardrail. :closed_lock_with_key:
+
+#CSPR #AgentPay #OnChain #AI
+
+https://alsaecas.dev/projects/cspr-agentpay-guard";
+        let body = format!("Tweet ID: TWEET-DEBUG\n\n{raw}");
+        let cleaned = crate::publish::tweet_text_for_api(&body);
+        let parts = layout_x_thread(&cleaned);
+        eprintln!("=== CLEANED (emoji expanded) ===\n{cleaned}\n");
+        eprintln!("=== SPLIT: {} tweet(s) ===", parts.len());
+        for (i, p) in parts.iter().enumerate() {
+            let label = if i == 0 {
+                "ROOT (posted first)"
+            } else {
+                "REPLY"
+            };
+            eprintln!(
+                "--- {label} (weighted {} / 280) ---\n{p}\n",
+                x_weighted_len(p)
+            );
+        }
+        let texts = crate::publish::tweet_texts_for_api(&body);
+        eprintln!("=== tweet_texts_for_api matches layout: {}", texts == parts);
     }
 
     #[test]

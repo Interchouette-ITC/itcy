@@ -594,6 +594,45 @@ https://blog.dante.company/en/articles/github-models-retirement-migration-2026-0
     }
 
     #[test]
+    fn compose_agentpay_forward_word_split_for_ship() {
+        let body = "\
+📜 CSPR AgentPay Guard is the firewall before an AI agent pays, HTTP 402 rules, allowlists, and replay protection all in one. 🚀
+
+It's not just about spending limits, it's about securing the whole flow: budget, expiry, audit trails, and even mock local tests with real Casper Testnet proof. 🐚
+
+MVP, not production custody. But if you're building on Casper, this is your guardrail. 🔐
+
+#CSPR #AgentPay #OnChain #AI";
+        let cite = "https://alsaecas.dev/projects/cspr-agentpay-guard";
+        let out = compose_tweet_message(body, "TWEET-20260822-000062", &[cite.into()]);
+        let texts = crate::publish::tweet_texts_for_api(&out);
+        assert_eq!(texts.len(), 2, "{texts:?}");
+        assert!(crate::sources::tweet_thread::fits_x_limit(&texts[0]));
+        assert!(crate::sources::tweet_thread::fits_x_limit(&texts[1]));
+        assert!(
+            texts[0].starts_with('📜') && texts[0].contains("spending limits"),
+            "root forward from top: {}",
+            texts[0]
+        );
+        assert!(
+            texts[1].contains("Testnet proof") && texts[1].contains("#CSPR"),
+            "reply: {}",
+            texts[1]
+        );
+        assert!(
+            texts[1].contains("guardrail"),
+            "reply keeps tail: {}",
+            texts[1]
+        );
+        assert!(
+            !texts[0].trim_end().ends_with("building on"),
+            "no mid-cut root: {}",
+            texts[0]
+        );
+        assert!(out.contains("alsaecas.dev"), "cite listed in footer: {out}");
+    }
+
+    #[test]
     fn ensure_publisher_inserts_link_strips_status() {
         let body = "Hello\n\nhttps://x.com/a/status/1\n\nSources: none";
         let out = ensure_tweet_cite_line(body, Some("https://labs.sogeti.com/a"));
