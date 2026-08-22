@@ -10,6 +10,7 @@ pub mod commands;
 pub mod events;
 pub mod filter;
 pub mod handler;
+pub mod propose;
 pub mod saved;
 pub mod socket;
 pub mod tweets;

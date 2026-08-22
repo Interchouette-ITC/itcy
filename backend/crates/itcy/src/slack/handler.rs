@@ -11,7 +11,7 @@ use crate::config::Config;
 use crate::llm::router::TaskKind;
 use crate::llm::FailoverRouter;
 use crate::memory::{MemoryDb, StoredMessage};
-use crate::slack::api::{post_digest_channel, post_message};
+use crate::slack::api::{post_digest_channel, post_message, post_propose_batch};
 use crate::slack::chat::{build_runtime_reply, llm_unavailable_reply};
 use crate::slack::commands::{
     classify_channel_text, compose_operator_brief, find_draft_id_in_text, help_text,
@@ -20,11 +20,9 @@ use crate::slack::commands::{
 };
 use crate::slack::events::ParsedEvent;
 use crate::slack::filter::is_channel_allowed;
+use crate::slack::propose::ProposeBatch;
 use crate::slack::welcome::welcome_text;
-use crate::sources::digest::{
-    build_daily_digest, digest_slack_post, format_digest_slack, get_digest, latest_open_digest,
-    pick_items,
-};
+use crate::sources::digest::{build_daily_digest, digest_slack_post, format_digest_slack};
 use crate::sources::draft_footer::{compose_draft_message, slack_paste_safe_linkedin_message};
 use crate::sources::draft_url::{
     extract_in_post_url, footer_start, promote_link_option, resolve_url_choice,
@@ -276,6 +274,41 @@ impl SlackRuntime {
                 error!(error = %e, "slack slash ack post failed");
             }
         }
+        if let Some(batch_result) = self.try_propose_batch(&cmd).await {
+            match batch_result {
+                Ok(batch) => {
+                    if let Err(e) = post_propose_batch(
+                        &self.config.bot_token,
+                        channel_id,
+                        &batch.header,
+                        &batch.items,
+                    )
+                    .await
+                    {
+                        error!(error = %e, "slack propose batch thread post failed");
+                        if let Err(post_err) =
+                            post_message(&self.config.bot_token, channel_id, &batch.summary).await
+                        {
+                            error!(error = %post_err, "slack propose batch fallback post failed");
+                        }
+                    }
+                    info!(
+                        command = %name,
+                        items = batch.items.len(),
+                        "slack: propose batch posted in thread"
+                    );
+                    return;
+                }
+                Err(e) => {
+                    if let Err(post_err) =
+                        post_message(&self.config.bot_token, channel_id, &e).await
+                    {
+                        error!(error = %post_err, "slack propose batch error post failed");
+                    }
+                    return;
+                }
+            }
+        }
         let reply = self.dispatch_command(cmd).await;
         if !reply.trim().is_empty() {
             if let Err(e) = post_message(&self.config.bot_token, channel_id, &reply).await {
@@ -522,37 +555,57 @@ impl SlackRuntime {
     }
 
     async fn propose_draft_reply(&self, digest_id: Option<&str>, indices: &[i32]) -> String {
-        use std::fmt::Write;
+        match self.propose_draft_batch(digest_id, indices).await {
+            Ok(batch) => batch.summary,
+            Err(e) => e,
+        }
+    }
+
+    async fn propose_draft_batch(
+        &self,
+        digest_id: Option<&str>,
+        indices: &[i32],
+    ) -> Result<ProposeBatch, String> {
         let db = self.config.state_db_path.as_path();
-        let rec = match digest_id {
-            Some(id) => match get_digest(db, id) {
-                Ok(Some(r)) => r,
-                Ok(None) => return format!("No digest `{id}` in runtime.db."),
-                Err(e) => return format!("`/propose_draft` failed: {e}"),
-            },
-            None => match latest_open_digest(db) {
-                Ok(Some(r)) => r,
-                Ok(None) => {
-                    return "No open digest.\n\nRun /daily_digest first.".into();
-                }
-                Err(e) => return format!("`/propose_draft` failed: {e}"),
-            },
-        };
-        let picked = match pick_items(&rec, indices) {
-            Ok(p) => p,
-            Err(e) => return format!("`/propose_draft` failed: {e}"),
-        };
-        let mut out = format!(
-            "From `{digest}`: starting {n} draft(s):\n",
+        let (rec, picked) =
+            crate::sources::digest::load_digest_pick(db, digest_id, indices, "/propose_draft")?;
+        let header = format!(
+            "From `{digest}`: starting {n} draft(s):",
             digest = rec.digest_id,
             n = picked.len()
         );
-        for it in picked {
+        let mut items = Vec::with_capacity(picked.len());
+        for it in &picked {
             let (subject, instructions) = crate::sources::digest::digest_propose_brief(it);
             let reply = self.draft_reply(&subject, &instructions).await;
-            let _ = write!(out, "\n--- item {} ---\n{reply}\n", it.idx);
+            items.push(format!("--- item {} ---\n{reply}", it.idx));
         }
-        out
+        Ok(ProposeBatch::new(header, items))
+    }
+
+    async fn try_propose_batch(
+        &self,
+        cmd: &OperatorCommand,
+    ) -> Option<Result<ProposeBatch, String>> {
+        match cmd {
+            OperatorCommand::ProposeDraft { digest_id, indices }
+                if digest_id.is_some() || !indices.is_empty() =>
+            {
+                Some(
+                    self.propose_draft_batch(digest_id.as_deref(), indices)
+                        .await,
+                )
+            }
+            OperatorCommand::ProposeTweet { digest_id, indices }
+                if digest_id.is_some() || !indices.is_empty() =>
+            {
+                Some(
+                    self.propose_tweet_batch(digest_id.as_deref(), indices)
+                        .await,
+                )
+            }
+            _ => None,
+        }
     }
 
     async fn accept_comment_reply_reply(&self, url: &str) -> String {

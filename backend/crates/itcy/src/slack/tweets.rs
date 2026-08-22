@@ -372,38 +372,32 @@ Tweet `{tweet_id}` marked failed."
         digest_id: Option<&str>,
         indices: &[i32],
     ) -> String {
-        use crate::sources::digest::{get_digest, latest_open_digest, pick_items};
-        use std::fmt::Write;
+        match self.propose_tweet_batch(digest_id, indices).await {
+            Ok(batch) => batch.summary,
+            Err(e) => e,
+        }
+    }
+
+    pub(crate) async fn propose_tweet_batch(
+        &self,
+        digest_id: Option<&str>,
+        indices: &[i32],
+    ) -> Result<crate::slack::propose::ProposeBatch, String> {
         let db = self.config.state_db_path.as_path();
-        let rec = match digest_id {
-            Some(id) => match get_digest(db, id) {
-                Ok(Some(r)) => r,
-                Ok(None) => return format!("No digest `{id}` in runtime.db."),
-                Err(e) => return format!("`/propose_tweet` failed: {e}"),
-            },
-            None => match latest_open_digest(db) {
-                Ok(Some(r)) => r,
-                Ok(None) => {
-                    return "No open digest.\n\nRun /daily_digest first.".into();
-                }
-                Err(e) => return format!("`/propose_tweet` failed: {e}"),
-            },
-        };
-        let picked = match pick_items(&rec, indices) {
-            Ok(p) => p,
-            Err(e) => return format!("`/propose_tweet` failed: {e}"),
-        };
-        let mut out = format!(
-            "From `{digest}`: starting {n} tweet(s):\n",
+        let (rec, picked) =
+            crate::sources::digest::load_digest_pick(db, digest_id, indices, "/propose_tweet")?;
+        let header = format!(
+            "From `{digest}`: starting {n} tweet(s):",
             digest = rec.digest_id,
             n = picked.len()
         );
-        for it in picked {
+        let mut items = Vec::with_capacity(picked.len());
+        for it in &picked {
             let (subject, instructions) = crate::sources::digest::digest_propose_brief(it);
             let reply = self.tweet_reply(&subject, &instructions).await;
-            let _ = write!(out, "\n--- item {} ---\n{reply}\n", it.idx);
+            items.push(format!("--- item {} ---\n{reply}", it.idx));
         }
-        out
+        Ok(crate::slack::propose::ProposeBatch::new(header, items))
     }
 
     pub(crate) async fn accept_tweet_reply(&self, tweet_id: &str) -> String {

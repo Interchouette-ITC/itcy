@@ -168,6 +168,20 @@ async fn post_thread(
     Ok(())
 }
 
+/// One header message, then each digest propose item in the thread (avoids multi-fence mega-posts).
+///
+/// # Errors
+///
+/// Returns after the first failed post; earlier messages may already be visible.
+pub async fn post_propose_batch(
+    bot_token: &str,
+    channel: &str,
+    header: &str,
+    items: &[String],
+) -> Result<(), String> {
+    post_thread(bot_token, channel, header, items).await
+}
+
 /// Overview in-channel, then Press, For you, Following, Twitter search, Interchouette.
 ///
 /// # Errors

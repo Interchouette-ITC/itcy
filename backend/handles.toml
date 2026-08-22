@@ -1463,6 +1463,13 @@ linkedin_url = "https://www.linkedin.com/company/infoworld/"
 x_url = "https://x.com/InfoWorld"
 
 [[handle]]
+name = "InfoQ"
+x = "@InfoQ"
+linkedin = "@infoq"
+linkedin_url = "https://www.linkedin.com/company/infoq/"
+x_url = "https://x.com/InfoQ"
+
+[[handle]]
 name = "sjwhitworth"
 x = "@sjwhitworth"
 x_url = "https://x.com/sjwhitworth"

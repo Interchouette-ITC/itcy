@@ -743,13 +743,36 @@ fn ensure_named_handle_in_body(
         return handle.to_string();
     }
     match kind {
-        // LinkedIn: lead line is fine (posts often open with the company @).
-        HandleMatch::LinkedIn => format!("From {handle}.\n\n{trimmed}"),
-        // X: never invent `@Handle:` when the name was absent. A tangential pack match
-        // (brief named Cloudflare while the tweet is about Obscura) used to prefix
-        // `@Cloudflare: 🦉…`, then strip_own_x_handle panicked mid-emoji.
+        HandleMatch::LinkedIn => {
+            let lead = entry.map_or_else(
+                || format!("From {handle}."),
+                |e| linkedin_lead_for_entry(e, handle),
+            );
+            format!("{lead}\n\n{trimmed}")
+        }
         HandleMatch::X => body.to_string(),
     }
+}
+
+/// Publisher brands get a readable lead (`InfoQ:`); people keep `From @handle.`
+fn linkedin_lead_for_entry(entry: &HandleEntry, handle: &str) -> String {
+    if use_publisher_name_lead(entry) {
+        format!("{}:", entry.name.trim())
+    } else {
+        format!("From {handle}.")
+    }
+}
+
+fn use_publisher_name_lead(entry: &HandleEntry) -> bool {
+    if entry.linkedin_url.contains("/company/") {
+        return true;
+    }
+    !entry.name.contains(' ')
+        && entry
+            .name
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_uppercase())
 }
 
 fn handle_from_pack(pack: &str, key: &str) -> Option<String> {
@@ -1093,10 +1116,33 @@ mod tests {
                 name: "InfoWorld".into(),
                 linkedin: "@infoworld".into(),
                 x: "@InfoWorld".into(),
-                linkedin_url: String::new(),
-                x_url: String::new(),
+                linkedin_url: "https://www.linkedin.com/company/infoworld/".into(),
+                x_url: "https://x.com/InfoWorld".into(),
             }],
         }
+    }
+
+    #[test]
+    fn publisher_lead_uses_display_name_not_from_at() {
+        let idx = infoworld_index();
+        let pack = "subject: Opus\nhandles: linkedin=@infoworld x=@InfoWorld\n";
+        let body = "Anthropic Opus corrections are costing enterprise teams.";
+        let out = ensure_linkedin_handle_from_pack(body, pack, &idx);
+        assert!(out.starts_with("InfoWorld:\n\n"), "out: {out}");
+        assert!(!out.starts_with("From @infoworld"));
+    }
+
+    #[test]
+    fn publisher_host_infoq_resolves() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../handles.toml");
+        let idx = load_handles_from(&path).expect("handles");
+        let hit = idx
+            .primary_from_brief(
+                "cite https://www.infoq.com/news/2026/08/aws-bench-agent-evaluation",
+            )
+            .expect("infoq publisher hit");
+        assert_eq!(hit.name, "InfoQ");
+        assert_eq!(hit.linkedin, "@infoq");
     }
 
     #[test]
