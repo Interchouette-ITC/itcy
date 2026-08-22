@@ -69,6 +69,8 @@ const TWEET_PACK_NOTE_EMPTY: &str = prompt!("tweet_pack_note_empty.md");
 const TWEET_PACK_NOTE_NORMAL: &str = prompt!("tweet_pack_note_normal.md");
 const DRAFT_PACK_NOTE_EMPTY: &str = prompt!("draft_pack_note_empty.md");
 const DRAFT_PACK_NOTE_NORMAL: &str = prompt!("draft_pack_note_normal.md");
+const DRAFT_PACK_NOTE_SUBJECT_HTTPS: &str = prompt!("draft_pack_note_subject_https.md");
+const DRAFT_USER_SUBJECT_HTTPS_TMPL: &str = prompt!("draft_user_subject_https.md");
 
 /// Self-introduction writer system core (date line prepended at runtime).
 pub const SELF_SYSTEM_CORE: &str = prompt!("self_system.md");
@@ -89,8 +91,31 @@ pub fn load_user_message(subject: &str) -> String {
 /// DRAFT user turn after `ResearchPack` is ready.
 #[must_use]
 pub fn draft_user_message(research_pack: &str, pack_note: &str, subject: &str) -> String {
-    DRAFT_USER_TMPL
-        .replace(concat!("{", "research_pack", "}"), research_pack)
+    draft_user_message_inner(DRAFT_USER_TMPL, research_pack, pack_note, subject)
+}
+
+/// Cite-locked draft user turn: no corpus/browse/search instructions.
+#[must_use]
+pub fn draft_user_message_subject_https(
+    research_pack: &str,
+    pack_note: &str,
+    subject: &str,
+) -> String {
+    draft_user_message_inner(
+        DRAFT_USER_SUBJECT_HTTPS_TMPL,
+        research_pack,
+        pack_note,
+        subject,
+    )
+}
+
+fn draft_user_message_inner(
+    tmpl: &str,
+    research_pack: &str,
+    pack_note: &str,
+    subject: &str,
+) -> String {
+    tmpl.replace(concat!("{", "research_pack", "}"), research_pack)
         .replace(concat!("{", "pack_note", "}"), pack_note)
         .replace(concat!("{", "subject", "}"), subject)
 }
@@ -221,8 +246,10 @@ pub fn tweet_pack_note(pack_urls_empty: bool, subject_https: bool) -> &'static s
 
 /// `{pack_note}` for the draft writer user turn.
 #[must_use]
-pub fn draft_pack_note(pack_urls_empty: bool) -> &'static str {
-    if pack_urls_empty {
+pub fn draft_pack_note(pack_urls_empty: bool, brief_has_cite: bool) -> &'static str {
+    if brief_has_cite {
+        DRAFT_PACK_NOTE_SUBJECT_HTTPS.trim()
+    } else if pack_urls_empty {
         DRAFT_PACK_NOTE_EMPTY.trim()
     } else {
         DRAFT_PACK_NOTE_NORMAL.trim()
@@ -279,9 +306,9 @@ mod tests {
         assert!(TWEET_SYSTEM_CORE
             .to_ascii_lowercase()
             .contains("blank line"));
-        assert!(TWEET_SYSTEM_CORE.to_ascii_lowercase().contains("quote"));
         assert!(
             TWEET_SYSTEM_CORE.contains("publisher page or X status")
+                || TWEET_SYSTEM_CORE.to_ascii_lowercase().contains("quote")
                 || TWEET_SYSTEM_CORE
                     .to_ascii_lowercase()
                     .contains("quote card")
@@ -537,5 +564,29 @@ mod tests {
         assert!(lower.contains("voice"));
         assert!(lower.contains("linkedin"));
         assert!(lower.contains("browse_url") || lower.contains("browse"));
+    }
+
+    #[test]
+    fn draft_pack_note_subject_https_forbids_corpus() {
+        let note = draft_pack_note(false, true).to_ascii_lowercase();
+        assert!(note.contains("corpus_search"));
+        assert!(note.contains("do not"));
+        assert!(note.contains("linkedin"));
+    }
+
+    #[test]
+    fn draft_user_cite_path_omits_corpus_search_instruction() {
+        let user =
+            draft_user_message_subject_https("PACK", draft_pack_note(false, true), "subject");
+        let lower = user.to_ascii_lowercase();
+        assert!(!lower.contains("call corpus_search"));
+        assert!(lower.contains("corpus_search"));
+        assert!(lower.contains("write from researchpack"));
+    }
+
+    #[test]
+    fn draft_user_normal_path_keeps_corpus_search_instruction() {
+        let user = draft_user_message("PACK", draft_pack_note(false, false), "subject");
+        assert!(user.to_ascii_lowercase().contains("call corpus_search"));
     }
 }

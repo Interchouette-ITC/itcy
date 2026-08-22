@@ -120,6 +120,16 @@ impl ItcyTools {
 
     /// Writer turn when the subject already has an https URL: no tools (reuse that URL; stay on subject).
     pub async fn set_subject_https_writer_policy(&self) {
+        self.set_subject_https_writer_policy_labeled("TWEET").await;
+    }
+
+    /// `LinkedIn` draft writer when the brief already has a cite URL (digest propose, `/draft_about`).
+    pub async fn set_draft_subject_https_writer_policy(&self) {
+        self.set_subject_https_writer_policy_labeled("DRAFT locked")
+            .await;
+    }
+
+    async fn set_subject_https_writer_policy_labeled(&self, phase: &str) {
         *self.policy.lock().await = ToolPolicy {
             allow_web_search: false,
             require_browse_before_research: false,
@@ -127,9 +137,9 @@ impl ItcyTools {
         };
         if let Some(ref s) = *self.session.lock().await {
             s.clear_extracted_gate();
-            s.append_story(
-                "phase: TWEET\nallow_web_search: false\n(subject has https; writer has no tools)\n",
-            );
+            s.append_story(&format!(
+                "phase: {phase}\nallow_web_search: false\n(subject has https; writer has no tools)\n",
+            ));
         }
     }
 

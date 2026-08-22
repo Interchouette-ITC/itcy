@@ -4,6 +4,7 @@
 //! Sources ingest, `LinkedIn` export import, subject RAG, and Slack intents.
 
 pub mod digest;
+pub mod digest_propose_fixtures;
 pub mod draft_footer;
 pub mod draft_url;
 pub mod embed;

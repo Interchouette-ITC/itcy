@@ -89,6 +89,9 @@ impl HandlesIndex {
         if let Some(hit) = self.hit_from_urls(brief) {
             return Some(hit);
         }
+        if let Some(hit) = self.hit_from_publisher_host(brief) {
+            return Some(hit);
+        }
         if let Some(hit) = self.hit_from_at_handles(brief) {
             return Some(hit);
         }
@@ -122,6 +125,20 @@ impl HandlesIndex {
                     if entry.x.eq_ignore_ascii_case(&needle) {
                         return Some(entry);
                     }
+                }
+            }
+        }
+        None
+    }
+
+    fn hit_from_publisher_host(&self, brief: &str) -> Option<&HandleEntry> {
+        for url in crate::sources::url_hygiene::extract_https_urls(brief) {
+            let Some(host_label) = publisher_host_label(&url) else {
+                continue;
+            };
+            for entry in &self.entries {
+                if publisher_name_matches_host(&entry.name, &host_label) {
+                    return Some(entry);
                 }
             }
         }
@@ -281,6 +298,47 @@ fn merge_missing_fields(dst: &mut HandleEntry, src: &HandleEntry) {
 fn normalize_profile_url(url: &str) -> String {
     let u = crate::sources::url_hygiene::scrub_https_url(url).to_ascii_lowercase();
     u.trim_end_matches('/').to_string()
+}
+
+/// First label of a publisher article host (`infoworld.com` -> `infoworld`).
+/// Skips social/profile hosts handled by [`HandlesIndex::hit_from_urls`].
+fn publisher_host_label(url: &str) -> Option<String> {
+    let low = url.trim().to_ascii_lowercase();
+    let rest = low
+        .strip_prefix("https://")
+        .or_else(|| low.strip_prefix("http://"))?;
+    let host = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let host = host.split('@').next_back().unwrap_or(host);
+    let host = host.split(':').next().unwrap_or(host);
+    let host = host.strip_prefix("www.").unwrap_or(host);
+    if host.contains("linkedin.com")
+        || host.contains("lnkd.in")
+        || host == "x.com"
+        || host == "twitter.com"
+        || host == "t.co"
+    {
+        return None;
+    }
+    let label = host.split('.').next()?.trim();
+    if label.len() < 3 {
+        return None;
+    }
+    Some(label.to_string())
+}
+
+fn normalized_publisher_name_key(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn publisher_name_matches_host(name: &str, host_label: &str) -> bool {
+    let name_key = normalized_publisher_name_key(name);
+    if name_key.len() < 3 {
+        return false;
+    }
+    name_key == host_label || name_key.starts_with(host_label) || host_label.starts_with(&name_key)
 }
 
 fn linkedin_slug_from_url(url: &str) -> Option<String> {
@@ -1027,5 +1085,89 @@ mod tests {
         assert!(matches!(second, HandleAddOutcome::AlreadyPresent(_)));
         let text = std::fs::read_to_string(&path).expect("read");
         assert_eq!(text.matches("[[handle]]").count(), 1);
+    }
+
+    fn infoworld_index() -> HandlesIndex {
+        HandlesIndex {
+            entries: vec![HandleEntry {
+                name: "InfoWorld".into(),
+                linkedin: "@infoworld".into(),
+                x: "@InfoWorld".into(),
+                linkedin_url: String::new(),
+                x_url: String::new(),
+            }],
+        }
+    }
+
+    #[test]
+    fn publisher_host_infoworld_resolves() {
+        let idx = infoworld_index();
+        let brief = "anthropic opus cite https://www.infoworld.com/article/4211958/anthropics-opus-language-problems.html";
+        let hit = idx.primary_from_brief(brief).expect("publisher host hit");
+        assert_eq!(hit.linkedin, "@infoworld");
+    }
+
+    #[test]
+    fn pack_handles_line_from_publisher_cite() {
+        let idx = infoworld_index();
+        let mut pack = String::from("## ResearchPack\nsubject: Opus\nsummary: cost\n");
+        let brief =
+            "cite https://www.infoworld.com/article/4211958/anthropics-opus-language-problems.html";
+        apply_brief_handles_to_pack(&mut pack, brief, &idx);
+        assert!(pack.contains("handles: linkedin=@infoworld x=@InfoWorld"));
+    }
+
+    #[test]
+    fn body_infoworld_to_at_handle() {
+        use crate::sources::digest_propose_fixtures::FIXTURE_D_BAD_BODY;
+        let idx = infoworld_index();
+        let pack = "subject: Opus\nhandles: linkedin=@infoworld x=@InfoWorld\n";
+        let out = ensure_linkedin_handle_from_pack(FIXTURE_D_BAD_BODY, pack, &idx);
+        assert!(out.contains("@infoworld"));
+        assert!(!out.contains("InfoWorld"));
+    }
+
+    #[test]
+    fn anthropic_subject_keeps_infoworld_publisher_handle() {
+        let idx = infoworld_index();
+        let brief = "Anthropic Opus language problems hidden cost https://www.infoworld.com/article/4211958/x.html";
+        let hit = idx
+            .primary_from_brief(brief)
+            .expect("publisher wins over subject name");
+        assert_eq!(hit.name, "InfoWorld");
+    }
+
+    #[test]
+    fn mock_item_15_opus_with_infoworld_handle() {
+        use crate::sources::digest_propose_fixtures::{fixture_d_brief, FIXTURE_D_BAD_BODY};
+        let idx = infoworld_index();
+        let mut pack = String::from("## ResearchPack\nsubject: Opus\nsummary: cost\n");
+        apply_brief_handles_to_pack(&mut pack, &fixture_d_brief(), &idx);
+        let out = ensure_linkedin_handle_from_pack(FIXTURE_D_BAD_BODY, &pack, &idx);
+        assert!(out.contains("@infoworld"));
+        assert!(out.to_ascii_lowercase().contains("opus"));
+    }
+
+    #[test]
+    fn body_already_has_handle_unchanged() {
+        let idx = infoworld_index();
+        let pack = "handles: linkedin=@infoworld x=@InfoWorld\n";
+        let body = "From @infoworld. Anthropic Opus costs are rising for builders.";
+        let out = ensure_linkedin_handle_from_pack(body, pack, &idx);
+        assert_eq!(out.matches("@infoworld").count(), 1);
+    }
+
+    #[test]
+    fn publisher_host_label_skips_x_status_urls() {
+        assert!(
+            publisher_host_label("https://x.com/ayushagarwal027/status/2090736100025504071")
+                .is_none()
+        );
+        assert_eq!(
+            publisher_host_label(
+                "https://www.infoworld.com/article/4211958/anthropics-opus-language-problems.html"
+            ),
+            Some("infoworld".into())
+        );
     }
 }

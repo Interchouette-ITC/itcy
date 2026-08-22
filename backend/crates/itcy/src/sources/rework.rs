@@ -22,8 +22,9 @@ use crate::sources::draft_footer::{
 use crate::sources::draft_url::{extract_in_post_url, promote_link_option, set_single_in_post_url};
 use crate::sources::tweet_farce::{ensure_farce_mentions, stored_is_farce};
 use crate::sources::tweet_footer::{
-    aerate_tweet_commentary, compose_tweet_message, ensure_option, ensure_tweet_cite_line,
-    in_tweet_publisher_url, pick_tweet_cite_options, tweet_body_exploded,
+    aerate_tweet_commentary, compose_tweet_message, ensure_operator_https_lines, ensure_option,
+    ensure_tweet_cite_line, in_tweet_publisher_url, operator_https_urls, pick_tweet_cite_options,
+    strip_brand_org_at_handles, tweet_body_exploded,
 };
 use thiserror::Error;
 use tracing::{info, warn};
@@ -323,6 +324,73 @@ fn tweet_rework_user_prompt(
     })
 }
 
+fn finalize_rework_tweet_output(
+    mut body: String,
+    stored: &StoredDraft,
+    pack_urls: &[String],
+    current: &str,
+    instructions: &str,
+    farce: bool,
+) -> (String, Vec<String>) {
+    let mut link_options = if stored.link_options.is_empty() {
+        pick_tweet_cite_options(pack_urls, &body)
+    } else {
+        stored.link_options.clone()
+    };
+    if link_options.is_empty() {
+        link_options = pick_tweet_cite_options(pack_urls, &body);
+    }
+    if !current.is_empty() {
+        ensure_option(&mut link_options, current);
+    }
+    let mut required = operator_https_urls(&stored.subject);
+    for u in operator_https_urls(instructions) {
+        if !required
+            .iter()
+            .any(|x| crate::sources::url_hygiene::same_publisher_url(x, &u))
+        {
+            required.push(u);
+        }
+    }
+    if !current.is_empty()
+        && !required
+            .iter()
+            .any(|x| crate::sources::url_hygiene::same_publisher_url(x, current))
+    {
+        required.insert(0, current.to_string());
+    }
+    for u in &required {
+        ensure_option(&mut link_options, u);
+    }
+    if farce && current.is_empty() {
+        link_options.clear();
+    }
+    body = aerate_tweet_commentary(&body);
+    body = crate::sources::draft_url::strip_sources_section(&body);
+    let has_non_x = required
+        .iter()
+        .any(|u| !crate::sources::url_hygiene::is_x_status_url(u));
+    if has_non_x {
+        body = strip_brand_org_at_handles(&body);
+    }
+    let in_tweet = if farce && current.is_empty() {
+        None
+    } else if current.is_empty() {
+        extract_in_post_url(&body)
+            .or_else(|| in_tweet_publisher_url(&link_options).map(str::to_string))
+    } else {
+        Some(current.to_string())
+    };
+    body = if farce && current.is_empty() {
+        ensure_tweet_cite_line(&body, None)
+    } else {
+        ensure_operator_https_lines(&body, &required, in_tweet.as_deref())
+    };
+    body = strip_leading_draft_id(&body);
+    body = strip_leading_tweet_id(&body);
+    (body, link_options)
+}
+
 /// Rewrite a stored tweet (same id) using tweet writer rules.
 ///
 /// # Errors
@@ -387,34 +455,8 @@ pub async fn rework_stored_tweet(
     }
     body = crate::sources::handles::ensure_x_handle_from_pack(&body, &pack, &handles);
     let pack_urls = stored.sources.clone();
-    let mut link_options = if stored.link_options.is_empty() {
-        pick_tweet_cite_options(&pack_urls, &body)
-    } else {
-        stored.link_options.clone()
-    };
-    if link_options.is_empty() {
-        link_options = pick_tweet_cite_options(&pack_urls, &body);
-    }
-    if !current.is_empty() {
-        ensure_option(&mut link_options, &current);
-    }
-    if farce && current.is_empty() {
-        link_options.clear();
-    }
-    body = aerate_tweet_commentary(&body);
-    body = crate::sources::draft_url::strip_sources_section(&body);
-    // Keep the stored link (including X status). Do not replace it with a random pack publisher.
-    let in_tweet = if farce && current.is_empty() {
-        None
-    } else if current.is_empty() {
-        extract_in_post_url(&body)
-            .or_else(|| in_tweet_publisher_url(&link_options).map(str::to_string))
-    } else {
-        Some(current.clone())
-    };
-    body = ensure_tweet_cite_line(&body, in_tweet.as_deref());
-    body = strip_leading_draft_id(&body);
-    body = strip_leading_tweet_id(&body);
+    let (body, link_options) =
+        finalize_rework_tweet_output(body, stored, &pack_urls, &current, instructions, farce);
     let body = compose_tweet_message(&body, &stored.draft_id, &link_options);
     let body = with_disclosure(&body, &trace);
     Ok(ReworkedDraft {

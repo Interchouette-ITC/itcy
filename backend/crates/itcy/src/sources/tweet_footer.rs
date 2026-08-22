@@ -104,6 +104,91 @@ pub fn ensure_tweet_cite_line(body: &str, in_tweet_url: Option<&str>) -> String 
     crate::sources::draft_url::set_single_in_post_url(&body, in_tweet_url.unwrap_or(""))
 }
 
+/// Distinct allowed https URLs from operator brief / rework instructions (order preserved).
+#[must_use]
+pub fn operator_https_urls(text: &str) -> Vec<String> {
+    use crate::sources::url_hygiene::{same_publisher_url, scrub_https_url};
+    let mut out: Vec<String> = Vec::new();
+    for u in extract_https_urls(text) {
+        if !is_allowed_tweet_cite(&u) {
+            continue;
+        }
+        let scrubbed = scrub_https_url(&u);
+        if scrubbed.is_empty() {
+            continue;
+        }
+        if out.iter().any(|x| same_publisher_url(x, &scrubbed)) {
+            continue;
+        }
+        out.push(scrubbed);
+    }
+    out
+}
+
+/// Ensure every operator-required https is a bare line; `primary` is last (Link cite).
+///
+/// When `required` is empty, behaves like [`ensure_tweet_cite_line`] with `primary`.
+#[must_use]
+pub fn ensure_operator_https_lines(
+    body: &str,
+    required: &[String],
+    primary: Option<&str>,
+) -> String {
+    use crate::sources::url_hygiene::{same_publisher_url, scrub_https_url};
+
+    let mut ordered: Vec<String> = Vec::new();
+    for u in required {
+        let scrubbed = scrub_https_url(u);
+        if scrubbed.is_empty() || !is_allowed_tweet_cite(&scrubbed) {
+            continue;
+        }
+        if ordered.iter().any(|x| same_publisher_url(x, &scrubbed)) {
+            continue;
+        }
+        ordered.push(scrubbed);
+    }
+    if let Some(p) = primary {
+        let scrubbed = scrub_https_url(p);
+        if !scrubbed.is_empty() && is_allowed_tweet_cite(&scrubbed) {
+            if let Some(i) = ordered
+                .iter()
+                .position(|x| same_publisher_url(x, &scrubbed))
+            {
+                let u = ordered.remove(i);
+                ordered.push(u);
+            } else {
+                ordered.push(scrubbed);
+            }
+        }
+    }
+    if ordered.len() <= 1 {
+        return ensure_tweet_cite_line(body, ordered.first().map(String::as_str));
+    }
+    // Keep required X status lines; do not strip them before multi-write.
+    let body = strip_own_x_handle(body);
+    let body = strip_brand_org_at_handles(&body);
+    crate::sources::draft_url::set_in_post_https_lines(&body, &ordered)
+}
+
+/// Drop LinkedIn/GitHub-org slug `@interchouette-itc` fakes on X (not a product URL).
+#[must_use]
+pub fn strip_brand_org_at_handles(text: &str) -> String {
+    let needle = "@interchouette-itc";
+    let lower = text.to_ascii_lowercase();
+    let mut rebuilt = String::with_capacity(text.len());
+    let mut rest = text;
+    let mut lower_rest = lower.as_str();
+    while let Some(i) = lower_rest.find(needle) {
+        rebuilt.push_str(&rest[..i]);
+        rebuilt.push_str("Interchouette");
+        let end = i + needle.len();
+        rest = &rest[end..];
+        lower_rest = &lower_rest[end..];
+    }
+    rebuilt.push_str(rest);
+    rebuilt
+}
+
 /// Ensure `url` is in `options` (max 3) without dropping other entries when possible.
 pub fn ensure_option(options: &mut Vec<String>, url: &str) {
     let url = url.trim();
@@ -758,5 +843,37 @@ Recommended reading order next.\n"
         assert!(out.contains("Obscura"), "{out}");
         let own = strip_own_x_handle("@Interchouette: keep the rest 🦀");
         assert_eq!(own, "keep the rest 🦀");
+    }
+
+    #[test]
+    fn operator_https_urls_dedupes_and_keeps_order() {
+        let brief = "cite https://x.com/a/status/1 and promote https://github.com/Interchouette-ITC/evaluator also https://x.com/a/status/1";
+        let urls = operator_https_urls(brief);
+        assert_eq!(urls.len(), 2);
+        assert!(urls[0].contains("x.com/a/status/1"));
+        assert!(urls[1].contains("github.com/Interchouette-ITC/evaluator"));
+    }
+
+    #[test]
+    fn ensure_operator_https_injects_missing_github_keeps_x() {
+        let body = "Magecart still lives.\n\n#Security\n\nhttps://x.com/arnaudmerigeau/status/2090774291897786849\n";
+        let x = "https://x.com/arnaudmerigeau/status/2090774291897786849";
+        let gh = "https://github.com/Interchouette-ITC/evaluator";
+        let out = ensure_operator_https_lines(body, &[x.into(), gh.into()], Some(x));
+        assert!(out.contains(gh), "{out}");
+        assert!(out.contains(x), "{out}");
+        let https: Vec<_> = out
+            .lines()
+            .filter(|l| l.trim().starts_with("https://"))
+            .map(str::trim)
+            .collect();
+        assert_eq!(https.last().copied(), Some(x));
+    }
+
+    #[test]
+    fn strip_brand_org_at_handles_replaces_slug() {
+        let out = strip_brand_org_at_handles("Evaluator from @Interchouette-ITC helps.");
+        assert!(!out.contains("@Interchouette-ITC"));
+        assert!(out.contains("Interchouette"));
     }
 }

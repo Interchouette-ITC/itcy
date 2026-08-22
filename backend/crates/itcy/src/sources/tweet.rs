@@ -18,8 +18,9 @@ use crate::sources::rag::{
     resolve_session_draft_id, run_load_phase, GroundedDraft, RagError, MAX_TOOL_ROUNDS,
 };
 use crate::sources::tweet_footer::{
-    aerate_tweet_commentary, compose_tweet_message, ensure_tweet_cite_line, extract_brief_cite,
-    in_tweet_publisher_url, pick_tweet_cite_options, tweet_body_exploded,
+    aerate_tweet_commentary, compose_tweet_message, ensure_operator_https_lines,
+    extract_brief_cite, in_tweet_publisher_url, operator_https_urls, pick_tweet_cite_options,
+    strip_brand_org_at_handles, tweet_body_exploded,
 };
 use crate::sources::tweet_load::run_short_cite_load;
 use crate::sources::url_hygiene::is_x_status_url;
@@ -106,8 +107,7 @@ pub async fn build_grounded_tweet(
         tweet_trace.model_label()
     );
     let tweet_body = ensure_tweet_handles_from_pack(tools, &tweet_body, &research_pack);
-    let (body, link_options) =
-        attach_tweet_cites(&tweet_body, &pack_urls, &tweet_id, prefer.as_deref());
+    let (body, link_options) = attach_tweet_cites(&tweet_body, &pack_urls, &tweet_id, subject);
     info!(
         tweet_id = %tweet_id,
         cites = link_options.len(),
@@ -182,7 +182,7 @@ pub async fn build_grounded_tweet_from_pack(
     )
     .await;
     let tweet_body = ensure_tweet_handles_from_pack(tools, &tweet_body, &research_pack);
-    let (body, link_options) = attach_tweet_cites(&tweet_body, &urls, &tweet_id, prefer.as_deref());
+    let (body, link_options) = attach_tweet_cites(&tweet_body, &urls, &tweet_id, subject);
     Ok(GroundedDraft {
         subject: subject.to_string(),
         body: with_disclosure(&body, &tweet_trace),
@@ -273,26 +273,42 @@ pub(crate) fn attach_tweet_cites(
     body: &str,
     pack_urls: &[String],
     tweet_id: &str,
-    prefer: Option<&str>,
+    brief: &str,
 ) -> (String, Vec<String>) {
+    let prefer = extract_brief_cite(brief);
+    let operator_urls = operator_https_urls(brief);
     let body = crate::sources::draft_url::strip_sources_section(&aerate_tweet_commentary(body));
     let body = crate::sources::tweet_footer::strip_own_x_handle(&body);
+    let has_non_x_operator = operator_urls.iter().any(|u| !is_x_status_url(u));
+    let body = if has_non_x_operator {
+        strip_brand_org_at_handles(&body)
+    } else {
+        body
+    };
     let mut link_options = pick_tweet_cite_options(pack_urls, &body);
-    if let Some(cite) = prefer {
+    for u in &operator_urls {
+        crate::sources::tweet_footer::ensure_option(&mut link_options, u);
+    }
+    if let Some(cite) = prefer.as_deref() {
         crate::sources::draft_url::promote_link_option(&mut link_options, cite);
-        // Subject X status: keep status options only (drop off-topic Brave publishers).
-        if is_x_status_url(cite) {
+        // Subject X-only brief: keep status options only (drop off-topic Brave publishers).
+        if is_x_status_url(cite) && !has_non_x_operator {
             link_options.retain(|u| is_x_status_url(u));
             crate::sources::draft_url::promote_link_option(&mut link_options, cite);
         }
-        // Same rule for X status and publisher: one https line in the tweet.
-        let body = ensure_tweet_cite_line(&body, Some(cite));
+        let required = if operator_urls.is_empty() {
+            vec![cite.to_string()]
+        } else {
+            operator_urls.clone()
+        };
+        let body = ensure_operator_https_lines(&body, &required, Some(cite));
         return (
             compose_tweet_message(&body, tweet_id, &link_options),
             link_options,
         );
     }
-    let body = ensure_tweet_cite_line(&body, in_tweet_publisher_url(&link_options));
+    let primary = in_tweet_publisher_url(&link_options).map(str::to_string);
+    let body = ensure_operator_https_lines(&body, &operator_urls, primary.as_deref());
     (
         compose_tweet_message(&body, tweet_id, &link_options),
         link_options,
@@ -333,7 +349,8 @@ Sources:
             "https://neowin.net/news/windows-rootkit-now-included-with-coolclient-backdoor-targeting-governments".into(),
         ];
         let prefer = "https://x.com/AstraKernel/status/2088224406187413962";
-        let (out, opts) = attach_tweet_cites(raw, &pack, "TWEET-1", Some(prefer));
+        let brief = format!("tinyboot, cite {prefer}");
+        let (out, opts) = attach_tweet_cites(raw, &pack, "TWEET-1", &brief);
         assert!(!out.contains("Sources:"));
         assert!(!out.contains("neowin.net"));
         assert!(out.contains(&format!("1. {prefer}")));
@@ -343,5 +360,29 @@ Sources:
         assert!(api.contains(prefer));
         assert!(!api.contains("neowin"));
         assert!(api.contains("tinyboot"));
+    }
+
+    #[test]
+    fn operator_x_and_github_both_survive_in_body() {
+        let raw = "\
+Magecart still lives.
+
+Evaluator from @Interchouette-ITC helps.
+
+#Security
+
+https://x.com/arnaudmerigeau/status/2090774291897786849
+";
+        let x = "https://x.com/arnaudmerigeau/status/2090774291897786849";
+        let gh = "https://github.com/Interchouette-ITC/evaluator";
+        let brief = format!("Magecart, cite {x} and promote Evaluator at {gh}");
+        let pack = vec![x.into(), gh.into()];
+        let (out, opts) = attach_tweet_cites(raw, &pack, "TWEET-2", &brief);
+        let api = crate::publish::tweet_text_for_api(&out);
+        assert!(api.contains(x), "missing X cite: {api}");
+        assert!(api.contains(gh), "missing GitHub: {api}");
+        assert!(!api.contains("@Interchouette-ITC"));
+        assert!(opts.iter().any(|u| u == gh));
+        assert_eq!(opts[0], x);
     }
 }

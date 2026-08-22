@@ -116,6 +116,7 @@ pub async fn build_itcy_self_draft(
         &response.message.content,
         &pack_urls,
         subject,
+        false,
     )?;
     let body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     let mut link_options = crate::sources::draft_footer::pick_link_options(&pack_urls, &body);

@@ -3,8 +3,9 @@
 
 //! Deterministic in-post URL swap for `/change_url`.
 //!
-//! Drafts and tweets carry **at most one** bare `https://` line (before Link options /
-//! disclosure). Markdown links are stripped. There is no Sources list.
+//! Drafts keep **at most one** bare `https://` line. Tweets keep one by default; when the
+//! operator listed multiple https URLs, each required URL is a bare line (primary last).
+//! Markdown links are stripped. There is no Sources list.
 
 use crate::sources::url_hygiene::is_linkedin_host;
 
@@ -130,7 +131,19 @@ pub fn promote_link_option(options: &mut Vec<String>, url: &str) {
 /// Empty `new_url` clears all in-post https lines (no cite).
 #[must_use]
 pub fn set_single_in_post_url(body: &str, new_url: &str) -> String {
-    let new_url = new_url.trim();
+    let urls = if new_url.trim().is_empty() {
+        Vec::new()
+    } else {
+        vec![crate::sources::url_hygiene::scrub_https_url(new_url)]
+    };
+    set_in_post_https_lines(body, &urls)
+}
+
+/// Write zero or more bare https lines after commentary (primary / Link cite last).
+///
+/// Drops prior URL-only lines in the head, then appends each URL on its own line.
+#[must_use]
+pub fn set_in_post_https_lines(body: &str, urls: &[String]) -> String {
     let split_at = footer_start(body).unwrap_or(body.len());
     let (head, tail) = body.split_at(split_at);
     let mut lines: Vec<String> = Vec::new();
@@ -143,9 +156,28 @@ pub fn set_single_in_post_url(body: &str, new_url: &str) -> String {
     while lines.last().is_some_and(|l| l.trim().is_empty()) {
         lines.pop();
     }
-    if !new_url.is_empty() {
+    let mut seen: Vec<String> = Vec::new();
+    for u in urls {
+        let scrubbed = crate::sources::url_hygiene::scrub_https_url(u);
+        if scrubbed.is_empty() {
+            continue;
+        }
+        if seen
+            .iter()
+            .any(|x| crate::sources::url_hygiene::same_publisher_url(x, &scrubbed))
+        {
+            continue;
+        }
+        seen.push(scrubbed);
+    }
+    if !seen.is_empty() {
         lines.push(String::new());
-        lines.push(crate::sources::url_hygiene::scrub_https_url(new_url));
+        for (i, u) in seen.iter().enumerate() {
+            if i > 0 {
+                lines.push(String::new());
+            }
+            lines.push(u.clone());
+        }
     }
     let mut out = lines.join("\n");
     if !tail.is_empty() {
@@ -304,5 +336,26 @@ mod tests {
         let head = out.split("Sources:").next().unwrap();
         assert!(!head.contains("https://"));
         assert!(head.contains("Hello"));
+    }
+
+    #[test]
+    fn multi_https_lines_primary_last() {
+        let body = "Beats\n\nhttps://x.com/a/status/1\n";
+        let out = set_in_post_https_lines(
+            body,
+            &[
+                "https://github.com/Interchouette-ITC/evaluator".into(),
+                "https://x.com/a/status/1".into(),
+            ],
+        );
+        let head = out.split("Link:").next().unwrap_or(&out);
+        let https: Vec<_> = head
+            .lines()
+            .filter(|l| l.trim().starts_with("https://"))
+            .map(str::trim)
+            .collect();
+        assert_eq!(https.len(), 2);
+        assert_eq!(https[0], "https://github.com/Interchouette-ITC/evaluator");
+        assert_eq!(https[1], "https://x.com/a/status/1");
     }
 }
