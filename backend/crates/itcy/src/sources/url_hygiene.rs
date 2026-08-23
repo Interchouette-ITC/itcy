@@ -63,21 +63,25 @@ fn url_path_lower(url_lower: &str) -> Option<&str> {
     Some(&rest[after_host..])
 }
 
-const SHORTENER_MARKERS: &[&str] = &[
-    "lnkd.in/",
-    "bit.ly/",
-    "t.co/",
-    "tinyurl.com/",
-    "buff.ly/",
-    "ow.ly/",
-    "rb.gy/",
+const SHORTENER_HOSTS: &[&str] = &[
+    "lnkd.in",
+    "bit.ly",
+    "t.co",
+    "tinyurl.com",
+    "buff.ly",
+    "ow.ly",
+    "rb.gy",
 ];
 
 /// True for known URL shortener hosts (including `lnkd.in`).
 #[must_use]
 pub fn is_shortener_url(url: &str) -> bool {
-    let u = url.to_ascii_lowercase();
-    SHORTENER_MARKERS.iter().any(|h| u.contains(h))
+    let l = url.to_ascii_lowercase();
+    let Some(host) = url_host(&l) else {
+        return false;
+    };
+    let h = host.strip_prefix("www.").unwrap_or(host);
+    SHORTENER_HOSTS.contains(&h)
 }
 
 /// True for search / placeholder / social / shortener URLs that must never be cited.
@@ -222,6 +226,22 @@ pub fn same_publisher_url(a: &str, b: &str) -> bool {
     !a.trim().is_empty() && normalize_url_key(a) == normalize_url_key(b)
 }
 
+/// Hostname for link-option dedup (`www.` stripped, lowercased).
+#[must_use]
+pub fn publisher_host(url: &str) -> Option<String> {
+    let key = normalize_url_key(url);
+    url_host(&key).map(|host| host.strip_prefix("www.").unwrap_or(host).to_string())
+}
+
+/// True when two https URLs share a publisher host (one slot per domain in link options).
+#[must_use]
+pub fn same_publisher_domain(a: &str, b: &str) -> bool {
+    match (publisher_host(a), publisher_host(b)) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
+}
+
 /// Clean a publisher https for storage / Slack options (drop query, fragment, trailing junk).
 #[must_use]
 pub fn scrub_https_url(url: &str) -> String {
@@ -266,6 +286,92 @@ pub fn normalize_url_key(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decrypt_co_is_not_shortener_or_junk() {
+        let url = "https://decrypt.co/376271/chatgpt-web-ai-written-pew";
+        assert!(
+            !is_shortener_url(url),
+            "decrypt.co must not match t.co substring"
+        );
+        assert!(!is_junk_or_search_url(url));
+        let kept = filter_publisher_urls(&[url.into()]);
+        assert_eq!(kept, vec![url.to_string()]);
+    }
+
+    #[test]
+    fn shortener_host_match_is_host_only() {
+        assert!(is_shortener_url("https://t.co/abc123"));
+        assert!(is_shortener_url("https://lnkd.in/xyz"));
+        assert!(!is_shortener_url(
+            "https://decrypt.co/376271/chatgpt-web-ai-written-pew"
+        ));
+    }
+
+    #[test]
+    fn t_co_substring_in_host_or_path_is_not_shortener() {
+        // Regression: `decrypt.co` matched `t.co/` via substring and dropped the digest cite.
+        let legit = [
+            "https://decrypt.co/376271/chatgpt-web-ai-written-pew",
+            "https://www.decrypt.co/news/t.co-mentions",
+            "https://connect.co/articles/ai",
+            "https://www.pewresearch.org/data-labs/t.co/study",
+            "https://techcrunch.com/2026/08/20/not-a-shortener",
+        ];
+        for url in legit {
+            assert!(
+                !is_shortener_url(url),
+                "{url} must not match t.co substring"
+            );
+            assert!(
+                !is_junk_or_search_url(url),
+                "{url} must stay in publisher pack"
+            );
+        }
+        assert!(is_shortener_url("https://t.co/abc123"));
+        assert!(is_shortener_url("http://t.co/x"));
+        assert!(!is_shortener_url("https://evil-t.co.phishing.example/x"));
+    }
+
+    #[test]
+    fn filter_publisher_urls_drops_shorteners_keeps_decrypt() {
+        let urls = vec![
+            "https://decrypt.co/376271/chatgpt-web-ai-written-pew".into(),
+            "https://t.co/abc123".into(),
+            "https://lnkd.in/xyz".into(),
+            "https://www.pewresearch.org/data-labs/2026/08/20/how-much-of-the-internet-is-written-with-ai/"
+                .into(),
+            "https://techcrunch.com/2026/08/20/a-third-of-webpages-published-since-chatgpts-launch-show-signs-of-ai-authorship-study-finds/"
+                .into(),
+        ];
+        let kept = filter_publisher_urls(&urls);
+        assert_eq!(kept.len(), 3, "{kept:?}");
+        assert!(kept.iter().any(|u| u.contains("decrypt.co")));
+        assert!(kept.iter().any(|u| u.contains("pewresearch.org")));
+        assert!(kept.iter().any(|u| u.contains("techcrunch.com")));
+        assert!(!kept.iter().any(|u| is_shortener_url(u)));
+    }
+
+    #[test]
+    fn all_shortener_hosts_match_host_only() {
+        for host in SHORTENER_HOSTS {
+            let url = format!("https://{host}/abc");
+            assert!(is_shortener_url(&url), "{url} must be shortener");
+        }
+        assert!(!is_shortener_url("https://not-bit.ly.evil.example/phish"));
+    }
+
+    #[test]
+    fn same_publisher_domain_matches_host_not_path() {
+        assert!(same_publisher_domain(
+            "https://www.pewresearch.org/data-labs/2026/08/20/how-much-of-the-internet-is-written-with-ai/",
+            "https://pewresearch.org/data-labs/2026/08/20/methodology-ai-content/"
+        ));
+        assert!(!same_publisher_domain(
+            "https://decrypt.co/376271/chatgpt-web-ai-written-pew",
+            "https://www.pewresearch.org/data-labs/2026/08/20/how-much-of-the-internet-is-written-with-ai/"
+        ));
+    }
 
     #[test]
     fn rejects_example_news_site_hallucination() {

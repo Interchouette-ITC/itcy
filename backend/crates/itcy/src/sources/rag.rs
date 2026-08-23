@@ -587,9 +587,25 @@ fn ensure_draft_emoji_bar(body: &str) -> String {
 pub async fn build_grounded_draft(
     router: &FailoverRouter,
     db_path: &Path,
+    embed: &dyn EmbedClient,
+    subject: &str,
+    tools: Option<&ItcyTools>,
+) -> Result<GroundedDraft, RagError> {
+    build_grounded_draft_with_cite(router, db_path, embed, subject, tools, None).await
+}
+
+/// Like [`build_grounded_draft`] but pins a digest / operator URL as cite slot 1 when set.
+///
+/// # Errors
+///
+/// Returns a [`RagError`] variant for load/draft/LLM/store failure.
+pub async fn build_grounded_draft_with_cite(
+    router: &FailoverRouter,
+    db_path: &Path,
     _embed: &dyn EmbedClient,
     subject: &str,
     tools: Option<&ItcyTools>,
+    forced_cite_url: Option<&str>,
 ) -> Result<GroundedDraft, RagError> {
     // Prefer Draft ID already allocated by Slack; otherwise allocate here (E2E / tests).
     let session_dir = begin_load_session_dir(tools, db_path, subject).await;
@@ -598,7 +614,7 @@ pub async fn build_grounded_draft(
     // Same rule as tweets: https already in the operator brief is the cite.
     // Free LOAD web_search on a short stub (e.g. truncated digest subject) attaches
     // off-topic SERP rows and the writer follows them.
-    let prefer = crate::sources::tweet_footer::extract_brief_cite(subject);
+    let prefer = resolve_draft_cite_url(forced_cite_url, subject);
     let brief_has_cite = prefer.is_some();
     let (mut research_pack, pack_urls, load_trace) = if let Some(url) = prefer.as_deref() {
         crate::sources::tweet_load::run_short_cite_load(subject, url, tools).await?
@@ -650,9 +666,9 @@ pub async fn build_grounded_draft(
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = ensure_body_handles_from_pack(tools, &body, &research_pack);
     let mut link_options = crate::sources::draft_footer::pick_link_options(&pack_urls, &body);
-    if let Some(cite) = crate::sources::tweet_footer::extract_brief_cite(subject) {
+    if let Some(cite) = prefer.as_deref() {
         // Digest / operator cite wins Link:1 (including X status URLs).
-        crate::sources::draft_url::promote_link_option(&mut link_options, &cite);
+        crate::sources::draft_url::promote_link_option(&mut link_options, cite);
     }
     body = crate::sources::draft_footer::ensure_primary_link_line(
         &body,
@@ -982,9 +998,26 @@ fn scrub_invented_urls(body: &str) -> String {
 }
 
 /// Drop https URLs that are not in the verified pack (stops invented cites landing in Slack).
+fn resolve_draft_cite_url(forced: Option<&str>, subject: &str) -> Option<String> {
+    forced
+        .map(str::trim)
+        .filter(|u| !u.is_empty() && crate::sources::url_hygiene::is_allowed_tweet_cite(u))
+        .map(str::to_string)
+        .or_else(|| crate::sources::tweet_footer::extract_brief_cite(subject))
+}
+
 fn scrub_urls_outside_pack(body: &str, pack_urls: &[String]) -> String {
     if pack_urls.is_empty() {
-        return body.to_string();
+        // No verified pack: drop bare https lines so invented cites cannot become Link:1.
+        let mut out = String::new();
+        for line in body.lines() {
+            if crate::sources::draft_url::is_in_post_https_line(line) {
+                continue;
+            }
+            out.push_str(line);
+            out.push('\n');
+        }
+        return out.trim_end().to_string();
     }
     let mut out = String::new();
     for line in body.lines() {
@@ -1070,6 +1103,27 @@ mod tests {
         ];
         let kept = filter_publisher_urls(&urls);
         assert_eq!(kept, vec!["https://labs.sogeti.com/token-tax".to_string()]);
+    }
+
+    #[test]
+    fn empty_pack_strips_bare_https_lines() {
+        let body = "Prose.\n\nhttps://www.pewresearch.org/fake/invented\n\nMore prose.";
+        let cleaned = scrub_urls_outside_pack(body, &[]);
+        assert!(!cleaned.contains("https://"));
+        assert!(cleaned.contains("Prose."));
+        assert!(cleaned.contains("More prose."));
+    }
+
+    #[test]
+    fn forced_cite_wins_over_brief_parse() {
+        let cite = resolve_draft_cite_url(
+            Some("https://decrypt.co/376271/chatgpt-web-ai-written-pew"),
+            "short topic without url",
+        );
+        assert_eq!(
+            cite.as_deref(),
+            Some("https://decrypt.co/376271/chatgpt-web-ai-written-pew")
+        );
     }
 
     #[test]

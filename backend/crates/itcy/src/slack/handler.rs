@@ -38,7 +38,7 @@ use crate::sources::ingest::{ingest_url, HttpThenPublicPlaywright};
 use crate::sources::portability::{
     import_portability_corpus, resolve_linkedin_access_token, HttpPortabilityClient,
 };
-use crate::sources::rag::build_grounded_draft;
+use crate::sources::rag::build_grounded_draft_with_cite;
 use crate::sources::rag::RagError;
 use crate::sources::rework::rework_stored_draft;
 use crate::sources::scrape_cache::{resolve_scrape_cache_path, ScrapeCache};
@@ -446,7 +446,7 @@ impl SlackRuntime {
             OperatorCommand::DraftAbout {
                 subject,
                 instructions,
-            } => self.draft_reply(&subject, &instructions).await,
+            } => self.draft_reply(&subject, &instructions, None).await,
             OperatorCommand::DraftAboutItc {
                 subject,
                 instructions,
@@ -484,6 +484,7 @@ impl SlackRuntime {
                     self.draft_reply(
                         "what we know",
                         "Propose one Interchouette ITC company-page post from corpus memory (voice and history). Pick the strongest current subject. This is not a daily-digest pick.",
+                        None,
                     )
                     .await
                 } else {
@@ -577,7 +578,8 @@ impl SlackRuntime {
         let mut items = Vec::with_capacity(picked.len());
         for it in &picked {
             let (subject, instructions) = crate::sources::digest::digest_propose_brief(it);
-            let reply = self.draft_reply(&subject, &instructions).await;
+            let cite = it.url.as_deref().filter(|u| !u.trim().is_empty());
+            let reply = self.draft_reply(&subject, &instructions, cite).await;
             items.push(format!("--- item {} ---\n{reply}", it.idx));
         }
         Ok(ProposeBatch::new(header, items))
@@ -657,7 +659,7 @@ impl SlackRuntime {
         }
     }
 
-    async fn draft_reply(&self, topic: &str, instructions: &str) -> String {
+    async fn draft_reply(&self, topic: &str, instructions: &str, cite_url: Option<&str>) -> String {
         let operator_brief = compose_operator_brief(topic, instructions);
         let draft_id = crate::sources::draft_footer::next_draft_id(&self.config.state_db_path)
             .unwrap_or_else(|e| {
@@ -687,12 +689,13 @@ impl SlackRuntime {
             }
             Err(e) => warn!(error = %e, "slack: could not start research session log"),
         }
-        match build_grounded_draft(
+        match build_grounded_draft_with_cite(
             &self.llm,
             &self.config.state_db_path,
             self.embed.as_ref(),
             &operator_brief,
             Some(self.tools.as_ref()),
+            cite_url,
         )
         .await
         {

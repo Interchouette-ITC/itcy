@@ -2592,6 +2592,26 @@ mod tests {
     }
 
     #[test]
+    fn digest_item_url_is_propose_draft_forced_cite() {
+        let it = DigestItem {
+            idx: 12,
+            title: "A Third of the Post-ChatGPT Web Is AI-Written, Pew Finds".into(),
+            url: Some("https://decrypt.co/376271/chatgpt-web-ai-written-pew".into()),
+            subject: "third post-chatgpt web ai-written pew finds".into(),
+            lane: "for_you".into(),
+            weight: 1,
+            detail: "Pew Research scanned nearly half a million webpages with an AI detector and found the fingerprints of AI everywhere.".into(),
+        };
+        let cite = it.url.as_deref().filter(|u| !u.trim().is_empty());
+        assert_eq!(
+            cite,
+            Some("https://decrypt.co/376271/chatgpt-web-ai-written-pew")
+        );
+        let (_topic, instructions) = digest_propose_brief(&it);
+        assert!(instructions.contains("decrypt.co/376271"));
+    }
+
+    #[test]
     fn digest_propose_brief_uses_detail_and_url() {
         let it = DigestItem {
             idx: 40,

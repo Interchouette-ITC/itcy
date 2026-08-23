@@ -62,7 +62,7 @@ pub fn next_draft_id(db_path: &Path) -> Result<String, DraftFooterError> {
 #[must_use]
 pub fn pick_link_options(pack_urls: &[String], body: &str) -> Vec<String> {
     use crate::sources::url_hygiene::{
-        extract_https_urls, filter_publisher_urls, is_junk_or_search_url, same_publisher_url,
+        extract_https_urls, filter_publisher_urls, is_junk_or_search_url, same_publisher_domain,
         scrub_https_url, url_in_allowlist,
     };
 
@@ -77,7 +77,7 @@ pub fn pick_link_options(pack_urls: &[String], body: &str) -> Vec<String> {
         if !scrubbed.starts_with("https://") {
             continue;
         }
-        if out.iter().any(|x| same_publisher_url(x, &scrubbed)) {
+        if out.iter().any(|x| same_publisher_domain(x, &scrubbed)) {
             continue;
         }
         out.push(scrubbed);
@@ -235,7 +235,23 @@ fn is_draft_operator_chrome(t: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sources::draft_url::promote_link_option;
+    use crate::sources::url_hygiene::publisher_host;
     use tempfile::TempDir;
+
+    /// Same finalize path as `build_grounded_draft_with_cite` / `/propose_draft`.
+    fn propose_link_options(pack: &[String], body: &str, forced_cite: &str) -> Vec<String> {
+        let mut opts = pick_link_options(pack, body);
+        promote_link_option(&mut opts, forced_cite);
+        opts
+    }
+
+    fn assert_three_unique_domains(opts: &[String]) {
+        assert_eq!(opts.len(), 3, "{opts:?}");
+        let hosts: std::collections::HashSet<_> =
+            opts.iter().filter_map(|u| publisher_host(u)).collect();
+        assert_eq!(hosts.len(), 3, "{opts:?}");
+    }
 
     #[test]
     fn draft_ids_monotonic_and_shaped() {
@@ -248,6 +264,111 @@ mod tests {
         assert!(a.ends_with("-000001"));
         assert!(b.ends_with("-000002"));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn pick_dedupes_same_publisher_domain() {
+        let pack = vec![
+            "https://decrypt.co/376271/chatgpt-web-ai-written-pew".into(),
+            "https://www.pewresearch.org/data-labs/2026/08/20/how-much-of-the-internet-is-written-with-ai/"
+                .into(),
+            "https://www.pewresearch.org/data-labs/2026/08/20/methodology-ai-content/".into(),
+            "https://techcrunch.com/2026/08/20/a-third-of-webpages-published-since-chatgpts-launch-show-signs-of-ai-authorship-study-finds/"
+                .into(),
+        ];
+        let opts = pick_link_options(&pack, "");
+        assert_eq!(opts.len(), 3, "{opts:?}");
+        assert_eq!(
+            opts[0],
+            "https://decrypt.co/376271/chatgpt-web-ai-written-pew"
+        );
+        assert_eq!(
+            opts.iter()
+                .filter(|u| u.contains("pewresearch.org"))
+                .count(),
+            1,
+            "{opts:?}"
+        );
+        assert!(opts.iter().any(|u| u.contains("techcrunch.com")));
+    }
+
+    #[test]
+    fn propose_digest_forced_cite_is_link_one_with_three_domains() {
+        let digest_url = "https://decrypt.co/376271/chatgpt-web-ai-written-pew";
+        let pack = vec![
+            digest_url.into(),
+            "https://www.pewresearch.org/data-labs/2026/08/20/how-much-of-the-internet-is-written-with-ai/"
+                .into(),
+            "https://www.pewresearch.org/data-labs/2026/08/20/methodology-ai-content/".into(),
+            "https://techcrunch.com/2026/08/20/a-third-of-webpages-published-since-chatgpts-launch-show-signs-of-ai-authorship-study-finds/"
+                .into(),
+        ];
+        let link_options = propose_link_options(&pack, "", digest_url);
+        assert_three_unique_domains(&link_options);
+        assert_eq!(link_options[0], digest_url);
+    }
+
+    #[test]
+    fn propose_forced_cite_first_even_when_body_prefers_pew() {
+        let digest_url = "https://decrypt.co/376271/chatgpt-web-ai-written-pew";
+        let pew =
+            "https://www.pewresearch.org/data-labs/2026/08/20/how-much-of-the-internet-is-written-with-ai/";
+        let pack = vec![
+            digest_url.into(),
+            pew.into(),
+            "https://www.pewresearch.org/data-labs/2026/08/20/methodology-ai-content/".into(),
+            "https://techcrunch.com/2026/08/20/a-third-of-webpages-published-since-chatgpts-launch-show-signs-of-ai-authorship-study-finds/"
+                .into(),
+        ];
+        let body = format!("Commentary.\n\n{pew}\n");
+        let opts = propose_link_options(&pack, &body, digest_url);
+        assert_three_unique_domains(&opts);
+        assert_eq!(opts[0], digest_url, "{opts:?}");
+        assert_eq!(
+            opts.iter()
+                .filter(|u| u.contains("pewresearch.org"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn propose_forced_cite_first_when_decrypt_last_in_pack() {
+        let digest_url = "https://decrypt.co/376271/chatgpt-web-ai-written-pew";
+        let pack = vec![
+            "https://www.pewresearch.org/data-labs/2026/08/20/how-much-of-the-internet-is-written-with-ai/"
+                .into(),
+            "https://techcrunch.com/2026/08/20/a-third-of-webpages-published-since-chatgpts-launch-show-signs-of-ai-authorship-study-finds/"
+                .into(),
+            "https://www.pewresearch.org/data-labs/2026/08/20/methodology-ai-content/".into(),
+            digest_url.into(),
+        ];
+        let opts = propose_link_options(&pack, "", digest_url);
+        assert_three_unique_domains(&opts);
+        assert_eq!(opts[0], digest_url);
+    }
+
+    #[test]
+    fn propose_decrypt_not_dropped_by_t_co_substring_bug() {
+        let digest_url = "https://decrypt.co/376271/chatgpt-web-ai-written-pew";
+        let pack = vec![
+            digest_url.into(),
+            "https://www.pewresearch.org/data-labs/2026/08/20/how-much-of-the-internet-is-written-with-ai/"
+                .into(),
+            "https://www.pewresearch.org/data-labs/2026/08/20/methodology-ai-content/".into(),
+            "https://techcrunch.com/2026/08/20/a-third-of-webpages-published-since-chatgpts-launch-show-signs-of-ai-authorship-study-finds/"
+                .into(),
+        ];
+        let raw = pick_link_options(&pack, "");
+        assert_eq!(
+            raw.len(),
+            3,
+            "decrypt must survive filter_publisher_urls: {raw:?}"
+        );
+        assert_eq!(raw[0], digest_url);
+        let finalized = propose_link_options(&pack, "", digest_url);
+        assert_three_unique_domains(&finalized);
+        assert_eq!(finalized[0], digest_url);
     }
 
     #[test]
