@@ -115,15 +115,11 @@ pub fn promote_link_option(options: &mut Vec<String>, url: &str) {
     if url.is_empty() {
         return;
     }
-    if let Some(i) = options
-        .iter()
-        .position(|u| crate::sources::url_hygiene::same_publisher_url(u, &url))
-    {
-        let u = options.remove(i);
-        options.insert(0, u);
-    } else {
-        options.insert(0, url);
-    }
+    options.retain(|u| {
+        !crate::sources::url_hygiene::same_publisher_url(u, &url)
+            && !crate::sources::url_hygiene::same_publisher_domain(u, &url)
+    });
+    options.insert(0, url);
     options.truncate(3);
 }
 
@@ -312,6 +308,41 @@ mod tests {
         promote_link_option(&mut opts, "https://c.example/3");
         assert_eq!(opts[0], "https://c.example/3");
         assert_eq!(opts.len(), 3);
+    }
+
+    #[test]
+    fn promote_replaces_same_domain_and_keeps_three_unique() {
+        let digest = "https://decrypt.co/376271/chatgpt-web-ai-written-pew";
+        let mut opts = vec![
+            "https://decrypt.co/old-path".into(),
+            "https://www.pewresearch.org/data-labs/2026/08/20/how-much-of-the-internet-is-written-with-ai/"
+                .into(),
+            "https://techcrunch.com/2026/08/20/a-third-of-webpages-published-since-chatgpts-launch-show-signs-of-ai-authorship-study-finds/"
+                .into(),
+        ];
+        promote_link_option(&mut opts, digest);
+        assert_eq!(opts.len(), 3, "{opts:?}");
+        assert_eq!(opts[0], digest);
+        assert_eq!(opts.iter().filter(|u| u.contains("decrypt.co")).count(), 1);
+        let hosts: std::collections::HashSet<_> = opts
+            .iter()
+            .filter_map(|u| crate::sources::url_hygiene::publisher_host(u))
+            .collect();
+        assert_eq!(hosts.len(), 3, "{opts:?}");
+    }
+
+    #[test]
+    fn promote_inserts_forced_cite_when_missing_from_options() {
+        let digest = "https://decrypt.co/376271/chatgpt-web-ai-written-pew";
+        let mut opts = vec![
+            "https://www.pewresearch.org/data-labs/2026/08/20/how-much-of-the-internet-is-written-with-ai/"
+                .into(),
+            "https://techcrunch.com/2026/08/20/a-third-of-webpages-published-since-chatgpts-launch-show-signs-of-ai-authorship-study-finds/"
+                .into(),
+        ];
+        promote_link_option(&mut opts, digest);
+        assert_eq!(opts[0], digest);
+        assert_eq!(opts.len(), 3, "{opts:?}");
     }
 
     #[test]

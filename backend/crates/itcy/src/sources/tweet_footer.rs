@@ -61,7 +61,7 @@ pub fn next_tweet_id(db_path: &Path) -> Result<String, TweetFooterError> {
 /// Up to 3 pack cites (publisher **and** X status). Operator picks `1`/`2`/`3`.
 #[must_use]
 pub fn pick_tweet_cite_options(pack_urls: &[String], body: &str) -> Vec<String> {
-    use crate::sources::url_hygiene::{same_publisher_url, scrub_https_url};
+    use crate::sources::url_hygiene::{same_publisher_domain, scrub_https_url};
 
     let pack = filter_tweet_cite_urls(pack_urls);
     let body_urls: Vec<String> = extract_https_urls(body)
@@ -76,7 +76,7 @@ pub fn pick_tweet_cite_options(pack_urls: &[String], body: &str) -> Vec<String> 
         if !is_allowed_tweet_cite(&scrubbed) {
             continue;
         }
-        if out.iter().any(|x| same_publisher_url(x, &scrubbed)) {
+        if out.iter().any(|x| same_publisher_domain(x, &scrubbed)) {
             continue;
         }
         out.push(scrubbed);
