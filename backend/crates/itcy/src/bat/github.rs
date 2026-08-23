@@ -877,11 +877,7 @@ impl GithubClient {
     /// # Errors
     ///
     /// Returns a [`GithubError`] variant for HTTP, auth, or GitHub API failure.
-    pub async fn pull_head_ref_on(
-        &self,
-        owner: &str,
-        number: u64,
-    ) -> Result<String, GithubError> {
+    pub async fn pull_head_ref_on(&self, owner: &str, number: u64) -> Result<String, GithubError> {
         #[derive(Deserialize)]
         struct PullHeadOnly {
             head: PullHeadRef,
