@@ -57,6 +57,12 @@ pub fn branch_name_for_tweet(tweet_id: &str) -> String {
     format!("tweet/{tweet_id}")
 }
 
+/// True when a publications PR head is an operator BAT branch (not migration/chore).
+#[must_use]
+pub fn is_bat_pr_head(head_ref: &str) -> bool {
+    head_ref.starts_with("draft/DRAFT-") || head_ref.starts_with("tweet/TWEET-")
+}
+
 /// `TWEET-YYYYMMDD-NNNNNN` → `XPOST-YYYYMMDD-NNNNNN`.
 #[must_use]
 pub fn tweet_id_to_xpost_id(tweet_id: &str) -> Option<String> {
@@ -511,6 +517,14 @@ mod tests {
         assert!(out.starts_with("Post ID: POST-20260801-000025\n"));
         assert!(out.contains("Hello"));
         assert!(!out.contains("Draft ID:"));
+    }
+
+    #[test]
+    fn bat_pr_head_filter() {
+        assert!(is_bat_pr_head("draft/DRAFT-20260822-000089"));
+        assert!(is_bat_pr_head("tweet/TWEET-20260822-000065"));
+        assert!(!is_bat_pr_head("mig-ymd/itcy-drafts"));
+        assert!(!is_bat_pr_head("chore/layout"));
     }
 
     #[test]
