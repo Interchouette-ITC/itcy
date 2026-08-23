@@ -872,6 +872,44 @@ impl GithubClient {
         Ok(())
     }
 
+    /// Head branch name for a publications PR (e.g. `draft/DRAFT-…`, `mig-ymd/…`).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`GithubError`] variant for HTTP, auth, or GitHub API failure.
+    pub async fn pull_head_ref_on(
+        &self,
+        owner: &str,
+        number: u64,
+    ) -> Result<String, GithubError> {
+        #[derive(Deserialize)]
+        struct PullHeadOnly {
+            head: PullHeadRef,
+        }
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/pulls/{number}",
+            owner, self.cfg.repo
+        );
+        let resp = self
+            .http
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.cfg.token))
+            .header(ACCEPT, "application/vnd.github+json")
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            return Err(GithubError::Api(format!(
+                "get PR #{number} head: {}",
+                resp.text().await.unwrap_or_default()
+            )));
+        }
+        let pr: PullHeadOnly = resp
+            .json()
+            .await
+            .map_err(|e| GithubError::Api(format!("get PR #{number} head json: {e}")))?;
+        Ok(pr.head.ref_)
+    }
+
     /// Whether the configured reviewer has **Approved** the PR on `owner` (BAT green).
     ///
     /// # Errors

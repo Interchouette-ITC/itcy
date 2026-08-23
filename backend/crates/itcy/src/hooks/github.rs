@@ -849,6 +849,15 @@ async fn try_promote_if_bat_green(
             status.expected_reviewer
         )));
     }
+    let head = client
+        .pull_head_ref_on(pr_owner, pr_number)
+        .await
+        .map_err(|e| WakeSkip::Error(e.to_string()))?;
+    if !crate::bat::pack::is_bat_pr_head(&head) {
+        return Err(WakeSkip::NotReady(format!(
+            "babysit non-BAT PR head `{head}` (expected draft/DRAFT-… or tweet/TWEET-…)"
+        )));
+    }
     let promoted = client
         .promote_draft_pr_to_org(pr_owner, pr_number)
         .await
