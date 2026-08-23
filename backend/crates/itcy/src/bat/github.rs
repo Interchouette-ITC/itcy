@@ -1184,6 +1184,8 @@ struct ReviewUser {
 /// PR body for a Draft (Approve = BAT → Post on `posts` of the active remote).
 #[must_use]
 pub fn draft_pr_body(subject: &str, draft_id: &str) -> String {
+    let (body_path, _) = crate::bat::pack::draft_paths(draft_id);
+    let draft_dir = body_path.trim_end_matches("/body.md");
     format!(
         "## Draft checklist\n\
 \n\
@@ -1195,13 +1197,13 @@ pub fn draft_pr_body(subject: &str, draft_id: &str) -> String {
 \n\
 ## Summary\n\
 \n\
-Draft `{draft_id}` for subject `{subject}` as `{draft_id}/` on the **drafts** branch.\n\
+Draft `{draft_id}` for subject `{subject}` as `{draft_dir}/` on the **drafts** branch.\n\
 \n\
 ## Notes\n\
 \n\
 Opened by ITCy. Soft debug = **playground** (fork Interchouette: `drafts` + `posts`). \
 Production = org Interchouette-ITC: same branch names (`drafts` + `posts`, real artefacts). \
-On Approve, ITCy writes `<POST-…>/` on `posts` of the active remote and ships. \
+On Approve, ITCy writes a date-sharded `<POST-…>/` on `posts` of the active remote and ships. \
 Live needs CM token.\n"
     )
 }
@@ -1331,7 +1333,7 @@ mod tests {
         let b = draft_pr_body("rust", "DRAFT-20260801-000001");
         assert!(b.contains("gRoussac"));
         assert!(b.contains("Approve"));
-        assert!(b.contains("DRAFT-20260801-000001/"));
+        assert!(b.contains("2026/08/01/DRAFT-20260801-000001/"));
         assert!(b.contains("BAT"));
         assert!(b.contains("playground"));
         assert!(b.contains("posts"));
@@ -1349,7 +1351,7 @@ mod tests {
         let prod = tweet_pr_body("rust", "TWEET-20260801-000001");
         assert!(prod.contains("production"));
         assert!(prod.contains("org Interchouette-ITC"));
-        assert!(prod.contains("`2026/08/TWEET-20260801-000001/`"));
+        assert!(prod.contains("`2026/08/01/TWEET-20260801-000001/`"));
         unsafe {
             std::env::set_var("ITCY_X_PUBLISH_MODE", "playground");
         }

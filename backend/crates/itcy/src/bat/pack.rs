@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Interchouette-ITC
 // SPDX-License-Identifier: BUSL-1.1
 
-//! Pack an open draft into `<DRAFT-id>/` on the drafts branch; promote helpers for `<POST-id>/` on posts.
+//! Pack an open draft into `YYYY/MM/DD/<DRAFT-id>/` on the drafts branch; promote helpers for posts.
 
 use crate::bat::store::PendingDraft;
 use chrono::Local;
 use std::fmt::Write;
 
-/// Files written under `<DRAFT-id>/` on the drafts branch (branch = kind; no `drafts/` folder).
+/// Files written under `YYYY/MM/DD/<DRAFT-id>/` on the drafts branch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DraftFiles {
     /// Draft id (`DRAFT-YYYYMMDD-NNNNNN`).
@@ -33,10 +33,16 @@ pub fn draft_id_to_post_id(draft_id: &str) -> Option<String> {
         .map(|rest| format!("POST-{rest}"))
 }
 
-/// Paths for a Post on the `posts` branch (branch = kind).
+/// Paths for a Post on the `posts` branch.
 #[must_use]
 pub fn post_paths(post_id: &str) -> (String, String) {
-    (format!("{post_id}/body.md"), format!("{post_id}/meta.toml"))
+    sharded_artefact_paths(post_id, "POST-")
+}
+
+/// Paths for a Draft on `drafts`.
+#[must_use]
+pub fn draft_paths(draft_id: &str) -> (String, String) {
+    sharded_artefact_paths(draft_id, "DRAFT-")
 }
 
 /// Rewrite Draft body header to Post ID for Post `body.md`.
@@ -138,7 +144,7 @@ fn rewrite_id_header(
     out.trim_end().to_string()
 }
 
-/// Builds `body.md` + `meta.toml` for `<DRAFT-id>/` on the drafts branch.
+/// Builds `body.md` + `meta.toml` for `YYYY/MM/DD/<DRAFT-id>/` on the drafts branch.
 #[must_use]
 pub fn pack_draft_files(draft: &PendingDraft) -> DraftFiles {
     let draft_id = draft.draft_id.clone();
@@ -168,9 +174,10 @@ sources = {sources_toml}\n",
         tin = draft.tokens_in,
         tout = draft.tokens_out,
     );
+    let (body_path, meta_path) = draft_paths(&draft_id);
     DraftFiles {
-        body_path: format!("{draft_id}/body.md"),
-        meta_path: format!("{draft_id}/meta.toml"),
+        body_path,
+        meta_path,
         body_md: draft.body.clone(),
         meta_toml,
         draft_id,
@@ -296,7 +303,7 @@ fn shard_prefix_from_id(id: &str, prefix: &str) -> Option<String> {
     if date.len() < 8 || !date.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
-    Some(format!("{}/{}", &date[0..4], &date[4..6]))
+    Some(format!("{}/{}/{}", &date[0..4], &date[4..6], &date[6..8]))
 }
 
 /// Tweet `meta.toml` (`kind = tweet`).
@@ -390,17 +397,14 @@ fn toml_string(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-/// Draft id from `<DRAFT-id>/…` (or legacy `drafts/<DRAFT-id>/…`).
+/// Draft id from any segment in a draft `body.md` path (flat, legacy month, or day-sharded).
 #[must_use]
 pub fn draft_id_from_path(path: &str) -> Option<String> {
     let name = path.replace('\\', "/");
     let rest = name.strip_prefix("drafts/").unwrap_or(name.as_str());
-    let id = rest.split('/').next()?;
-    if id.starts_with("DRAFT-") {
-        Some(id.to_string())
-    } else {
-        None
-    }
+    rest.split('/')
+        .find(|seg| seg.starts_with("DRAFT-"))
+        .map(std::string::ToString::to_string)
 }
 
 /// Alias kept for call sites that still say "drafts path".
@@ -466,8 +470,11 @@ mod tests {
         };
         let files = pack_draft_files(&draft);
         assert_eq!(files.draft_id, "DRAFT-20260722-000001");
-        assert_eq!(files.body_path, "DRAFT-20260722-000001/body.md");
-        assert_eq!(files.meta_path, "DRAFT-20260722-000001/meta.toml");
+        assert_eq!(files.body_path, "2026/07/22/DRAFT-20260722-000001/body.md");
+        assert_eq!(
+            files.meta_path,
+            "2026/07/22/DRAFT-20260722-000001/meta.toml"
+        );
         assert!(files.meta_toml.contains("kind = \"draft\""));
         assert!(files
             .meta_toml
@@ -485,10 +492,14 @@ mod tests {
             Some("DRAFT-20260722-000001")
         );
         assert_eq!(
+            draft_id_from_path("2026/07/22/DRAFT-20260722-000001/body.md").as_deref(),
+            Some("DRAFT-20260722-000001")
+        );
+        assert_eq!(
             post_paths("POST-20260722-000001"),
             (
-                "POST-20260722-000001/body.md".into(),
-                "POST-20260722-000001/meta.toml".into()
+                "2026/07/22/POST-20260722-000001/body.md".into(),
+                "2026/07/22/POST-20260722-000001/meta.toml".into()
             )
         );
     }
@@ -547,8 +558,11 @@ mod tests {
             fork_pr_url: String::new(),
         };
         let files = pack_tweet_files(&draft);
-        assert_eq!(files.body_path, "2026/08/TWEET-20260813-000001/body.md");
-        assert_eq!(files.meta_path, "2026/08/TWEET-20260813-000001/meta.toml");
+        assert_eq!(files.body_path, "2026/08/13/TWEET-20260813-000001/body.md");
+        assert_eq!(
+            files.meta_path,
+            "2026/08/13/TWEET-20260813-000001/meta.toml"
+        );
         assert!(files.meta_toml.contains("kind = \"tweet\""));
         assert!(files.meta_toml.contains("quote_tweet_id = \"99\""));
         assert_eq!(
@@ -558,16 +572,19 @@ mod tests {
         let xbody = body_as_xpost(&draft.body, "XPOST-20260813-000001");
         assert!(xbody.starts_with("XPOST ID: XPOST-20260813-000001\n"));
         assert!(is_tweet_body_path("TWEET-20260813-000001/body.md"));
+        assert!(is_tweet_body_path(
+            "2026/08/13/TWEET-20260813-000001/body.md"
+        ));
         assert!(is_tweet_body_path("2026/08/TWEET-20260813-000001/body.md"));
         assert_eq!(
-            tweet_id_from_path("2026/08/TWEET-20260813-000001/meta.toml").as_deref(),
+            tweet_id_from_path("2026/08/13/TWEET-20260813-000001/meta.toml").as_deref(),
             Some("TWEET-20260813-000001")
         );
         assert_eq!(
             xpost_paths("XPOST-20260813-000001"),
             (
-                "2026/08/XPOST-20260813-000001/body.md".into(),
-                "2026/08/XPOST-20260813-000001/meta.toml".into()
+                "2026/08/13/XPOST-20260813-000001/body.md".into(),
+                "2026/08/13/XPOST-20260813-000001/meta.toml".into()
             )
         );
         assert!(!is_tweet_body_path("DRAFT-20260813-000001/body.md"));
