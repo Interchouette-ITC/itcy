@@ -1,12 +1,12 @@
 # ITCy
 
-AI operator for **Interchouette ITC** company LinkedIn and X.
+AI operator for **Interchouette ITC** on LinkedIn and X.
 
-ITCy drafts posts and tweets, opens a publications pull request, and ships only after **BAT** (Approve from **gRoussac**). Public assets carry an AI disclosure line. Site: [interchouette.net](https://interchouette.net/).
+On **LinkedIn**, ITCy drafts company posts and threaded comment replies in the operator loop (draft, rework, accept), then publishes via Sign In + Share once the gate clears. On **X**, it drafts tweets for the same company voice and the same review path. Nothing lands live until a publications pull request is open and **BAT** passes: Approve from **gRoussac**. PR comments are review notes only; they do not ship. Public assets carry an AI disclosure line. Site: [interchouette.net](https://interchouette.net/).
 
-LinkedIn member publish (Sign In + Share) uses a local HTTP MCP based on [vahabcore/linkedin-mcp-server](https://github.com/vahabcore/linkedin-mcp-server). Thank you Abdulvahab Shaikh for that server.
+LinkedIn member publish uses a local HTTP MCP based on [vahabcore/linkedin-mcp-server](https://github.com/vahabcore/linkedin-mcp-server). Thank you [vahabcore](https://github.com/vahabcore) for that server.
 
-![ITCy](docs/assets/itcy-mascot.png)
+<img src="docs/assets/itcy-mascot.png" alt="ITCy" width="280">
 
 | | |
 | --- | --- |
