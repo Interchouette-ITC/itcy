@@ -18,7 +18,11 @@ use crate::sources::tweet_footer::apply_change_tweet_url;
 use tracing::{error, info, warn};
 
 fn open_tweet_next(id: &str) -> String {
-    format!("/rework {id}\n\n/change_url {id} 1\n\n/accept {id}")
+    crate::slack::saved::next_slash_hints(id, status::OPEN)
+}
+
+fn slack_tweet_body(body: &str) -> String {
+    crate::sources::draft_footer::slack_highlight_active_link(body)
 }
 
 impl SlackRuntime {
@@ -63,10 +67,9 @@ impl SlackRuntime {
                 }
                 format!(
                     "{body}\n\n\
-Saved as open tweet. Ref `{id}`.\n\n\
-Next:\n\n\
+:floppy_disk: Saved as open tweet. Ref `{id}`.\n\n\
 {next}",
-                    body = draft.body,
+                    body = slack_tweet_body(&draft.body),
                     id = draft.draft_id,
                     next = open_tweet_next(&draft.draft_id)
                 )
@@ -175,10 +178,9 @@ Next:\n\n\
                 }
                 format!(
                     "{body}\n\n\
-Saved as open tweet. Ref `{id}`.\n\n\
-Next:\n\n\
+:floppy_disk: Saved as open tweet. Ref `{id}`.\n\n\
 {next}",
-                    body = draft.body,
+                    body = slack_tweet_body(&draft.body),
                     id = draft.draft_id,
                     next = open_tweet_next(&draft.draft_id)
                 )
@@ -241,10 +243,9 @@ Next:\n\n\
                 }
                 format!(
                     "{body}\n\n\
-Saved as open tweet. Ref `{id}`.\n\n\
-Next:\n\n\
+:floppy_disk: Saved as open tweet. Ref `{id}`.\n\n\
 {next}",
-                    body = draft.body,
+                    body = slack_tweet_body(&draft.body),
                     id = draft.draft_id,
                     next = open_tweet_next(&draft.draft_id)
                 )
@@ -321,10 +322,9 @@ Next:\n\n\
                 }
                 format!(
                     "{body}\n\n\
-Saved as open tweet. Ref `{id}`.\n\n\
-Next:\n\n\
+:floppy_disk: Saved as open tweet. Ref `{id}`.\n\n\
 {next}",
-                    body = draft.body,
+                    body = slack_tweet_body(&draft.body),
                     id = draft.draft_id,
                     next = open_tweet_next(&draft.draft_id)
                 )
@@ -429,18 +429,18 @@ Status: **published**.",
                 } else {
                     format!("Tweet PR **opened** (**{x_mode}**, {host}, base `drafts_tweet`)")
                 };
+                let next = crate::slack::saved::next_slash_hints(&r.draft_id, status::ACCEPTED);
                 format!(
-                    "{action}:\n\
+                    ":white_check_mark: {action}:\n\
 • tweet: `{id}`\n\
 • branch: `{branch}`\n\
 • PR: {url}\n\
-Status: **accepted**. Waiting **gRoussac** Approve = BAT → XPOST.\n\n\
-If Approve already landed, or ship failed after BAT:\n\n\
-/accept {id}\n\n\
-/retry_bat {id}",
+:hourglass_flowing_sand: Status: **accepted**. Waiting **gRoussac** Approve = BAT → XPOST.\n\n\
+{next}",
                     id = r.draft_id,
                     branch = r.branch,
-                    url = r.pr_url
+                    url = r.pr_url,
+                    next = next,
                 )
             }
             Err(e) => format!("Could not accept Tweet: {e}"),
@@ -484,10 +484,9 @@ If Approve already landed, or ship failed after BAT:\n\n\
                 }
                 format!(
                     "{body}\n\n\
-Reworked tweet `{id}` saved (**open**).\n\n\
-Next:\n\n\
+:arrows_counterclockwise: Reworked tweet `{id}` saved (**open**).\n\n\
 {next}",
-                    body = rew.body,
+                    body = slack_tweet_body(&rew.body),
                     id = rew.draft_id,
                     next = open_tweet_next(&rew.draft_id)
                 )
@@ -534,9 +533,9 @@ Next:\n\n\
         }
         format!(
             "{body}\n\n\
-Next:\n\n\
+:link: Link updated.\n\n\
 {next}",
-            body = stored.body,
+            body = slack_tweet_body(&stored.body),
             next = open_tweet_next(tweet_id),
         )
     }

@@ -308,11 +308,12 @@ impl Publisher for McpLinkedInPublisher {
         &self,
         request: &PublishRequest,
     ) -> Result<PublishResult, PublishError> {
-        let body = request.body.trim();
+        // Prefer ship_company_post which already strips; keep a safety net here.
+        let body = linkedin_text_for_api(&request.body);
         if body.is_empty() {
             return Err(PublishError::Other("empty post body".into()));
         }
-        let tool_text = self.client.create_text_post(body).await?;
+        let tool_text = self.client.create_text_post(&body).await?;
         let urn = extract_post_id(&tool_text);
         let url = urn
             .as_ref()
@@ -364,6 +365,61 @@ fn extract_post_id(tool_text: &str) -> Option<String> {
     } else {
         Some(id)
     }
+}
+
+/// Drop Slack operator chrome from a draft/post body before `LinkedIn` ship.
+///
+/// Keeps prose, the bare `https://` cite line, and the trailing `Written by AI` disclosure.
+/// Strips `Draft ID` / `Post ID` headers and the `Link:` / numbered-option block.
+#[must_use]
+pub fn linkedin_text_for_api(body: &str) -> String {
+    let mut prose: Vec<&str> = Vec::new();
+    let mut disclosure: Vec<&str> = Vec::new();
+    let mut in_link_chrome = false;
+    for line in body.lines() {
+        let t = line.trim();
+        if t.starts_with("Written by AI") {
+            in_link_chrome = false;
+            disclosure.push(line);
+            continue;
+        }
+        if is_linkedin_link_chrome_start(t) {
+            in_link_chrome = true;
+            continue;
+        }
+        if in_link_chrome {
+            continue;
+        }
+        if is_linkedin_id_header(t) {
+            continue;
+        }
+        prose.push(line);
+    }
+    while prose.first().is_some_and(|l| l.trim().is_empty()) {
+        prose.remove(0);
+    }
+    while prose.last().is_some_and(|l| l.trim().is_empty()) {
+        prose.pop();
+    }
+    let mut out = prose.join("\n");
+    if !disclosure.is_empty() {
+        if !out.is_empty() {
+            out.push_str("\n\n");
+        }
+        out.push_str(&disclosure.join("\n"));
+    }
+    crate::llm::sanitize::expand_emoji_shortcodes(out.trim())
+}
+
+fn is_linkedin_id_header(t: &str) -> bool {
+    t.starts_with("Draft ID:") || t.starts_with("Post ID:")
+}
+
+fn is_linkedin_link_chrome_start(t: &str) -> bool {
+    t.starts_with("Link:")
+        || t.starts_with("0 = no link")
+        || t.starts_with("Sources:")
+        || t.starts_with("Sources used:")
 }
 
 fn truncate_for_log(s: &str, max: usize) -> String {
@@ -424,6 +480,40 @@ mod tests {
             Some("urn:li:share:1".into())
         );
         assert_eq!(extract_post_id("no id here"), None);
+    }
+
+    #[test]
+    fn linkedin_text_keeps_prose_url_disclosure_strips_chrome() {
+        let body = "\
+Draft ID: DRAFT-20260824-000093\n\
+\n\
+The project, rangular, is a tiny experiment. 🦀\n\
+\n\
+https://github.com/Interchouette-ITC/rangular\n\
+\n\
+Link: 1\n\
+0 = no link. /change_url DRAFT-20260824-000093 <0|1|2|3|url>\n\
+1. https://github.com/Interchouette-ITC/rangular\n\
+2. https://interchouette.net/news\n\
+\n\
+Written by AI - ITCy - model ollama/qwen3:8b - tokens in:3918 out:290\n";
+        let out = linkedin_text_for_api(body);
+        assert!(out.contains("rangular"));
+        assert!(out.contains("🦀"));
+        assert!(out.contains("https://github.com/Interchouette-ITC/rangular"));
+        assert!(out.contains("Written by AI - ITCy - model ollama/qwen3:8b"));
+        assert!(!out.contains("Draft ID:"));
+        assert!(!out.contains("Link:"));
+        assert!(!out.contains("0 = no link"));
+        assert!(!out.contains("interchouette.net/news"));
+        assert!(!out.contains("/change_url"));
+    }
+
+    #[test]
+    fn linkedin_text_expands_shortcodes() {
+        let out = linkedin_text_for_api("Hello :owl:\n\nhttps://example.com/a\n");
+        assert!(out.contains('🦉'), "{out}");
+        assert!(!out.contains(":owl:"));
     }
 
     #[test]

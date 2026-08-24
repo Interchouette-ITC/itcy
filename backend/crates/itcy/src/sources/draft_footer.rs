@@ -151,10 +151,10 @@ pub fn compose_draft_message(body: &str, draft_id: &str, links: &[String]) -> St
 #[must_use]
 pub fn slack_paste_safe_linkedin_message(composed: &str) -> String {
     let Some((header, rest)) = composed.split_once("\n\n") else {
-        return composed.to_string();
+        return slack_highlight_active_link(composed);
     };
     if !header.starts_with("Draft ID:") {
-        return composed.to_string();
+        return slack_highlight_active_link(composed);
     }
     let (prose, footer) = rest
         .find("\nLink: ")
@@ -162,16 +162,159 @@ pub fn slack_paste_safe_linkedin_message(composed: &str) -> String {
         .map_or((rest, ""), |i| (&rest[..i], &rest[i..]));
     let prose = prose.trim();
     if prose.is_empty() || prose.starts_with("```") {
-        return composed.to_string();
+        return slack_highlight_active_link(composed);
     }
     // On-the-fly: old stored drafts may still have spaced-hyphen pauses.
     let prose = crate::llm::sanitize_itcy_text(prose);
     let fenced = fence_slack_plaintext(&prose);
-    if footer.is_empty() {
+    let shown = if footer.is_empty() {
         format!("{header}\n\n{fenced}")
     } else {
         format!("{header}\n\n{fenced}{footer}")
+    };
+    slack_highlight_active_link(&shown)
+}
+
+/// Slack display only: operator chrome with shortcode emojis (`:dart:`, `:one:`, …).
+///
+/// Stored bodies stay plain. Ship / `body.md` / `LinkedIn` paste blocks are unchanged.
+#[must_use]
+pub fn slack_highlight_active_link(composed: &str) -> String {
+    if composed.lines().any(|l| {
+        let t = l.trim();
+        t.starts_with("Link: :") || t.starts_with(":memo: Draft ID:")
+    }) {
+        return composed.to_string();
     }
+    let active = active_link_index(composed);
+    let mut out = String::with_capacity(composed.len() + 64);
+    for line in composed.lines() {
+        if let Some(highlighted) = decorate_slack_chrome_line(line, active) {
+            out.push_str(&highlighted);
+        } else {
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    if composed.ends_with('\n') {
+        out
+    } else {
+        out.trim_end_matches('\n').to_string()
+    }
+}
+
+fn active_link_index(composed: &str) -> Option<u8> {
+    for line in composed.lines() {
+        let t = strip_leading_slack_emoji(line.trim());
+        let Some(rest) = t.strip_prefix("Link:") else {
+            continue;
+        };
+        return parse_link_selection(rest.trim());
+    }
+    None
+}
+
+fn parse_link_selection(rest: &str) -> Option<u8> {
+    let rest = strip_leading_slack_emoji(rest.trim());
+    if rest.starts_with("http://") || rest.starts_with("https://") {
+        return None;
+    }
+    let digits: String = rest.chars().filter(char::is_ascii_digit).collect();
+    digits.parse::<u8>().ok().filter(|n| *n <= 4)
+}
+
+fn strip_leading_slack_emoji(s: &str) -> &str {
+    let mut rest = s.trim_start();
+    while rest.starts_with(':') {
+        let Some(end) = rest[1..].find(':') else {
+            break;
+        };
+        let name = &rest[1..=end];
+        if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            break;
+        }
+        rest = rest[end + 2..].trim_start();
+    }
+    rest
+}
+
+const fn slack_num_emoji(n: u8) -> &'static str {
+    match n {
+        0 => ":zero:",
+        1 => ":one:",
+        2 => ":two:",
+        3 => ":three:",
+        4 => ":four:",
+        _ => "",
+    }
+}
+
+fn decorate_slack_chrome_line(line: &str, active: Option<u8>) -> Option<String> {
+    let t = line.trim();
+    if t.is_empty() {
+        return None;
+    }
+    if let Some(id) = t.strip_prefix("Draft ID:") {
+        return Some(format!(":memo: Draft ID:{id}"));
+    }
+    if let Some(id) = t.strip_prefix("Tweet ID:") {
+        return Some(format!(":bird: Tweet ID:{id}"));
+    }
+    if let Some(rest) = t.strip_prefix("Link:") {
+        let rest = rest.trim();
+        if let Some(n) = parse_link_selection(rest) {
+            let em = slack_num_emoji(n);
+            return Some(format!("Link: {em}"));
+        }
+        return Some(format!("Link: {rest}"));
+    }
+    if t.starts_with("0 = no link") {
+        return Some(format!(":zero: {t}"));
+    }
+    if let Some((n, url)) = parse_numbered_option(t) {
+        let em = slack_num_emoji(n);
+        if active == Some(n) && n >= 1 {
+            // Selected cite: number icon + target + URL (no repeated digit).
+            return Some(format!("{em} :dart: {url}"));
+        }
+        return Some(format!("{em} {url}"));
+    }
+    None
+}
+
+fn parse_numbered_option(t: &str) -> Option<(u8, &str)> {
+    let dot = t.find(". ")?;
+    let n: u8 = t[..dot].parse().ok()?;
+    if !(1..=4).contains(&n) {
+        return None;
+    }
+    Some((n, &t[dot + 2..]))
+}
+
+/// Manual company-page paste: stripped body + disclosure with `<in:… out:…>`, Slack-fenced.
+///
+/// No `Draft ID`, no `Link:` chrome. Copy only the fenced block into `LinkedIn`.
+#[must_use]
+pub fn linkedin_manual_paste_message(
+    body: &str,
+    model: &str,
+    tokens_in: u32,
+    tokens_out: u32,
+) -> String {
+    let cleaned = crate::publish::linkedin_text_for_api(body);
+    let without = crate::llm::disclosure::strip_trailing_disclosures(&cleaned).trim_end();
+    let text = if model.trim().is_empty() && tokens_in == 0 && tokens_out == 0 {
+        without.to_string()
+    } else {
+        format!(
+            "{without}\n\n{}",
+            crate::llm::disclosure::format_disclosure_paste(model, tokens_in, tokens_out)
+        )
+    };
+    let fenced = fence_slack_plaintext(&text);
+    format!(
+        ":clipboard: LinkedIn paste (copy the block only; playground = paste on company Page):\n{fenced}"
+    )
 }
 
 fn fence_slack_plaintext(inner: &str) -> String {
@@ -217,6 +360,7 @@ pub fn draft_prose_for_rework(body: &str) -> String {
 }
 
 fn is_draft_footer_break(t: &str) -> bool {
+    let t = strip_leading_slack_emoji(t);
     t.starts_with("Link:")
         || t.starts_with("0 = no link")
         || t.starts_with("Written by AI")
@@ -224,10 +368,12 @@ fn is_draft_footer_break(t: &str) -> bool {
 }
 
 fn is_draft_operator_chrome(t: &str) -> bool {
+    let t = strip_leading_slack_emoji(t);
     t.starts_with("Draft ID:")
+        || t.starts_with("Tweet ID:")
         || t.starts_with("Draft code:")
         || t.starts_with("Saved as")
-        || t.starts_with("Reworked draft")
+        || t.starts_with("Reworked")
         || t.starts_with("Sources")
         || (t.chars().next().is_some_and(|c| c.is_ascii_digit()) && t.contains("http"))
 }
@@ -480,7 +626,17 @@ mod tests {
         );
         let shown = slack_paste_safe_linkedin_message(&stored);
         assert!(shown.contains("```\nHello 🦉 world."));
-        assert!(shown.contains("Link: 1"));
+        assert!(shown.contains(":memo: Draft ID:"), "{shown}");
+        assert!(shown.contains("Link: :one:"), "{shown}");
+        assert!(!shown.contains(":dart: Link:"), "{shown}");
+        assert!(!shown.contains(":one: 1"), "{shown}");
+        assert!(
+            shown.contains(":one: :dart: https://example.com/a"),
+            "{shown}"
+        );
+        assert!(shown.contains(":zero: 0 = no link"), "{shown}");
+        assert!(stored.contains("Link: 1"));
+        assert!(!stored.contains(":dart:"), "stored body must stay plain");
         assert!(!stored.contains("```"), "stored body must stay unfenced");
         let prose = draft_prose_for_rework(&shown);
         assert!(prose.contains("Hello 🦉 world."));
@@ -488,8 +644,59 @@ mod tests {
     }
 
     #[test]
+    fn slack_highlight_marks_active_link_and_bullet() {
+        let stored = compose_draft_message(
+            "Hi.\n\nhttps://example.com/b\n",
+            "DRAFT-20260820-000002",
+            &[
+                "https://example.com/a".into(),
+                "https://example.com/b".into(),
+            ],
+        );
+        assert!(stored.contains("Link: 2"));
+        let shown = slack_highlight_active_link(&stored);
+        assert!(shown.contains("Link: :two:"), "{shown}");
+        assert!(!shown.contains(":dart: Link:"), "{shown}");
+        assert!(
+            shown.contains(":two: :dart: https://example.com/b"),
+            "{shown}"
+        );
+        assert!(shown.contains(":one: https://example.com/a"), "{shown}");
+        assert!(!shown.contains(":one: :dart:"), "{shown}");
+        assert!(!shown.contains("1. https://"), "{shown}");
+        assert!(!shown.contains("2. https://"), "{shown}");
+    }
+
+    #[test]
+    fn manual_paste_strips_chrome_and_uses_angle_token_counts() {
+        let stored = compose_draft_message(
+            "The project, rangular, is tiny. 🦀\n\nhttps://github.com/Interchouette-ITC/rangular\n",
+            "DRAFT-20260824-000093",
+            &[
+                "https://github.com/Interchouette-ITC/rangular".into(),
+                "https://interchouette.net/news".into(),
+            ],
+        );
+        let with_disc =
+            crate::llm::disclosure::ensure_stored_disclosure(&stored, "ollama/qwen3:8b", 3918, 290);
+        let paste = linkedin_manual_paste_message(&with_disc, "ollama/qwen3:8b", 3918, 290);
+        assert!(paste.contains(":clipboard: LinkedIn paste"));
+        assert!(paste.contains("```\n"));
+        assert!(paste.contains("rangular"));
+        assert!(paste.contains("https://github.com/Interchouette-ITC/rangular"));
+        assert!(paste.contains("<in:3918 out:290>"));
+        assert!(!paste.contains("Draft ID:"));
+        assert!(!paste.contains("Link:"));
+        assert!(!paste.contains("0 = no link"));
+        assert!(!paste.contains("tokens in:"));
+    }
+
+    #[test]
     fn slack_paste_safe_ignores_tweets() {
         let tweet = "Tweet ID: TWEET-1\n\nHello :owl:";
-        assert_eq!(slack_paste_safe_linkedin_message(tweet), tweet);
+        let shown = slack_paste_safe_linkedin_message(tweet);
+        assert!(shown.contains(":bird: Tweet ID: TWEET-1"), "{shown}");
+        assert!(shown.contains("Hello :owl:"), "{shown}");
+        assert!(!tweet.contains(":bird:"), "stored/plain tweet unchanged");
     }
 }
