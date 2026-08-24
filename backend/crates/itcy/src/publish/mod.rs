@@ -12,6 +12,7 @@
 mod audit;
 mod live;
 mod mcp;
+mod mcp_status;
 mod mock;
 mod ship;
 mod x;
@@ -19,6 +20,9 @@ mod x;
 pub use audit::{PublishAuditError, PublishAuditRow, PublishAuditStore, PublishAuditWrite};
 pub use live::ProductionLinkedInPublisher;
 pub use mcp::{activity_post_urn, parent_comment_urn, LinkedInMcpClient, McpLinkedInPublisher};
+pub use mcp_status::{
+    log_linkedin_mcp_status, probe_linkedin_mcp, run_linkedin_mcp_watch_loop, LinkedInMcpStatus,
+};
 pub use mock::PlaygroundPublisher;
 pub use ship::{draft_id_from_body, ship_company_post, ShipOptions};
 pub use x::{

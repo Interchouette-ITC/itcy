@@ -6,6 +6,7 @@
 use crate::hooks::{hooks_github_wake, BatWakeSnapshot, GithubDeliverySnapshot, GithubHookState};
 use crate::llm::router::TaskKind;
 use crate::llm::FailoverRouter;
+use crate::publish::{probe_linkedin_mcp, LinkedInMcpStatus};
 use crate::slack::SlackRuntime;
 use crate::sources::{
     probe_tor_listen, probe_twitter_vault, read_enrich_side_signals, EnrichStatusCounts, SourceDb,
@@ -142,6 +143,8 @@ pub struct RuntimeStatus {
     pub enrich: Option<EnrichStatusSnapshot>,
     /// Tor SOCKS + control listen (required for Slack `/enrich`).
     pub tor: TorListenStatus,
+    /// Local `LinkedIn` HTTP MCP listen (required for production ship / comment reply).
+    pub linkedin_mcp: LinkedInMcpStatus,
     /// Twitter/X Brave gold vault (or Bearer) for digest discovery.
     pub twitter: TwitterVaultStatus,
 }
@@ -186,6 +189,7 @@ impl RuntimeStatus {
             github_delivery_warn: state.github_hooks.delivery_warn_snapshot(),
             enrich: load_enrich_snapshot(state),
             tor: probe_tor_listen(),
+            linkedin_mcp: probe_linkedin_mcp(),
             twitter: probe_twitter_vault(),
         }
     }
