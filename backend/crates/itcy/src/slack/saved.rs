@@ -70,20 +70,53 @@ impl SlackRuntime {
                     row.tokens_in,
                     row.tokens_out,
                 );
-                let body = if restored.trim().is_empty() {
-                    "(empty body)".to_string()
-                } else if row.draft_id.starts_with("DRAFT-") {
-                    crate::sources::draft_footer::slack_paste_safe_linkedin_message(&restored)
+                if row.draft_id.starts_with("DRAFT-")
+                    && (row.status == status::ACCEPTED || row.status == status::PUBLISHED)
+                {
+                    let paste = crate::sources::draft_footer::linkedin_manual_paste_message(
+                        &row.body,
+                        &row.model,
+                        row.tokens_in,
+                        row.tokens_out,
+                    );
+                    let next = next_slash_hints(&row.draft_id, &row.status);
+                    format!(
+                        "{kind} `{id}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{paste}\n\n{next}",
+                        kind = title_case(kind),
+                        id = row.draft_id,
+                        semoji = status_emoji(&row.status),
+                        st = row.status,
+                        upd = row.updated_at,
+                    )
                 } else {
-                    restored
-                };
-                format!(
-                    "{kind} `{id}`  status=`{st}`  updated=`{upd}`\n\n{body}",
-                    kind = title_case(kind),
-                    id = row.draft_id,
-                    st = row.status,
-                    upd = row.updated_at,
-                )
+                    let body = if restored.trim().is_empty() {
+                        "(empty body)".to_string()
+                    } else if row.draft_id.starts_with("DRAFT-") {
+                        crate::sources::draft_footer::slack_paste_safe_linkedin_message(&restored)
+                    } else {
+                        crate::sources::draft_footer::slack_highlight_active_link(&restored)
+                    };
+                    let next = next_slash_hints(&row.draft_id, &row.status);
+                    if next.is_empty() {
+                        format!(
+                            "{kind} `{id}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{body}",
+                            kind = title_case(kind),
+                            id = row.draft_id,
+                            semoji = status_emoji(&row.status),
+                            st = row.status,
+                            upd = row.updated_at,
+                        )
+                    } else {
+                        format!(
+                            "{kind} `{id}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{body}\n\n{next}",
+                            kind = title_case(kind),
+                            id = row.draft_id,
+                            semoji = status_emoji(&row.status),
+                            st = row.status,
+                            upd = row.updated_at,
+                        )
+                    }
+                }
             }
             Ok(None) => format!("No {kind} `{id}`."),
             Err(e) => format!("Could not load {kind}: {e}"),
@@ -174,18 +207,64 @@ fn title_case(kind: &str) -> &'static str {
     }
 }
 
+/// Operator `Next:` block (same shape as after `/draft_about` / `/tweet_about`), by row status.
+#[must_use]
+pub(crate) fn next_slash_hints(id: &str, row_status: &str) -> String {
+    match row_status {
+        status::OPEN | status::BUILDING => format!(
+            ":point_right: Next:\n\n\
+:pencil2: /rework {id} <instructions>\n\n\
+:link: /change_url {id} 1\n\n\
+:white_check_mark: /accept {id}"
+        ),
+        status::ACCEPTED => format!(
+            ":point_right: Next:\n\n\
+:pencil2: /rework {id} <instructions>\n\n\
+:link: /change_url {id} 1\n\n\
+:white_check_mark: /accept {id}\n\n\
+:repeat: /retry_bat {id}"
+        ),
+        status::PUBLISHED => format!(
+            ":point_right: Next:\n\n\
+:repeat: /retry_bat {id}\n\n\
+:mag: /show {id}"
+        ),
+        status::FAILED => format!(
+            ":point_right: Next:\n\n\
+:mag: /show {id}\n\n\
+:wastebasket: /delete {id}"
+        ),
+        _ => String::new(),
+    }
+}
+
+fn status_emoji(st: &str) -> &'static str {
+    match st {
+        status::OPEN => ":large_green_circle:",
+        status::BUILDING => ":gear:",
+        status::ACCEPTED => ":hourglass_flowing_sand:",
+        status::PUBLISHED => ":white_check_mark:",
+        status::FAILED => ":x:",
+        _ => ":grey_question:",
+    }
+}
+
 fn format_saved_list(title: &str, rows: &[StoredDraft]) -> String {
-    let mut out = format!("{title} ({n}, newest first):\n", n = rows.len());
+    let mut out = format!(":clipboard: {title} ({n}, newest first):\n", n = rows.len());
     for row in rows {
         let subj = clip_list_subject(&row.subject);
         let _ = writeln!(
             out,
-            "• `{id}` {st} - {subj}",
+            "`{id}` {semoji} `{st}` - {subj}",
             id = row.draft_id,
+            semoji = status_emoji(&row.status),
             st = row.status,
         );
     }
-    let _ = write!(out, "\nShow: /show <ID>, <ID>\nDelete: /delete <ID>, <ID>");
+    let _ = write!(
+        out,
+        "\n:mag: Show: /show <ID>, <ID>\n:wastebasket: Delete: /delete <ID>, <ID>"
+    );
     out
 }
 
@@ -225,5 +304,27 @@ async fn close_row_pr(row: &StoredDraft) -> String {
             warn!(error = %e, pr = n, id = %row.draft_id, "saved: close GitHub PR failed");
             format!("Could not close GitHub PR #{n}: {e}")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::next_slash_hints;
+    use crate::bat::store::status;
+
+    #[test]
+    fn next_hints_open_has_rework_change_accept() {
+        let n = next_slash_hints("DRAFT-20260824-000093", status::OPEN);
+        assert!(n.contains("/rework DRAFT-20260824-000093"));
+        assert!(n.contains("/change_url DRAFT-20260824-000093 1"));
+        assert!(n.contains("/accept DRAFT-20260824-000093"));
+        assert!(!n.contains("/retry_bat"));
+    }
+
+    #[test]
+    fn next_hints_accepted_adds_retry_bat() {
+        let n = next_slash_hints("TWEET-20260824-000001", status::ACCEPTED);
+        assert!(n.contains("/rework TWEET-20260824-000001"));
+        assert!(n.contains("/retry_bat TWEET-20260824-000001"));
     }
 }

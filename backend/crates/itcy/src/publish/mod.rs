@@ -19,7 +19,10 @@ mod x;
 
 pub use audit::{PublishAuditError, PublishAuditRow, PublishAuditStore, PublishAuditWrite};
 pub use live::ProductionLinkedInPublisher;
-pub use mcp::{activity_post_urn, parent_comment_urn, LinkedInMcpClient, McpLinkedInPublisher};
+pub use mcp::{
+    activity_post_urn, linkedin_text_for_api, parent_comment_urn, LinkedInMcpClient,
+    McpLinkedInPublisher,
+};
 pub use mcp_status::{
     log_linkedin_mcp_status, probe_linkedin_mcp, run_linkedin_mcp_watch_loop, LinkedInMcpStatus,
 };

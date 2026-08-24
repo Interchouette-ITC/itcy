@@ -23,7 +23,9 @@ use crate::slack::filter::is_channel_allowed;
 use crate::slack::propose::ProposeBatch;
 use crate::slack::welcome::welcome_text;
 use crate::sources::digest::{build_daily_digest, digest_slack_post, format_digest_slack};
-use crate::sources::draft_footer::{compose_draft_message, slack_paste_safe_linkedin_message};
+use crate::sources::draft_footer::{
+    compose_draft_message, linkedin_manual_paste_message, slack_paste_safe_linkedin_message,
+};
 use crate::sources::draft_url::{
     extract_in_post_url, footer_start, promote_link_option, resolve_url_choice,
     set_single_in_post_url, UrlChoice,
@@ -714,13 +716,11 @@ impl SlackRuntime {
                 }
                 format!(
                     "{body}\n\n\
-Saved as open draft. Ref `{id}`.\n\n\
-Next:\n\n\
-/rework {id}\n\n\
-/change_url {id} 1\n\n\
-/accept {id}",
+:floppy_disk: Saved as open draft. Ref `{id}`.\n\n\
+{next}",
                     body = slack_paste_safe_linkedin_message(&draft.body),
-                    id = draft.draft_id
+                    id = draft.draft_id,
+                    next = crate::slack::saved::next_slash_hints(&draft.draft_id, status::OPEN)
                 )
             }
             Err(RagError::NoSources(s)) => {
@@ -812,13 +812,11 @@ Draft `{draft_id}` marked failed"
                 }
                 format!(
                     "{body}\n\n\
-Saved as open draft. Ref `{id}`.\n\n\
-Next:\n\n\
-/rework {id}\n\n\
-/change_url {id} 1\n\n\
-/accept {id}",
+:floppy_disk: Saved as open draft. Ref `{id}`.\n\n\
+{next}",
                     body = slack_paste_safe_linkedin_message(&draft.body),
-                    id = draft.draft_id
+                    id = draft.draft_id,
+                    next = crate::slack::saved::next_slash_hints(&draft.draft_id, status::OPEN)
                 )
             }
             Err(e) => {
@@ -879,13 +877,11 @@ Next:\n\n\
                 }
                 format!(
                     "{body}\n\n\
-Saved as open draft. Ref `{id}`.\n\n\
-Next:\n\n\
-/rework {id}\n\n\
-/change_url {id} 1\n\n\
-/accept {id}",
+:floppy_disk: Saved as open draft. Ref `{id}`.\n\n\
+{next}",
                     body = slack_paste_safe_linkedin_message(&draft.body),
-                    id = draft.draft_id
+                    id = draft.draft_id,
+                    next = crate::slack::saved::next_slash_hints(&draft.draft_id, status::OPEN)
                 )
             }
             Err(e) => {
@@ -928,18 +924,21 @@ Status: **published**.",
                 } else {
                     "Draft PR **opened** (fork)"
                 };
+                let paste = paste_block_for_draft(&self.config.state_db_path, &r.draft_id);
+                let next = crate::slack::saved::next_slash_hints(&r.draft_id, status::ACCEPTED);
                 format!(
-                    "{action}:\n\
+                    ":white_check_mark: {action}:\n\
 • draft: `{id}`\n\
 • branch: `{branch}`\n\
 • PR: {url}\n\
-Status: **accepted**. Waiting **gRoussac** Approve = BAT → Post on Interchouette.\n\n\
-If Approve already landed, or ship failed after BAT:\n\n\
-/accept {id}\n\n\
-/retry_bat {id}",
+:hourglass_flowing_sand: Status: **accepted**. Waiting **gRoussac** Approve = BAT → Post on Interchouette (playground soft ship).\n\n\
+{paste}\n\n\
+{next}",
                     id = r.draft_id,
                     branch = r.branch,
-                    url = r.pr_url
+                    url = r.pr_url,
+                    paste = paste,
+                    next = next,
                 )
             }
             Err(e) => format!("Could not accept Draft: {e}"),
@@ -1012,12 +1011,11 @@ Status: **published** (do not rework this id).",
                 }
                 format!(
                     "{body}\n\n\
-Reworked draft `{id}` saved (**open**).\n\n\
-Next:\n\n\
-/change_url {id} 1\n\n\
-/accept {id}",
+:arrows_counterclockwise: Reworked draft `{id}` saved (**open**).\n\n\
+{next}",
                     body = slack_paste_safe_linkedin_message(&rew.body),
-                    id = rew.draft_id
+                    id = rew.draft_id,
+                    next = crate::slack::saved::next_slash_hints(&rew.draft_id, status::OPEN)
                 )
             }
             Err(e) => format!("Could not rework draft: {e}"),
@@ -1068,10 +1066,10 @@ Next:\n\n\
                 }
                 format!(
                     "{body}\n\n\
-Next:\n\n\
-/accept {id}",
+:link: Link cleared.\n\n\
+{next}",
                     body = slack_paste_safe_linkedin_message(&stored.body),
-                    id = draft_id,
+                    next = crate::slack::saved::next_slash_hints(draft_id, status::OPEN),
                 )
             }
             UrlChoice::Url(new_url) => {
@@ -1103,10 +1101,10 @@ Next:\n\n\
                 );
                 format!(
                     "{body}\n\n\
-Next:\n\n\
-/accept {id}",
+:link: Link updated.\n\n\
+{next}",
                     body = slack_paste_safe_linkedin_message(&stored.body),
-                    id = draft_id,
+                    next = crate::slack::saved::next_slash_hints(draft_id, status::OPEN),
                 )
             }
         }
@@ -1420,6 +1418,17 @@ fn looks_like_draft_status_ask(text: &str) -> bool {
         || lower.contains("etat")
         || lower.contains("où sommes")
         || lower.contains("ou sommes")
+}
+
+/// Load draft row and build the Slack-fenced manual `LinkedIn` paste block.
+fn paste_block_for_draft(db_path: &std::path::Path, draft_id: &str) -> String {
+    let Ok(store) = DraftStore::open(db_path) else {
+        return String::new();
+    };
+    let Ok(Some(row)) = store.get(draft_id) else {
+        return String::new();
+    };
+    linkedin_manual_paste_message(&row.body, &row.model, row.tokens_in, row.tokens_out)
 }
 
 #[cfg(test)]

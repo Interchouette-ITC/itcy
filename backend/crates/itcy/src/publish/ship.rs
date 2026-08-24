@@ -4,8 +4,8 @@
 //! Ship orchestration after BAT merge (mode resolved per call; mock/live switchable).
 
 use super::{
-    build_publisher, resolve_publish_mode_agile, PublishAuditStore, PublishAuditWrite,
-    PublishError, PublishMode, PublishRequest, PublishResult,
+    build_publisher, linkedin_text_for_api, resolve_publish_mode_agile, PublishAuditStore,
+    PublishAuditWrite, PublishError, PublishMode, PublishRequest, PublishResult,
 };
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
@@ -28,13 +28,14 @@ pub struct ShipOptions {
 pub async fn ship_company_post(
     state_db_path: impl AsRef<Path>,
     mode_fallback: &str,
-    request: PublishRequest,
+    mut request: PublishRequest,
     options: ShipOptions,
 ) -> Result<PublishResult, PublishError> {
     let mode = match options.mode_override {
         Some(m) => m,
         None => resolve_publish_mode_agile(mode_fallback)?,
     };
+    request.body = linkedin_text_for_api(&request.body);
     info!(
         mode = mode.as_str(),
         draft_id = request.draft_id.as_deref().unwrap_or(""),
@@ -161,5 +162,11 @@ mod tests {
         let row = store.get(1).unwrap().expect("row");
         assert_eq!(row.status, "ok");
         assert_eq!(row.mode, "playground");
+        assert!(
+            !row.body_preview.contains("Draft ID:"),
+            "ship must strip id header: {}",
+            row.body_preview
+        );
+        assert!(row.body_preview.contains("hi"), "{}", row.body_preview);
     }
 }

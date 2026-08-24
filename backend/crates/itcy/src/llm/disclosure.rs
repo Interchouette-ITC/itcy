@@ -26,6 +26,13 @@ pub fn format_disclosure_parts(model_label: &str, tokens_in: u32, tokens_out: u3
     format!("{DISCLOSURE_PREFIX}{label} - tokens in:{tokens_in} out:{tokens_out}")
 }
 
+/// Disclosure for manual `LinkedIn` paste: token counts in angle brackets after the model.
+#[must_use]
+pub fn format_disclosure_paste(model_label: &str, tokens_in: u32, tokens_out: u32) -> String {
+    let label = disclosure_model_label(model_label);
+    format!("{DISCLOSURE_PREFIX}{label} <in:{tokens_in} out:{tokens_out}>")
+}
+
 /// Prefer the writer/rework segment from a compound `model` column (`load=… | tweet=…`).
 #[must_use]
 pub fn disclosure_model_label(model: &str) -> &str {
@@ -108,6 +115,10 @@ mod tests {
         assert_eq!(
             line,
             "Written by AI - ITCy - model groq/llama-3.3-70b-versatile - tokens in:12 out:34"
+        );
+        assert_eq!(
+            format_disclosure_paste("groq/llama-3.3-70b-versatile", 12, 34),
+            "Written by AI - ITCy - model groq/llama-3.3-70b-versatile <in:12 out:34>"
         );
         let full = with_disclosure("Hello", &trace);
         assert!(full.starts_with("Hello\n\nWritten by AI"));

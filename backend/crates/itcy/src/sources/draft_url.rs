@@ -241,10 +241,20 @@ fn strip_inline_markdown_links(line: &str) -> String {
     while let Some(open) = rest.find('[') {
         out.push_str(&rest[..open]);
         let after = &rest[open..];
-        if let Some(mid) = after.find("](https://") {
-            if let Some(close) = after[mid..].find(')') {
-                // Drop `[label](url)` entirely (URL is managed as the bare line).
-                rest = &after[mid + close + 1..];
+        // `[label](href)` — https href: drop whole token (bare line owns the URL);
+        // empty / non-https href: keep label as plain text.
+        if let Some(mid) = after.find("](") {
+            let label = &after[1..mid];
+            let href_start = mid + 2;
+            if let Some(close_rel) = after[href_start..].find(')') {
+                let href = after[href_start..href_start + close_rel].trim();
+                let after_token = &after[href_start + close_rel + 1..];
+                if href.starts_with("https://") {
+                    rest = after_token;
+                    continue;
+                }
+                out.push_str(label);
+                rest = after_token;
                 continue;
             }
         }
@@ -296,6 +306,32 @@ mod tests {
         assert!(head.contains("https://new.example/b"));
         assert!(!head.contains("old.example"));
         assert!(!head.contains("]("));
+    }
+
+    #[test]
+    fn empty_markdown_keeps_label_and_one_bare_url() {
+        let cite = "https://github.com/Interchouette-ITC/rangular";
+        let body =
+            format!("The project, [rangular](), is a tiny experiment.\n\n{cite}\n\nLink: 1\n");
+        let out = set_single_in_post_url(&body, cite);
+        let head = out.split("\nLink:").next().unwrap();
+        assert!(head.contains("rangular"));
+        assert!(!head.contains("[rangular]"));
+        assert!(!head.contains("]()"));
+        assert!(!head.contains("]("));
+        assert_eq!(
+            head.lines()
+                .filter(|l| l.trim().starts_with("https://"))
+                .count(),
+            1
+        );
+        assert!(head.contains(cite));
+    }
+
+    #[test]
+    fn non_https_markdown_keeps_label() {
+        let out = strip_inline_markdown_links("see [docs](relative/path) now");
+        assert_eq!(out, "see docs now");
     }
 
     #[test]
