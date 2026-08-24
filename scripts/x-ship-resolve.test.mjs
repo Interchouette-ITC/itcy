@@ -11,7 +11,7 @@ import {
   statusFromHref,
   statusIdNewer,
   stripQuotedStatusUrl,
-} from "./lib/x-ship-resolve.mjs";
+} from "./x-ship-resolve.mjs";
 
 test("detectPostRejectReason catches duplicate-post copy", () => {
   const t =

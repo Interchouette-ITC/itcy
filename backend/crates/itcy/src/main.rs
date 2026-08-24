@@ -200,6 +200,11 @@ async fn main() -> Result<()> {
         tokio::spawn(itcy::sources::run_tor_listen_watch_loop());
     }
     {
+        let mcp = itcy::publish::probe_linkedin_mcp();
+        itcy::publish::log_linkedin_mcp_status(&mcp);
+        tokio::spawn(itcy::publish::run_linkedin_mcp_watch_loop());
+    }
+    {
         let tw = itcy::sources::probe_twitter_vault();
         itcy::sources::log_twitter_vault_status(&tw);
     }

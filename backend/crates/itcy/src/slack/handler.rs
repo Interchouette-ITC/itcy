@@ -1157,6 +1157,7 @@ Next:\n\n\
             .map_or_else(|_| "playground".into(), |m| m.as_str().to_string());
         let x_publish_mode = crate::publish::resolve_x_publish_mode("playground")
             .map_or_else(|_| "playground".into(), |m| m.as_str().to_string());
+        let linkedin_mcp = crate::publish::probe_linkedin_mcp();
         status_text(&StatusSnapshot {
             bind: &self.config.bind,
             channel_id: &self.config.channel_id,
@@ -1173,6 +1174,7 @@ Next:\n\n\
             source_count,
             linkedin_publish_mode: &linkedin_publish_mode,
             x_publish_mode: &x_publish_mode,
+            linkedin_mcp: &linkedin_mcp.detail,
         })
     }
 

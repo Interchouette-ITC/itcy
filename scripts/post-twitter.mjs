@@ -12,7 +12,7 @@ import {
   resolvePostedStatus,
   statusIdNewer,
   stripQuotedStatusUrl,
-} from "./lib/x-ship-resolve.mjs";
+} from "./x-ship-resolve.mjs";
 
 const requireFrom = process.env.PLAYWRIGHT_REQUIRE_FROM;
 if (!requireFrom) {

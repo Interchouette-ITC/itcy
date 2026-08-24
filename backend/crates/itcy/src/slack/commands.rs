@@ -1002,6 +1002,8 @@ pub struct StatusSnapshot<'a> {
     pub source_count: u64,
     pub linkedin_publish_mode: &'a str,
     pub x_publish_mode: &'a str,
+    /// `LinkedIn` MCP listen detail (`ok` or down reason).
+    pub linkedin_mcp: &'a str,
 }
 
 /// Builds a status reply (no secrets).
@@ -1027,6 +1029,7 @@ pub fn status_text(snap: &StatusSnapshot<'_>) -> String {
          • draft route head: `{draft_head}`\n\
          • draft route: {draft_route}\n\
          • LinkedIn publish: `{li_mode}`\n\
+         • LinkedIn MCP: `{li_mcp}`\n\
          • X publish: `{x_mode}`\n\
          • role: runtime only (slash workflows + freeform chat)",
         bind = snap.bind,
@@ -1046,6 +1049,7 @@ pub fn status_text(snap: &StatusSnapshot<'_>) -> String {
         draft_head = snap.draft_route_head,
         draft_route = snap.draft_route,
         li_mode = snap.linkedin_publish_mode,
+        li_mcp = snap.linkedin_mcp,
         x_mode = snap.x_publish_mode,
     )
 }
