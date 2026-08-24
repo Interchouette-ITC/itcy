@@ -38,7 +38,10 @@ pub struct LinkedInCommentContext {
 pub fn parse_linkedin_comment_url(raw: &str) -> Result<LinkedInCommentTarget, String> {
     let t = raw.trim();
     if t.is_empty() {
-        return Err("usage: /accept_comment_reply <linkedin activity https://…>".into());
+        return Err(
+            "usage: /accept_comment_reply or /ship_comment_reply <linkedin activity https://…>"
+                .into(),
+        );
     }
     if !(t.starts_with("http://") || t.starts_with("https://")) {
         return Err("pass a full https:// LinkedIn URL".into());
@@ -431,6 +434,52 @@ pub async fn draft_comment_reply_for_slack(
     llm: &Arc<FailoverRouter>,
     url: &str,
 ) -> Result<String, String> {
+    let (_target, ctx, reply) = draft_comment_reply_parts(llm, url).await?;
+    Ok(format_slack_draft(&ctx, &reply))
+}
+
+/// Draft + ship a threaded reply via local `LinkedIn` MCP (`reply_to_comment`).
+///
+/// # Errors
+///
+/// Returns an operator-facing message on bad URL, missing comment id, draft failure, or MCP ship.
+pub async fn ship_comment_reply_via_mcp(
+    llm: &Arc<FailoverRouter>,
+    url: &str,
+) -> Result<String, String> {
+    let (target, ctx, reply) = draft_comment_reply_parts(llm, url).await?;
+    let comment_id = target.comment_id.as_deref().ok_or_else(|| {
+        "URL must include dashCommentUrn (threaded reply needs a parent comment id)".to_string()
+    })?;
+    let post_urn = crate::publish::activity_post_urn(&target.activity_id);
+    let parent_urn = crate::publish::parent_comment_urn(&target.activity_id, comment_id);
+    let client = crate::publish::LinkedInMcpClient::new();
+    let mcp_detail = client
+        .reply_to_comment(&post_urn, &parent_urn, &reply)
+        .await
+        .map_err(|e| format!("LinkedIn MCP reply_to_comment: {e}"))?;
+    Ok(format!(
+        "Comment reply shipped via LinkedIn MCP\n\n\
+Post:\n{post}\n\n\
+Comment ({author}): {comment}\n\n\
+Reply:\n{reply}\n\n\
+MCP: {mcp}\n\
+post_urn={post_urn}\n\
+parent_comment_urn={parent_urn}",
+        post = ctx.parent_post,
+        author = ctx.comment_author,
+        comment = ctx.comment_body,
+        reply = reply.trim(),
+        mcp = mcp_detail.trim(),
+        post_urn = post_urn,
+        parent_urn = parent_urn,
+    ))
+}
+
+async fn draft_comment_reply_parts(
+    llm: &Arc<FailoverRouter>,
+    url: &str,
+) -> Result<(LinkedInCommentTarget, LinkedInCommentContext, String), String> {
     let target = parse_linkedin_comment_url(url)?;
     info!(
         activity = %target.activity_id,
@@ -451,7 +500,7 @@ Paste the comment text in chat if you still want a draft."
         );
     };
     let reply = generate_reply(llm, &ctx).await?;
-    Ok(format_slack_draft(&ctx, &reply))
+    Ok((target, ctx, reply))
 }
 
 async fn generate_reply(
@@ -586,5 +635,15 @@ Reply
         assert!(ensure_one_emoji("plain text").contains('🦉'));
         assert_eq!(count_emoji(&ensure_one_emoji("hi 🦉 there 🦀")), 1);
         assert_eq!(count_emoji(&ensure_one_emoji("already 🦉")), 1);
+    }
+
+    #[test]
+    fn parent_comment_urn_from_parsed_ids() {
+        let t = parse_linkedin_comment_url(SAMPLE_URL).expect("parse");
+        let cid = t.comment_id.as_deref().expect("comment");
+        assert_eq!(
+            crate::publish::parent_comment_urn(&t.activity_id, cid),
+            "urn:li:comment:(urn:li:activity:7496571584363741184,7496664683873992704)"
+        );
     }
 }

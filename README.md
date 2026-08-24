@@ -4,6 +4,8 @@ AI operator for **Interchouette ITC** company LinkedIn and X.
 
 ITCy drafts posts and tweets, opens a publications pull request, and ships only after **BAT** (Approve from **gRoussac**). Public assets carry an AI disclosure line. Site: [interchouette.net](https://interchouette.net/).
 
+LinkedIn member publish (Sign In + Share) uses a local HTTP MCP based on [vahabcore/linkedin-mcp-server](https://github.com/vahabcore/linkedin-mcp-server). Thank you Abdulvahab Shaikh for that server.
+
 ![ITCy](docs/assets/itcy-mascot.png)
 
 | | |

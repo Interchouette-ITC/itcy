@@ -50,6 +50,10 @@ pub enum OperatorCommand {
     AcceptCommentReply {
         url: String,
     },
+    /// Draft + ship a reply via `LinkedIn` MCP `reply_to_comment` (needs dashCommentUrn).
+    ShipCommentReply {
+        url: String,
+    },
     /// Tor enrich one personal `LinkedIn` post URL into corpus.
     Enrich {
         url: String,
@@ -122,6 +126,7 @@ pub const fn slash_command_name(cmd: &OperatorCommand) -> &'static str {
         OperatorCommand::ProposeDraft { .. } => "/propose_draft",
         OperatorCommand::DailyDigest => "/daily_digest",
         OperatorCommand::AcceptCommentReply { .. } => "/accept_comment_reply",
+        OperatorCommand::ShipCommentReply { .. } => "/ship_comment_reply",
         OperatorCommand::Enrich { .. } => "/enrich",
         OperatorCommand::Ingest { .. } => "/ingest",
         OperatorCommand::TweetAbout { .. } => "/tweet_about",
@@ -164,6 +169,7 @@ pub const KNOWN_SLASH_COMMANDS: &[&str] = &[
     "retry_bat",
     "daily_digest",
     "accept_comment_reply",
+    "ship_comment_reply",
     "enrich",
     "ingest",
     "handle_add",
@@ -264,6 +270,9 @@ pub fn command_ack_text(cmd: &OperatorCommand) -> String {
         OperatorCommand::DailyDigest => "Received /daily_digest".into(),
         OperatorCommand::AcceptCommentReply { url } => {
             format!("Received /accept_comment_reply {url}")
+        }
+        OperatorCommand::ShipCommentReply { url } => {
+            format!("Received /ship_comment_reply {url}")
         }
         OperatorCommand::Enrich { url } => format!("Received /enrich {url}"),
         OperatorCommand::Ingest { url } => format!("Received /ingest {url}"),
@@ -503,6 +512,10 @@ pub fn parse_slash_command(command: &str, text: &str) -> Result<OperatorCommand,
         "accept_comment_reply" => {
             let url = parse_comment_reply_url(args)?;
             Ok(OperatorCommand::AcceptCommentReply { url })
+        }
+        "ship_comment_reply" => {
+            let url = parse_comment_reply_url(args)?;
+            Ok(OperatorCommand::ShipCommentReply { url })
         }
         "enrich" => {
             let url = parse_slash_url(args)?;
@@ -967,6 +980,7 @@ pub const fn help_text() -> &'static str {
      • `/propose_tweet` - new tweet from corpus\n\
      • `/propose_tweet <DIGEST-…>, <1|1,3>` or `/propose_tweet <N>` - new tweets from that digest's propositions\n\
      • `/accept_comment_reply <https://…>` - fetch LinkedIn comment, draft a short paste reply (no ship)\n\
+     • `/ship_comment_reply <https://…>` - draft + ship reply via LinkedIn MCP (needs dashCommentUrn)\n\
      *Freeform chat:* anything else (informal / informational; tools OK). No draft/BAT/corpus ingest here."
 }
 
@@ -1347,6 +1361,17 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+        let shipped = parse_slash_command(
+            "/ship_comment_reply",
+            "https://www.linkedin.com/feed/update/urn:li:activity:123/?dashCommentUrn=urn%3Ali%3Afsd_comment%3A%281%2Curn%3Ali%3Aactivity%3A123%29",
+        )
+        .unwrap();
+        match shipped {
+            OperatorCommand::ShipCommentReply { url } => {
+                assert!(url.contains("activity:123"));
+            }
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]
@@ -1442,6 +1467,7 @@ mod tests {
         assert!(h.contains("/draft_about_itc"));
         assert!(h.contains("/draft_tweet_about_itc"));
         assert!(h.contains("/accept_comment_reply"));
+        assert!(h.contains("/ship_comment_reply"));
         assert!(h.contains("/propose_draft"));
         assert!(h.contains("/daily_digest"));
         assert!(h.contains("/tweet_about"));
@@ -1807,6 +1833,12 @@ mod tests {
                     url: "https://www.linkedin.com/feed/update/urn:li:activity:1".into(),
                 },
                 "Received /accept_comment_reply https://www.linkedin.com/feed/update/urn:li:activity:1",
+            ),
+            (
+                OperatorCommand::ShipCommentReply {
+                    url: "https://www.linkedin.com/feed/update/urn:li:activity:1".into(),
+                },
+                "Received /ship_comment_reply https://www.linkedin.com/feed/update/urn:li:activity:1",
             ),
             (
                 OperatorCommand::Enrich {

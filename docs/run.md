@@ -33,6 +33,8 @@ Committed defaults: [`backend/config.toml`](../backend/config.toml).
 
 Copy env names from `backend/config.toml` (`*_env` fields). Do not commit `.env`, `.linkedin`, or `.twitter`.
 
+Production LinkedIn ship can call the local MCP at `http://127.0.0.1:4780/mcp` (`[linkedin] ship_via = "mcp"`). Start it with `.cursor/scripts/linkedin-vahabcore-up.sh` after `LINKEDIN_ACCESS_TOKEN` is set. That MCP is [vahabcore/linkedin-mcp-server](https://github.com/vahabcore/linkedin-mcp-server) (thanks Abdulvahab Shaikh). Slack `/ship_comment_reply` drafts a reply then calls MCP `reply_to_comment`.
+
 ## Tor
 
 `/enrich` fetches personal LinkedIn post URLs over Tor.
