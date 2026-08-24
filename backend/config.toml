@@ -39,10 +39,10 @@ draft_route = [
 ]
 
 # After BAT. playground = fork + soft ship. production = org + real LinkedIn via MCP.
-# REST Community Management client stays in code unused. Override: ITCY_LINKEDIN_PUBLISH_MODE.
+# Live cutover: set ITCY_LINKEDIN_PUBLISH_MODE / ITCY_X_PUBLISH_MODE in gitignored `.env`.
 [linkedin]
-publish_mode = "production"
+publish_mode = "playground"
 mcp_url = "http://127.0.0.1:4780/mcp"
 
 [x]
-publish_mode = "production"
+publish_mode = "playground"

@@ -376,8 +376,6 @@ fn truncate_for_log(s: &str, max: usize) -> String {
     }
 }
 
-/// Loopback MCP URL helpers and tool client.
-
 fn read_mcp_url_from_config() -> Option<String> {
     for path in super::ship::config_toml_candidates() {
         let Ok(raw) = std::fs::read_to_string(&path) else {

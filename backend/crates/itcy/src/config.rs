@@ -170,7 +170,7 @@ impl Default for LinkedInConfig {
 }
 
 fn default_publish_mode() -> String {
-    "production".into()
+    "playground".into()
 }
 
 fn default_linkedin_mcp_url() -> String {
