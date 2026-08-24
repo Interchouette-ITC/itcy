@@ -1237,8 +1237,7 @@ Draft `{draft_id}` for subject `{subject}` as `{draft_dir}/` on the **drafts** b
 \n\
 Opened by ITCy. Soft debug = **playground** (fork Interchouette: `drafts` + `posts`). \
 Production = org Interchouette-ITC: same branch names (`drafts` + `posts`, real artefacts). \
-On Approve, ITCy writes a date-sharded `<POST-…>/` on `posts` of the active remote and ships. \
-Live needs CM token.\n"
+On Approve, ITCy writes a date-sharded `<POST-…>/` on `posts` of the active remote and ships.\n"
     )
 }
 
@@ -1416,10 +1415,11 @@ mod tests {
     fn playground_mode_follows_publish_mode_and_override() {
         let _guard = env_lock().lock().expect("env lock");
         // SAFETY: serialized by env_lock; restored before unlock.
+        // Drive only via env - do not depend on committed config.toml defaults.
         unsafe {
             std::env::remove_var("ITCY_BAT_PLAYGROUND");
-            std::env::remove_var("ITCY_LINKEDIN_PUBLISH_MODE");
             std::env::remove_var("ITCY_BAT_X_PLAYGROUND");
+            std::env::set_var("ITCY_LINKEDIN_PUBLISH_MODE", "playground");
             std::env::set_var("ITCY_X_PUBLISH_MODE", "production");
         }
         assert!(is_playground_mode());
