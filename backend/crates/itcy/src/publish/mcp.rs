@@ -376,18 +376,6 @@ fn truncate_for_log(s: &str, max: usize) -> String {
     }
 }
 
-/// True when production ship should call the local MCP instead of REST.
-#[must_use]
-pub fn ship_via_mcp() -> bool {
-    if let Ok(raw) = std::env::var("ITCY_LINKEDIN_SHIP_VIA") {
-        let v = raw.trim().to_ascii_lowercase();
-        if !v.is_empty() {
-            return v == "mcp";
-        }
-    }
-    read_ship_via_from_config() == "mcp"
-}
-
 fn read_mcp_url_from_config() -> Option<String> {
     for path in super::ship::config_toml_candidates() {
         let Ok(raw) = std::fs::read_to_string(&path) else {
@@ -425,43 +413,6 @@ fn parse_mcp_url_toml(raw: &str) -> Option<String> {
     None
 }
 
-fn read_ship_via_from_config() -> String {
-    for path in super::ship::config_toml_candidates() {
-        let Ok(raw) = std::fs::read_to_string(&path) else {
-            continue;
-        };
-        if let Some(v) = parse_ship_via_toml(&raw) {
-            return v;
-        }
-    }
-    "mcp".into()
-}
-
-fn parse_ship_via_toml(raw: &str) -> Option<String> {
-    let mut in_section = false;
-    for line in raw.lines() {
-        let line = line.trim();
-        if line.starts_with('#') || line.is_empty() {
-            continue;
-        }
-        if line.starts_with('[') {
-            in_section = line == "[linkedin]";
-            continue;
-        }
-        if !in_section {
-            continue;
-        }
-        if let Some(rest) = line.strip_prefix("ship_via") {
-            let rest = rest.trim().trim_start_matches('=').trim();
-            let v = rest.trim_matches('"').trim_matches('\'').trim();
-            if !v.is_empty() {
-                return Some(v.to_ascii_lowercase());
-            }
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -485,11 +436,15 @@ mod tests {
     }
 
     #[test]
-    fn parse_ship_via_linkedin_section() {
-        let raw = "[linkedin]\npublish_mode = \"playground\"\nship_via = \"mcp\"\n";
-        assert_eq!(parse_ship_via_toml(raw).as_deref(), Some("mcp"));
+    fn parse_mcp_url_linkedin_section() {
+        let raw =
+            "[linkedin]\npublish_mode = \"production\"\nmcp_url = \"http://127.0.0.1:4780/mcp\"\n";
         assert_eq!(
-            parse_ship_via_toml("[x]\nship_via = \"mcp\"\n").as_deref(),
+            parse_mcp_url_toml(raw).as_deref(),
+            Some("http://127.0.0.1:4780/mcp")
+        );
+        assert_eq!(
+            parse_mcp_url_toml("[x]\nmcp_url = \"http://127.0.0.1:4780/mcp\"\n").as_deref(),
             None
         );
     }

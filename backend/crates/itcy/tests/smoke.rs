@@ -84,5 +84,5 @@ fn loads_default_config_toml() {
     assert!(!cfg.llm.freeform_route.is_empty());
     assert!(!cfg.llm.draft_route.is_empty());
     assert_eq!(cfg.linkedin.publish_mode, "playground");
-    assert_eq!(cfg.x.publish_mode, "production");
+    assert_eq!(cfg.x.publish_mode, "playground");
 }

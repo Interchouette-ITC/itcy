@@ -155,9 +155,6 @@ pub struct LinkedInConfig {
     /// `playground` (default) or `production`. Override with `ITCY_LINKEDIN_PUBLISH_MODE`.
     #[serde(default = "default_publish_mode")]
     pub publish_mode: String,
-    /// `mcp` (local HTTP MCP) or `rest` (Community Management client).
-    #[serde(default = "default_linkedin_ship_via")]
-    pub ship_via: String,
     /// JSON-RPC MCP URL. Override with `ITCY_LINKEDIN_MCP_URL`.
     #[serde(default = "default_linkedin_mcp_url")]
     pub mcp_url: String,
@@ -167,7 +164,6 @@ impl Default for LinkedInConfig {
     fn default() -> Self {
         Self {
             publish_mode: default_publish_mode(),
-            ship_via: default_linkedin_ship_via(),
             mcp_url: default_linkedin_mcp_url(),
         }
     }
@@ -175,10 +171,6 @@ impl Default for LinkedInConfig {
 
 fn default_publish_mode() -> String {
     "playground".into()
-}
-
-fn default_linkedin_ship_via() -> String {
-    "mcp".into()
 }
 
 fn default_linkedin_mcp_url() -> String {

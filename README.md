@@ -1,20 +1,37 @@
 # ITCy
 
-AI operator for **Interchouette ITC** on LinkedIn and X.
+<p align="center">
+  <img src="docs/assets/itcy-mascot.png" alt="ITCy owl mascot" width="320" />
+</p>
 
-On **LinkedIn**, ITCy drafts company posts and threaded comment replies in the operator loop (draft, rework, accept), then publishes via Sign In + Share once the gate clears. On **X**, it drafts tweets for the same company voice and the same review path. Nothing lands live until a publications pull request is open and **BAT** passes: Approve from **gRoussac**. PR comments are review notes only; they do not ship. Public assets carry an AI disclosure line. Site: [interchouette.net](https://interchouette.net/).
+<p align="center">
+  <strong>AI operator for Interchouette ITC</strong><br />
+  Company voice on LinkedIn and X - draft, rework, accept, then ship.
+</p>
+
+<p align="center">
+  <a href="https://interchouette.net/">interchouette.net</a>
+  ·
+  <a href="docs/run.md">Run</a>
+  ·
+  <a href="docs/principles.md">Principles</a>
+  ·
+  <a href="LICENSE">License</a>
+</p>
+
+---
+
+ITCy drafts LinkedIn company posts and threaded comment replies, and tweets in the same operator loop. Nothing goes live until a publications pull request is open and **BAT** passes: Approve from **gRoussac**. PR comments are review notes only; they do not ship. Public assets carry an AI disclosure line.
 
 LinkedIn member publish uses a local HTTP MCP based on [vahabcore/linkedin-mcp-server](https://github.com/vahabcore/linkedin-mcp-server). Thank you [vahabcore](https://github.com/vahabcore) for that server.
 
-<img src="docs/assets/itcy-mascot.png" alt="ITCy" width="280">
+## Repos
 
 | | |
 | --- | --- |
 | Product | [Interchouette-ITC/itcy](https://github.com/Interchouette-ITC/itcy) |
-| Terminal | [Interchouette-ITC/itcy-tui](https://github.com/Interchouette-ITC/itcy-tui) (publications browser and live status) |
+| Terminal | [Interchouette-ITC/itcy-tui](https://github.com/Interchouette-ITC/itcy-tui) |
 | Publications | [Interchouette-ITC/itcy-publications](https://github.com/Interchouette-ITC/itcy-publications) |
-| Run | [docs/run.md](docs/run.md) |
-| Principles | [docs/principles.md](docs/principles.md) |
 | SQLite | [docs/sql.md](docs/sql.md) |
 
 ## Run

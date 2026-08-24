@@ -3,8 +3,8 @@
 
 //! Company-page `LinkedIn` publisher (playground and production modes).
 //!
-//! Default mode is **playground** (no network). Production ships via local MCP
-//! (`ship_via = "mcp"`) or the REST client (`ship_via = "rest"`).
+//! Default mode is **playground** (no network). Production ships via local MCP.
+//! The REST Community Management client remains in-tree unused.
 //!
 //! Mode is **not** a one-way latch: env, `config.toml`, and per-call overrides
 //! can flip playground ↔ production without a permanent lock.
@@ -205,13 +205,7 @@ fn parse_section_publish_mode_toml(raw: &str, section: &str) -> Option<String> {
 pub fn build_publisher(mode: PublishMode) -> Result<Arc<dyn Publisher>, PublishError> {
     match mode {
         PublishMode::Playground => Ok(Arc::new(PlaygroundPublisher)),
-        PublishMode::Production => {
-            if mcp::ship_via_mcp() {
-                Ok(Arc::new(McpLinkedInPublisher::new()))
-            } else {
-                Ok(Arc::new(ProductionLinkedInPublisher::try_new()?))
-            }
-        }
+        PublishMode::Production => Ok(Arc::new(McpLinkedInPublisher::new())),
     }
 }
 
