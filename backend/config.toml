@@ -39,9 +39,10 @@ draft_route = [
 ]
 
 # After BAT. playground = fork + soft ship. production = org + real channel.
+# LinkedIn production ships via local MCP (ship_via = "mcp"). REST CM client stays in code unused.
 # Live override in `.env`: ITCY_LINKEDIN_PUBLISH_MODE / ITCY_X_PUBLISH_MODE.
 [linkedin]
-publish_mode = "playground"
+publish_mode = "production"
 ship_via = "mcp"
 mcp_url = "http://127.0.0.1:4780/mcp"
 
