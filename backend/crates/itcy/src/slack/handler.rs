@@ -496,6 +496,7 @@ impl SlackRuntime {
             OperatorCommand::AcceptCommentReply { url } => {
                 self.accept_comment_reply_reply(&url).await
             }
+            OperatorCommand::ShipCommentReply { url } => self.ship_comment_reply_reply(&url).await,
             OperatorCommand::Enrich { url } => self.enrich_reply(&url).await,
             OperatorCommand::Ingest { url } => self.ingest_reply(&url).await,
             OperatorCommand::HandleAdd { raw } => self.handle_add_reply(&raw),
@@ -615,6 +616,13 @@ impl SlackRuntime {
         {
             Ok(msg) => msg,
             Err(e) => format!("`/accept_comment_reply` failed: {e}"),
+        }
+    }
+
+    async fn ship_comment_reply_reply(&self, url: &str) -> String {
+        match crate::sources::linkedin_comment::ship_comment_reply_via_mcp(&self.llm, url).await {
+            Ok(msg) => msg,
+            Err(e) => format!("`/ship_comment_reply` failed: {e}"),
         }
     }
 

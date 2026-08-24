@@ -42,6 +42,8 @@ draft_route = [
 # Live override in `.env`: ITCY_LINKEDIN_PUBLISH_MODE / ITCY_X_PUBLISH_MODE.
 [linkedin]
 publish_mode = "playground"
+ship_via = "mcp"
+mcp_url = "http://127.0.0.1:4780/mcp"
 
 [x]
 publish_mode = "production"

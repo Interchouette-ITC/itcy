@@ -3,20 +3,22 @@
 
 //! Company-page `LinkedIn` publisher (playground and production modes).
 //!
-//! Default mode is **playground** (no network). Production needs a Community Management
-//! token in `.linkedin` / env; without it the production client refuses clearly.
+//! Default mode is **playground** (no network). Production ships via local MCP
+//! (`ship_via = "mcp"`) or the REST client (`ship_via = "rest"`).
 //!
 //! Mode is **not** a one-way latch: env, `config.toml`, and per-call overrides
 //! can flip playground ↔ production without a permanent lock.
 
 mod audit;
 mod live;
+mod mcp;
 mod mock;
 mod ship;
 mod x;
 
 pub use audit::{PublishAuditError, PublishAuditRow, PublishAuditStore, PublishAuditWrite};
 pub use live::ProductionLinkedInPublisher;
+pub use mcp::{activity_post_urn, parent_comment_urn, LinkedInMcpClient, McpLinkedInPublisher};
 pub use mock::PlaygroundPublisher;
 pub use ship::{draft_id_from_body, ship_company_post, ShipOptions};
 pub use x::{
@@ -203,7 +205,13 @@ fn parse_section_publish_mode_toml(raw: &str, section: &str) -> Option<String> {
 pub fn build_publisher(mode: PublishMode) -> Result<Arc<dyn Publisher>, PublishError> {
     match mode {
         PublishMode::Playground => Ok(Arc::new(PlaygroundPublisher)),
-        PublishMode::Production => Ok(Arc::new(ProductionLinkedInPublisher::try_new()?)),
+        PublishMode::Production => {
+            if mcp::ship_via_mcp() {
+                Ok(Arc::new(McpLinkedInPublisher::new()))
+            } else {
+                Ok(Arc::new(ProductionLinkedInPublisher::try_new()?))
+            }
+        }
     }
 }
 
