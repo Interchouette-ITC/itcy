@@ -145,6 +145,12 @@ pub fn set_in_post_https_lines(body: &str, urls: &[String]) -> String {
         if is_url_only_line(line) {
             continue;
         }
+        // Keep blank lines (paragraph aeration). Only drop lines that had content but
+        // became empty after stripping an inline cite URL.
+        if line.trim().is_empty() {
+            lines.push(String::new());
+            continue;
+        }
         let cleaned = strip_bare_https_tokens(&strip_inline_markdown_links(line));
         if cleaned.trim().is_empty() {
             continue;
@@ -332,6 +338,24 @@ mod tests {
             !head.contains("look. http"),
             "must not leave glue before URL: {head}"
         );
+    }
+
+    #[test]
+    fn preserves_paragraph_blank_lines_when_normalizing_cite() {
+        let cite =
+            "https://malisper.me/how-we-made-postgres-hundreds-of-times-faster-the-query-engine";
+        let body = format!(
+            "Para one with a win.\n\nPara two about rhythm.\n\nPara three closer look. {cite}\n\nLink: 1\n"
+        );
+        let out = set_single_in_post_url(&body, cite);
+        let head = out.split("\nLink:").next().unwrap();
+        assert!(
+            head.contains(
+                "Para one with a win.\n\nPara two about rhythm.\n\nPara three closer look."
+            ),
+            "aeration must survive cite normalize: {head:?}"
+        );
+        assert_eq!(head.matches(cite).count(), 1);
     }
 
     #[test]
