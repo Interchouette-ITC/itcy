@@ -689,8 +689,8 @@ pub fn apply_brief_handles_to_pack(pack: &mut String, brief: &str, index: &Handl
 ///
 /// Skips the Interchouette brand handle (see [`ensure_linkedin_brand_mention`]).
 /// When the pack only has `x=` (partial registry at draft time), still resolve the
-/// entry's LinkedIn handle from that X handle so cite inject works after the
-/// registry gains a LinkedIn field.
+/// entry's `LinkedIn` handle from that X handle so cite inject works after the
+/// registry gains a `LinkedIn` field.
 #[must_use]
 pub fn ensure_linkedin_handle_from_pack(body: &str, pack: &str, index: &HandlesIndex) -> String {
     let Some(handle) = linkedin_handle_for_pack(pack, index) else {
@@ -794,7 +794,7 @@ fn handle_from_pack(pack: &str, key: &str) -> Option<String> {
     None
 }
 
-/// LinkedIn `@` for the pack: prefer `linkedin=`, else the registry row matched by `x=`.
+/// `LinkedIn` `@` for the pack: prefer `linkedin=`, else the registry row matched by `x=`.
 fn linkedin_handle_for_pack(pack: &str, index: &HandlesIndex) -> Option<String> {
     if let Some(h) = handle_from_pack(pack, "linkedin=") {
         return Some(h);
