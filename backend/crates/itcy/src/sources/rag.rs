@@ -617,7 +617,7 @@ pub async fn build_grounded_draft_with_cite(
     let prefer = resolve_draft_cite_url(forced_cite_url, subject);
     let brief_has_cite = prefer.is_some();
     let (mut research_pack, pack_urls, load_trace) = if let Some(url) = prefer.as_deref() {
-        crate::sources::tweet_load::run_short_cite_load(subject, url, tools).await?
+        crate::sources::tweet_load::run_short_cite_load(subject, url, tools, true).await?
     } else {
         run_load_phase(router, subject, tools, tools_dyn, session_dir.as_ref()).await?
     };

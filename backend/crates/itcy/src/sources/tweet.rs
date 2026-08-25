@@ -58,7 +58,7 @@ pub async fn build_grounded_tweet(
     let subject_https = prefer.is_some();
 
     let (mut research_pack, pack_urls, load_trace) = if let Some(url) = prefer.as_deref() {
-        run_short_cite_load(subject, url, tools).await?
+        run_short_cite_load(subject, url, tools, false).await?
     } else {
         run_load_phase(router, subject, tools, tools_dyn, session_dir.as_ref()).await?
     };
