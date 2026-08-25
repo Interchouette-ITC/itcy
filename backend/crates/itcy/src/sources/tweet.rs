@@ -15,10 +15,10 @@ use crate::prompts::{
 use crate::sources::embed::EmbedClient;
 use crate::sources::rag::{
     begin_load_session_dir, checkpoint_building_pack, end_session_best_effort,
-    resolve_session_draft_id, run_load_phase, GroundedDraft, RagError, MAX_TOOL_ROUNDS,
+    resolve_session_draft_id, run_load_phase, GroundedDraft, RagError,
 };
 use crate::sources::tweet_footer::{
-    aerate_tweet_commentary, compose_tweet_message, ensure_operator_https_lines,
+    aerate_tweet_commentary, coerce_tweet_body, compose_tweet_message, ensure_operator_https_lines,
     extract_brief_cite, in_tweet_publisher_url, operator_https_urls, pick_tweet_cite_options,
     strip_brand_org_at_handles, tweet_body_exploded,
 };
@@ -210,12 +210,7 @@ async fn run_tweet_phase(
     tools: Option<&ItcyTools>,
 ) -> Result<(String, CompletionTrace), RagError> {
     crate::sources::rag::log_pipeline_banner("TWEET (writer)");
-    // Subject already has an https URL: reuse it; writer must not browse/search/corpus away.
-    let tools_dyn: Option<&dyn ToolProvider> = if subject_https {
-        None
-    } else {
-        tools.map(|t| t as &dyn ToolProvider)
-    };
+    // Pack already grounded by LOAD. Writer must not re-search / corpus-drift.
     let user = tweet_user_message(
         research_pack,
         tweet_pack_note(pack_urls.is_empty(), subject_https),
@@ -223,10 +218,10 @@ async fn run_tweet_phase(
     );
     let messages = vec![
         LlmMessage::system(tweet_system_prompt()),
-        LlmMessage::user(user.clone()),
+        LlmMessage::user(user),
     ];
     let (response, trace) = match router
-        .complete_with_tools(TaskKind::Draft, &messages, tools_dyn, MAX_TOOL_ROUNDS)
+        .complete_with_tools(TaskKind::Draft, &messages, None, 0)
         .await
     {
         Ok(v) => v,
@@ -236,35 +231,9 @@ async fn run_tweet_phase(
         }
     };
     let body = scrub_tweet_body(&response.message.content);
-    if !tweet_body_exploded(&body) {
-        return Ok((body, trace));
-    }
-    warn!("load_tweet: writer dumped an essay; retrying tweet-only");
-    let retry_user = format!(
-        "{user}\n\nPREVIOUS OUTPUT WAS REJECTED (essay/ResearchPack). Output ONLY the tweet (3-4 aerated beats + tags + at most ONE bare https). No Sources. No headings."
-    );
-    let retry_messages = vec![
-        LlmMessage::system(tweet_system_prompt()),
-        LlmMessage::user(retry_user),
-    ];
-    let (response, trace) = match router
-        .complete_with_tools(TaskKind::Draft, &retry_messages, tools_dyn, MAX_TOOL_ROUNDS)
-        .await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            end_session_best_effort(
-                tools,
-                session_dir,
-                &format!("tweet writer retry failed: {e}"),
-            )
-            .await;
-            return Err(e.into());
-        }
-    };
-    let body = scrub_tweet_body(&response.message.content);
     if tweet_body_exploded(&body) {
-        return Err(RagError::NotATweet);
+        warn!("load_tweet: writer dump coerced to tweet shape (no retry)");
+        return Ok((coerce_tweet_body(&body, subject), trace));
     }
     Ok((body, trace))
 }

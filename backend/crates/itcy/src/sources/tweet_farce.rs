@@ -15,11 +15,12 @@ use crate::sources::rag::{
     RagError,
 };
 use crate::sources::tweet_footer::{
-    aerate_tweet_commentary, compose_tweet_message, strip_own_x_handle, tweet_body_exploded,
+    aerate_tweet_commentary, coerce_tweet_body, compose_tweet_message, strip_own_x_handle,
+    tweet_body_exploded,
 };
 use crate::tools::ItcyTools;
 use std::path::{Path, PathBuf};
-use tracing::info;
+use tracing::{info, warn};
 
 const FARCE_HANDLES: [&str; 3] = ["@grok", "@cursor_ai", "@elonmusk"];
 
@@ -140,10 +141,12 @@ pub async fn build_farce_tweet(
     let (body_raw, tweet_trace) =
         run_farce_phase(router, theme, session_dir.as_ref(), tools).await?;
     let body = ensure_farce_mentions(&scrub_farce_body(&body_raw));
-    if tweet_body_exploded(&body) {
-        end_session_best_effort(tools, session_dir.as_ref(), "farce: exploded essay").await;
-        return Err(RagError::NotATweet);
-    }
+    let body = if tweet_body_exploded(&body) {
+        warn!("farce: writer dump coerced to tweet shape (no retry)");
+        ensure_farce_mentions(&coerce_tweet_body(&body, &subject))
+    } else {
+        body
+    };
     debug_assert!(farce_has_required_mentions(&body));
     let tweet_id = resolve_session_draft_id(tools, db_path).await;
     end_session_best_effort(
@@ -194,29 +197,11 @@ async fn run_farce_phase(
         }
     };
     let body = scrub_farce_body(&response.message.content);
-    if !tweet_body_exploded(&body) {
-        // Mentions are ensured after this phase; one pass is enough when the gag is short.
-        return Ok((body, trace));
+    if tweet_body_exploded(&body) {
+        warn!("farce: writer dump coerced (no retry)");
+        return Ok((coerce_tweet_body(&body, theme), trace));
     }
-    let retry_user = format!(
-        "{user}\n\nPREVIOUS OUTPUT REJECTED (essay). Output ONLY a short joke tweet \
-(target 280). First line: @grok @cursor_ai @elonmusk. No https. No essay."
-    );
-    let retry_messages = vec![
-        LlmMessage::system(farce_system_prompt()),
-        LlmMessage::user(retry_user),
-    ];
-    let (response, trace) = match router
-        .complete_with_tools(TaskKind::Draft, &retry_messages, None, 0)
-        .await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            end_session_best_effort(tools, session_dir, &format!("farce retry failed: {e}")).await;
-            return Err(e.into());
-        }
-    };
-    Ok((scrub_farce_body(&response.message.content), trace))
+    Ok((body, trace))
 }
 
 /// True when a stored tweet was built by `/tweet_farce` (pack stamp or handles).

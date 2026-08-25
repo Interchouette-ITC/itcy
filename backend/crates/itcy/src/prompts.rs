@@ -353,6 +353,18 @@ mod tests {
             TWEET_SYSTEM_CORE.contains("/propose_tweet")
                 || TWEET_USER_TMPL.contains("propose_tweet")
         );
+        assert!(
+            !TWEET_USER_TMPL.contains("Call corpus_search once"),
+            "tweet writer must not mandate corpus_search"
+        );
+        assert!(
+            TWEET_SYSTEM_CORE.contains("Do **not** call `web_search`")
+                || TWEET_SYSTEM_CORE
+                    .to_ascii_lowercase()
+                    .contains("writer tools")
+                || TWEET_SYSTEM_CORE.contains("none in this turn"),
+            "tweet writer must not invite second SERP"
+        );
         assert!(TWEET_FARCE_SYSTEM_CORE.contains("@grok"));
         assert!(TWEET_FARCE_SYSTEM_CORE.contains("@cursor_ai"));
         assert!(TWEET_FARCE_SYSTEM_CORE.contains("@elonmusk"));

@@ -60,6 +60,11 @@ pub async fn accept_draft(
     db_path: &Path,
     draft_id: &str,
 ) -> Result<BatSubmitResult, BatSubmitError> {
+    if crate::sources::reply_comment::is_reply_id(draft_id) {
+        return Err(BatSubmitError::Gate(
+            "CREPLY-/XREPLY- ship via `/accept` (direct); not BAT".into(),
+        ));
+    }
     if draft_id.starts_with("TWEET-") {
         return Err(BatSubmitError::Gate(
             "use `/accept_tweet` for TWEET- ids (not `/accept_draft`)".into(),
@@ -77,6 +82,11 @@ pub async fn accept_tweet(
     db_path: &Path,
     tweet_id: &str,
 ) -> Result<BatSubmitResult, BatSubmitError> {
+    if crate::sources::reply_comment::is_reply_id(tweet_id) {
+        return Err(BatSubmitError::Gate(
+            "CREPLY-/XREPLY- ship via `/accept` (direct); not BAT".into(),
+        ));
+    }
     if tweet_id.starts_with("DRAFT-") {
         return Err(BatSubmitError::Gate(
             "use `/accept_draft` for DRAFT- ids (not `/accept_tweet`)".into(),
@@ -428,4 +438,29 @@ async fn resolve_existing_pr(
         }
     }
     Ok(client.find_open_pr_by_head(expected_owner, branch).await?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn bat_submit_rejects_reply_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("runtime.db");
+        let err = accept_draft(&db, "CREPLY-20260825-000001")
+            .await
+            .expect_err("CREPLY must not BAT");
+        assert!(
+            format!("{err}").contains("CREPLY") || format!("{err}").contains("direct"),
+            "{err}"
+        );
+        let err = accept_tweet(&db, "XREPLY-20260825-000001")
+            .await
+            .expect_err("XREPLY must not BAT");
+        assert!(
+            format!("{err}").contains("XREPLY") || format!("{err}").contains("direct"),
+            "{err}"
+        );
+    }
 }

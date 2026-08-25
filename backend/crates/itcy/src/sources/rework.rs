@@ -22,9 +22,9 @@ use crate::sources::draft_footer::{
 use crate::sources::draft_url::{extract_in_post_url, promote_link_option, set_single_in_post_url};
 use crate::sources::tweet_farce::{ensure_farce_mentions, stored_is_farce};
 use crate::sources::tweet_footer::{
-    aerate_tweet_commentary, compose_tweet_message, ensure_operator_https_lines, ensure_option,
-    ensure_tweet_cite_line, in_tweet_publisher_url, operator_https_urls, pick_tweet_cite_options,
-    strip_brand_org_at_handles, tweet_body_exploded,
+    aerate_tweet_commentary, coerce_tweet_body, compose_tweet_message, ensure_operator_https_lines,
+    ensure_option, ensure_tweet_cite_line, in_tweet_publisher_url, operator_https_urls,
+    pick_tweet_cite_options, strip_brand_org_at_handles, tweet_body_exploded,
 };
 use thiserror::Error;
 use tracing::{info, warn};
@@ -490,11 +490,11 @@ async fn run_tweet_rework_llm(
         .complete_with_tools(TaskKind::Draft, &messages, tools_for_call, 2)
         .await?;
     let body = scrub_rework_tweet_body(&response.message.content);
-    if !tweet_body_exploded(&body) {
-        return Ok((body, trace));
+    if tweet_body_exploded(&body) {
+        warn!("rework: tweet writer dump coerced to tweet shape (no retry)");
+        return Ok((coerce_tweet_body(&body, "rework"), trace));
     }
-    warn!("rework: tweet writer dumped an essay; refusing");
-    Err(ReworkError::NotATweet)
+    Ok((body, trace))
 }
 
 fn scrub_rework_tweet_body(raw: &str) -> String {

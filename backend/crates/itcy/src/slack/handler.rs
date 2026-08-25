@@ -1466,6 +1466,7 @@ fn paste_block_for_draft(db_path: &std::path::Path, draft_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::looks_like_draft_status_ask;
+    use crate::bat::store::{stored_from_payload, DraftPayload, DraftStore};
     use crate::llm::client::{LlmClient, LlmError, LlmMessage, LlmResponse, LlmRole, LlmToolDef};
     use crate::llm::router::{ChainCandidate, FailoverRouter, TaskChains, TaskKind};
     use crate::slack::commands::{
@@ -1645,5 +1646,47 @@ mod tests {
         // Digest missing → slash error/path reply, never freeform model text.
         assert!(!reply.contains("FREEFORM_HIT"), "{reply}");
         assert_eq!(llm.calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn list_saved_reply_includes_creply_and_xreply_sections() {
+        let llm = Arc::new(CountingLlm {
+            calls: AtomicUsize::new(0),
+            reply: "UNUSED".into(),
+        });
+        let llm_client: Arc<dyn LlmClient> = llm;
+        let rt = test_runtime(llm_client);
+        let store = DraftStore::open(&rt.config.state_db_path).expect("store");
+        store
+            .upsert(&stored_from_payload(DraftPayload {
+                draft_id: "CREPLY-20260825-000001".into(),
+                subject: "LinkedIn parent comment".into(),
+                body: "reply body".into(),
+                model: "test".into(),
+                tokens_in: 1,
+                tokens_out: 1,
+                sources: Vec::new(),
+                link_options: Vec::new(),
+                research_pack: String::new(),
+            }))
+            .expect("upsert creply");
+        store
+            .upsert(&stored_from_payload(DraftPayload {
+                draft_id: "XREPLY-20260825-000001".into(),
+                subject: "X parent status".into(),
+                body: "x reply body".into(),
+                model: "test".into(),
+                tokens_in: 1,
+                tokens_out: 1,
+                sources: Vec::new(),
+                link_options: Vec::new(),
+                research_pack: String::new(),
+            }))
+            .expect("upsert xreply");
+        let text = rt.list_saved_reply();
+        assert!(text.contains("LinkedIn replies"), "{text}");
+        assert!(text.contains("X replies"), "{text}");
+        assert!(text.contains("CREPLY-20260825-000001"), "{text}");
+        assert!(text.contains("XREPLY-20260825-000001"), "{text}");
     }
 }

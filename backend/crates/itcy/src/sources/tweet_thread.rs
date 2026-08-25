@@ -51,15 +51,35 @@ pub fn layout_x_thread(text: &str) -> Vec<String> {
         return Vec::new();
     }
     let peeled = peel_trailer(&text);
-    let one = join_head_trailer(&peeled.head, &peeled.trailer);
+    let head = promote_line_breaks_to_beats(&peeled.head);
+    let one = join_head_trailer(&head, &peeled.trailer);
     if fits_x_limit(&one) {
         return vec![one];
     }
     // No tags/URL trailer: keep one root by dropping whole trailing beats (never mid-sentence first).
     if peeled.trailer.is_empty() {
-        return vec![fit_by_dropping_beats(&peeled.head)];
+        return vec![fit_by_dropping_beats(&head)];
     }
-    forward_fill_split(&peeled.head, &peeled.trailer)
+    forward_fill_split(&head, &peeled.trailer)
+}
+
+/// Single newlines between commentary lines → paragraph beats (X craft).
+///
+/// Writers often emit one `\n` between beats; without this, `take_beats_fitting`
+/// treats the whole head as one beat and word-splits mid-sentence (TWEET-080).
+fn promote_line_breaks_to_beats(head: &str) -> String {
+    let head = head.trim();
+    if head.is_empty() {
+        return String::new();
+    }
+    if head.contains("\n\n") {
+        return head.to_string();
+    }
+    head.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 fn forward_fill_split(head: &str, trailer: &str) -> Vec<String> {
@@ -92,6 +112,22 @@ fn grow_root_until_reply_fits(root: &mut String, leftover: &mut String, trailer:
             break;
         }
         if root_ends_sentence(root) {
+            let (sentence, rest) = take_leading_sentence(leftover);
+            if sentence.is_empty() {
+                break;
+            }
+            // Whole sentence only: never word-dribble into a new sentence (TWEET-080).
+            let grown = append_word(root, &sentence);
+            if fits_x_limit(&grown) {
+                *root = grown;
+                *leftover = rest;
+                continue;
+            }
+            break;
+        }
+        // Root mid-sentence: complete the current sentence by words, or take the rest of
+        // the first leftover sentence if root is empty and that sentence alone overflows.
+        if root.trim().is_empty() {
             let (sentence, rest) = take_leading_sentence(leftover);
             if sentence.is_empty() {
                 break;
@@ -535,6 +571,10 @@ fn take_beats_fitting(head: &str, limit: usize) -> (String, String) {
             continue;
         }
         let remain = remaining_after(&kept, limit);
+        // Do not mid-cut a later beat when root already has whole beats (TWEET-080 wink).
+        if !kept.is_empty() {
+            break;
+        }
         let (piece, rest_beat) = take_prefix_fitting(&beats[i], remain);
         if !piece.is_empty() {
             kept.push(piece);
@@ -960,6 +1000,52 @@ https://smallcultfollowing.com/babysteps/blog/2026/07/15/battery-packs";
         assert!(parts[1].contains("Cargo bp") || parts[1].contains("dependency guesswork"));
         assert!(parts[1].contains("#Rust"));
         assert!(parts[1].contains("smallcultfollowing.com"));
+    }
+
+    #[test]
+    fn xpost080_gemini_wink_sentence_not_midcut() {
+        // TWEET-20260825-000080 / https://x.com/Interchouette/status/2092343006229619187
+        // Stored body used single newlines between beats; ship must not cut the wink mid-sentence.
+        let body = "\
+Tweet ID: TWEET-20260825-000080
+
+Google’s Gemini AI just did what every Rustacean dreams of: rewriting C/C++ code into safe Rust, catching a memory-safety bug along the way. 🦀⚡
+It’s not just a rewrite, it’s a proof of concept for scaling memory safety at scale. 🔧
+Who needs a security audit when your AI does it for you? 🤖
+
+#Rust #MemorySafety #AI #OpenSource
+
+https://x.com/rustaceans_rs/status/2092134050060275910
+
+Link: 1
+0 = no link. /change_url TWEET-20260825-000080 <0|1|2|3|url>
+1. https://x.com/rustaceans_rs/status/2092134050060275910
+
+Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:120";
+        let api = crate::publish::tweet_text_for_api(body);
+        let parts = layout_x_thread(&api);
+        assert!(parts.len() <= 2, "unexpected part count: {parts:?}");
+        let wink = "Who needs a security audit when your AI does it for you?";
+        let joined = parts.join("\n---\n");
+        assert!(
+            parts.iter().any(|p| p.contains(wink)),
+            "wink must stay contiguous on one side: {joined}"
+        );
+        for p in &parts {
+            assert!(!p.trim_end().ends_with("does"), "mid-cut on does: {p}");
+            assert!(
+                !p.trim_start().starts_with("it for you?"),
+                "reply must not start mid-wink: {p}"
+            );
+            assert!(
+                !p.contains("does\n\nit for you") && !p.contains("does\nit for you"),
+                "no break inside wink: {p}"
+            );
+            assert!(fits_x_limit(p), "over 280: {} {}", x_weighted_len(p), p);
+        }
+        if parts.len() == 2 {
+            assert!(parts[1].contains('#') || parts[1].contains("rustaceans_rs"));
+        }
     }
 
     #[test]
