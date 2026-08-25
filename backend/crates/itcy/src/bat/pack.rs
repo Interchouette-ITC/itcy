@@ -184,7 +184,7 @@ sources = {sources_toml}\n",
     DraftFiles {
         body_path,
         meta_path,
-        body_md: draft.body.clone(),
+        body_md: crate::llm::sanitize::sanitize_body_keep_operator_chrome(&draft.body),
         meta_toml,
         draft_id,
     }
@@ -279,7 +279,7 @@ pub fn pack_tweet_files(draft: &PendingDraft) -> DraftFiles {
     DraftFiles {
         body_path,
         meta_path,
-        body_md: draft.body.clone(),
+        body_md: crate::llm::sanitize::sanitize_body_keep_operator_chrome(&draft.body),
         meta_toml,
         draft_id: tweet_id,
     }

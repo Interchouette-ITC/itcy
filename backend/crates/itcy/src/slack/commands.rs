@@ -596,7 +596,7 @@ fn parse_saved_slash(cmd: &str, args: &str) -> Option<Result<OperatorCommand, St
         "show" => parse_show_ids_cmd(args),
         "delete" => parse_saved_ids_cmd(
             args,
-            "usage: /delete <DRAFT-…|TWEET-…>[, <ID>…]",
+            "usage: /delete <DRAFT-…|POST-…|TWEET-…|XPOST-…>[, <ID>…]",
             |ids| OperatorCommand::Delete { ids },
         ),
         _ => return None,
@@ -850,7 +850,7 @@ fn parse_saved_ids_cmd(
     usage: &str,
     make: fn(Vec<String>) -> OperatorCommand,
 ) -> Result<OperatorCommand, String> {
-    let ids = collect_ids(args, draft_or_tweet_id_from_token);
+    let ids = collect_ids(args, draft_tweet_or_post_id_from_token);
     if ids.is_empty() {
         return Err(usage.into());
     }
@@ -858,16 +858,22 @@ fn parse_saved_ids_cmd(
 }
 
 fn parse_show_ids_cmd(args: &str) -> Result<OperatorCommand, String> {
-    const USAGE: &str = "usage: /show <DRAFT-…|TWEET-…|DIGEST-…>[, <ID>…]";
-    let ids = collect_ids(args, draft_tweet_or_digest_id_from_token);
+    const USAGE: &str = "usage: /show <DRAFT-…|POST-…|TWEET-…|XPOST-…|DIGEST-…>[, <ID>…]";
+    let ids = collect_ids(args, draft_tweet_post_or_digest_id_from_token);
     if ids.is_empty() {
         return Err(USAGE.into());
     }
     Ok(OperatorCommand::Show { ids })
 }
 
-fn draft_tweet_or_digest_id_from_token(raw: &str) -> Option<String> {
-    draft_or_tweet_id_from_token(raw).or_else(|| digest_id_from_token(raw))
+fn draft_tweet_post_or_digest_id_from_token(raw: &str) -> Option<String> {
+    draft_tweet_or_post_id_from_token(raw).or_else(|| digest_id_from_token(raw))
+}
+
+fn draft_tweet_or_post_id_from_token(raw: &str) -> Option<String> {
+    draft_or_tweet_id_from_token(raw)
+        .or_else(|| id_from_token(raw, "POST-"))
+        .or_else(|| id_from_token(raw, "XPOST-"))
 }
 
 const MAX_SAVED_IDS: usize = 20;
@@ -963,8 +969,8 @@ pub const fn help_text() -> &'static str {
      • `/rework <Draft-ID|Tweet-ID> <instructions>` - rewrite saved draft or tweet (until Post / XPOST)\n\
      • `/change_url <Draft-ID|Tweet-ID> <0|1|2|3|https://…>` - set the link (`1`/`2`/`3` or URL); `0` = no link\n\
      • `/accept <Draft-ID|Tweet-ID>` - open/update BAT PR (LinkedIn `drafts` or X `drafts_tweet`; safe to re-run; publishes if Approve is on GitHub but webhook missed)\n\
-     • `/list` - list saved LinkedIn drafts and tweets (not published)\n\
-     • `/show <Draft-ID|Tweet-ID|DIGEST-…>[, <ID>]` - show draft/tweet, or re-post a stored digest to `#daily-digest`\n\
+     • `/list` - list drafts, tweets, and shipped Posts / X posts\n\
+     • `/show <Draft-ID|Post-ID|Tweet-ID|XPOST-ID|DIGEST-…>[, <ID>]` - show body/paste, or re-post a stored digest to `#daily-digest`\n\
      • `/delete <Draft-ID|Tweet-ID>[, <ID>]` - delete saved row(s) and close GitHub PRs if open\n\
      • `/retry_bat <Draft-ID|Tweet-ID|XPOST-ID>` - re-ship after BAT (missed webhook or X/LinkedIn ship failed)\n\
      • `/enrich <url>` - enrich corpus with a personal LinkedIn post (Tor)\n\

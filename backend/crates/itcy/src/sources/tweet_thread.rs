@@ -66,6 +66,7 @@ fn forward_fill_split(head: &str, trailer: &str) -> Vec<String> {
     let (mut root, mut leftover) = take_beats_fitting(head, X_CHAR_LIMIT);
     grow_root_until_reply_fits(&mut root, &mut leftover, trailer);
     rebalance_dangling_root_tail(&mut root, &mut leftover, trailer);
+    peel_incomplete_root_tail(&mut root, &mut leftover, trailer);
     let reply = pack_tweet_two(&leftover, trailer);
     let mut out = Vec::new();
     if !root.is_empty() {
@@ -149,10 +150,93 @@ fn remaining_root_capacity(root: &str) -> usize {
 }
 
 fn root_ends_sentence(root: &str) -> bool {
-    root.trim_end()
-        .chars()
+    let mut chars: Vec<char> = root.trim_end().chars().collect();
+    while chars
         .last()
-        .is_some_and(|c| matches!(c, '.' | '!' | '?'))
+        .is_some_and(|c| c.is_whitespace() || is_emoji_or_symbol_char(*c))
+    {
+        chars.pop();
+    }
+    chars.last().is_some_and(|c| matches!(c, '.' | '!' | '?'))
+}
+
+/// Move a trailing mid-sentence fragment off the root when a prior sentence end exists.
+///
+/// `take_beats_fitting` may word-fill the next beat into leftover root capacity
+/// (`…project. 🚀` + `Cargo bp …, no more`). X still rejects those near-limit roots.
+fn peel_incomplete_root_tail(root: &mut String, leftover: &mut String, trailer: &str) {
+    if leftover.trim().is_empty() || root_ends_sentence(root) {
+        return;
+    }
+    let Some((keep, frag)) = split_at_last_sentence_end(root) else {
+        return;
+    };
+    if keep.is_empty() || frag.trim().is_empty() {
+        return;
+    }
+    let new_leftover = prepend_paragraph(frag.trim(), leftover.trim());
+    if !reply_fits(&new_leftover, trailer) {
+        return;
+    }
+    *root = keep;
+    *leftover = new_leftover;
+}
+
+fn split_at_last_sentence_end(text: &str) -> Option<(String, String)> {
+    let trimmed = text.trim_end();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let bytes = trimmed.as_bytes();
+    let mut last_keep_end: Option<usize> = None;
+    let mut i = 0;
+    while i < bytes.len() {
+        let ch = trimmed[i..].chars().next()?;
+        let next = i + ch.len_utf8();
+        if matches!(ch, '.' | '!' | '?') {
+            let mut end = next;
+            while end < bytes.len() {
+                let Some(c2) = trimmed[end..].chars().next() else {
+                    break;
+                };
+                if c2 == '\n' {
+                    break;
+                }
+                if c2.is_whitespace() || is_emoji_or_symbol_char(c2) {
+                    end += c2.len_utf8();
+                    continue;
+                }
+                break;
+            }
+            last_keep_end = Some(end);
+            i = end;
+            continue;
+        }
+        i = next;
+    }
+    let keep_end = last_keep_end?;
+    if keep_end >= trimmed.len() {
+        return None;
+    }
+    let keep = trimmed[..keep_end].trim_end().to_string();
+    let frag = trimmed[keep_end..].trim_start().to_string();
+    if keep.is_empty() || frag.is_empty() {
+        None
+    } else {
+        Some((keep, frag))
+    }
+}
+
+fn prepend_paragraph(frag: &str, rest: &str) -> String {
+    let frag = frag.trim();
+    let rest = rest.trim();
+    if frag.is_empty() {
+        rest.to_string()
+    } else if rest.is_empty() {
+        frag.to_string()
+    } else {
+        format!("{frag}\n\n{rest}")
+    }
 }
 
 /// First sentence (through `.` / `?` / `!`, plus trailing emoji on the same line) and the rest.
@@ -638,6 +722,27 @@ fn trim_to_limit(text: &str, limit: usize) -> String {
 
 fn url_end_at(text: &str, i: usize) -> Option<usize> {
     let rest = &text[i..];
+    if let Some(rel) = scheme_url_len(rest) {
+        return Some(i + rel);
+    }
+    if !url_start_boundary(text, i) {
+        return None;
+    }
+    bare_autolink_len(rest).map(|rel| i + rel)
+}
+
+fn url_start_boundary(text: &str, i: usize) -> bool {
+    if i == 0 {
+        return true;
+    }
+    let Some(prev) = text[..i].chars().next_back() else {
+        return true;
+    };
+    // X does not start an autolink mid-token or after `@` / `/`.
+    !prev.is_ascii_alphanumeric() && !matches!(prev, '@' | '/' | '_' | '-' | '.')
+}
+
+fn scheme_url_len(rest: &str) -> Option<usize> {
     let scheme = if rest.starts_with("https://") {
         8
     } else if rest.starts_with("http://") {
@@ -645,14 +750,74 @@ fn url_end_at(text: &str, i: usize) -> Option<usize> {
     } else {
         return None;
     };
-    let mut end = i + scheme;
+    let mut end = scheme;
     for ch in rest[scheme..].chars() {
         if ch.is_whitespace() {
             break;
         }
         end += ch.len_utf8();
     }
-    (end > i + scheme).then_some(end)
+    (end > scheme).then_some(trim_url_trailing_punct(rest, end))
+}
+
+/// Bare `crates.io` / `example.com/path` — X weights these as t.co (23), not raw chars.
+fn bare_autolink_len(rest: &str) -> Option<usize> {
+    let token = rest.split_whitespace().next()?;
+    let token = trim_url_token_punct(token);
+    if token.is_empty() {
+        return None;
+    }
+    let host = token.split_once('/').map_or(token, |(h, _)| h);
+    if !is_x_autolink_host(host) {
+        return None;
+    }
+    Some(trim_url_trailing_punct(rest, token.len()))
+}
+
+fn is_x_autolink_host(host: &str) -> bool {
+    let host = host.trim_matches('.');
+    let labels: Vec<&str> = host.split('.').collect();
+    if labels.len() < 2 {
+        return false;
+    }
+    let Some(tld) = labels.last() else {
+        return false;
+    };
+    if tld.len() < 2 || !tld.chars().all(|c| c.is_ascii_alphabetic()) {
+        return false;
+    }
+    labels[..labels.len() - 1].iter().all(|label| {
+        !label.is_empty()
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    })
+}
+
+fn trim_url_token_punct(token: &str) -> &str {
+    token.trim_end_matches(|c: char| {
+        matches!(
+            c,
+            '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}' | '"' | '\''
+        )
+    })
+}
+
+fn trim_url_trailing_punct(rest: &str, mut end: usize) -> usize {
+    while end > 0 {
+        let Some(ch) = rest[..end].chars().next_back() else {
+            break;
+        };
+        if matches!(
+            ch,
+            '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}' | '"' | '\''
+        ) {
+            end -= ch.len_utf8();
+            continue;
+        }
+        break;
+    }
+    end
 }
 
 fn x_cp_weight(cp: u32) -> usize {
@@ -754,6 +919,50 @@ https://blog.dante.company/en/articles/github-models-retirement-migration-2026-0
     }
 
     #[test]
+    fn xpost073_battery_packs_bare_domain_and_no_midcut() {
+        // Shipped fail XPOST-20260825-000073: our counter treated crates.io as 9 chars;
+        // X autolinks it as t.co (23). Root was filled to ~276 then Post stayed disabled.
+        let body = "\
+📜 Rust devs, meet your new CLI toolkit, a curated crate pack that’s like a 🦀-powered toolbox for your workflow. No more sifting through crates.io chaos. Just swap in the right batteries for your project. 🚀
+
+Cargo bp lets you add these packs with `cargo bp add cli`, no more dependency guesswork. It’s about making your stack feel like a 🐦-fueled ride. 🧠
+
+#Rust #CLI #Cargo #Crates
+
+https://smallcultfollowing.com/babysteps/blog/2026/07/15/battery-packs";
+        assert_eq!(
+            x_weighted_len("crates.io"),
+            TCO_LEN,
+            "bare domain must count as t.co"
+        );
+        let parts = layout_x_thread(body);
+        assert_eq!(parts.len(), 2, "{parts:?}");
+        assert!(
+            fits_x_limit(&parts[0]),
+            "root {}",
+            x_weighted_len(&parts[0])
+        );
+        assert!(
+            fits_x_limit(&parts[1]),
+            "reply {}",
+            x_weighted_len(&parts[1])
+        );
+        assert!(
+            !parts[0].trim_end().ends_with("no more"),
+            "root must not mid-cut: {}",
+            parts[0]
+        );
+        assert!(
+            root_ends_sentence(&parts[0]),
+            "root should end on a sentence: {}",
+            parts[0]
+        );
+        assert!(parts[1].contains("Cargo bp") || parts[1].contains("dependency guesswork"));
+        assert!(parts[1].contains("#Rust"));
+        assert!(parts[1].contains("smallcultfollowing.com"));
+    }
+
+    #[test]
     fn sample_splits_commentary_then_tags_and_url() {
         let parts = layout_x_thread(SAMPLE);
         assert_eq!(parts.len(), 2, "{parts:?}");
@@ -851,6 +1060,7 @@ The future of AI tools is still in flux.";
         let (mut root, mut leftover) = take_beats_fitting(head, X_CHAR_LIMIT);
         grow_root_until_reply_fits(&mut root, &mut leftover, trailer);
         rebalance_dangling_root_tail(&mut root, &mut leftover, trailer);
+        peel_incomplete_root_tail(&mut root, &mut leftover, trailer);
         let reply = pack_tweet_two(&leftover, trailer);
         vec![root, reply]
     }
@@ -1121,6 +1331,15 @@ https://alsaecas.dev/projects/cspr-agentpay-guard";
         assert_eq!(
             x_weighted_len("hi https://example.com/x zz"),
             2 + 1 + TCO_LEN + 1 + 2
+        );
+        assert_eq!(x_weighted_len("crates.io"), TCO_LEN);
+        assert_eq!(
+            x_weighted_len("through crates.io chaos"),
+            "through ".len() + TCO_LEN + " chaos".len()
+        );
+        assert!(
+            x_weighted_len("v1.2.3") < TCO_LEN,
+            "version numbers must not count as t.co"
         );
     }
 }

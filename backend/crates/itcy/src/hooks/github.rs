@@ -872,7 +872,7 @@ async fn try_promote_if_bat_green(
     if ship_ok {
         if let Ok(store) = crate::bat::store::DraftStore::open(state.state_db_path.as_str()) {
             let _ = store.mark_status_from(&promoted.draft_id, "accepted", "published");
-            let _ = store.delete(&promoted.draft_id);
+            let _ = store.mark_status_from(&promoted.draft_id, "open", "published");
         }
     }
     let dest = if promoted.post_id.starts_with("XPOST-") {
@@ -906,8 +906,9 @@ async fn ship_promoted_xpost(
         .await
     {
         Ok(r) => {
-            maybe_post_ship_notice(&promoted.post_id, &r.detail).await;
-            (true, r.detail)
+            let notice = r.ship_notice_text().to_string();
+            maybe_post_ship_notice(&promoted.post_id, &notice).await;
+            (true, notice)
         }
         Err(e) => {
             warn!(
@@ -940,8 +941,9 @@ async fn ship_promoted_post(
     .await
     {
         Ok(r) => {
-            maybe_post_ship_notice(&promoted.post_id, &r.detail).await;
-            (true, r.detail)
+            let notice = r.ship_notice_text().to_string();
+            maybe_post_ship_notice(&promoted.post_id, &notice).await;
+            (true, notice)
         }
         Err(e) => {
             warn!(

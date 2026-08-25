@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 //! List / show / delete saved DRAFT- and TWEET- rows; re-post DIGEST- to `#daily-digest`.
+//!
+//! After BAT ship, rows stay as `published`. `/list` shows them under Posts / X posts
+//! (display ids `POST-…` / `XPOST-…`). `/show` accepts DRAFT/TWEET/POST/XPOST.
 
 use crate::bat::github::{BatGithubConfig, ClosePrOutcome, GithubClient};
 use crate::bat::store::{status, DraftStore, StoredDraft};
@@ -13,9 +16,11 @@ use tracing::{info, warn};
 
 impl SlackRuntime {
     pub(crate) fn list_saved_reply(&self) -> String {
-        let drafts = self.list_saved_section("DRAFT-", "Drafts");
-        let tweets = self.list_saved_section("TWEET-", "Tweets");
-        format!("{drafts}\n\n{tweets}")
+        let drafts = self.list_saved_section("DRAFT-", false, "Drafts");
+        let posts = self.list_saved_section("DRAFT-", true, "Posts");
+        let tweets = self.list_saved_section("TWEET-", false, "Tweets");
+        let xposts = self.list_saved_section("TWEET-", true, "X posts");
+        format!("{drafts}\n\n{posts}\n\n{tweets}\n\n{xposts}")
     }
 
     pub(crate) async fn show_saved_ids_reply(&self, ids: &[String]) -> String {
@@ -34,19 +39,31 @@ impl SlackRuntime {
         parts.join("\n")
     }
 
-    fn list_saved_section(&self, prefix: &str, title: &str) -> String {
+    fn list_saved_section(&self, prefix: &str, published_only: bool, title: &str) -> String {
         let store = match DraftStore::open(&self.config.state_db_path) {
             Ok(s) => s,
             Err(e) => return format!("Could not open store: {e}"),
         };
-        match store.delete_prefix_status(prefix, status::PUBLISHED) {
-            Ok(0) => {}
-            Ok(n) => info!(n, prefix, "saved: dropped published rows"),
-            Err(e) => warn!(error = %e, prefix, "saved: drop published failed"),
-        }
-        match store.list_by_id_prefix(prefix, 30) {
-            Ok(rows) if rows.is_empty() => format!("No saved {title}."),
-            Ok(rows) => format_saved_list(title, &rows),
+        match store.list_by_id_prefix(prefix, 50) {
+            Ok(rows) => {
+                let filtered: Vec<StoredDraft> = rows
+                    .into_iter()
+                    .filter(|r| {
+                        let is_pub = r.status == status::PUBLISHED;
+                        if published_only {
+                            is_pub
+                        } else {
+                            !is_pub
+                        }
+                    })
+                    .take(30)
+                    .collect();
+                if filtered.is_empty() {
+                    format!("No saved {title}.")
+                } else {
+                    format_saved_list(title, &filtered, published_only)
+                }
+            }
             Err(e) => format!("Could not list {title}: {e}"),
         }
     }
@@ -55,15 +72,19 @@ impl SlackRuntime {
         if id.starts_with("DIGEST-") {
             return self.show_digest_reply(id).await;
         }
-        let Some(kind) = kind_for_id(id) else {
-            return format!("unknown id `{id}` (need DRAFT-…, TWEET-…, or DIGEST-…)");
+        let store_id = resolve_store_id(id);
+        let Some(kind) = kind_for_id(&store_id) else {
+            return format!(
+                "unknown id `{id}` (need DRAFT-…, POST-…, TWEET-…, XPOST-…, or DIGEST-…)"
+            );
         };
         let store = match DraftStore::open(&self.config.state_db_path) {
             Ok(s) => s,
             Err(e) => return format!("Could not open store: {e}"),
         };
-        match store.get(id) {
+        match store.get(&store_id) {
             Ok(Some(row)) => {
+                let display = operator_display_id(&row);
                 let restored = crate::llm::disclosure::ensure_stored_disclosure(
                     row.body.trim(),
                     &row.model,
@@ -79,11 +100,10 @@ impl SlackRuntime {
                         row.tokens_in,
                         row.tokens_out,
                     );
-                    let next = next_slash_hints(&row.draft_id, &row.status);
+                    let next = next_slash_hints(&display, &row.status);
                     format!(
-                        "{kind} `{id}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{paste}\n\n{next}",
-                        kind = title_case(kind),
-                        id = row.draft_id,
+                        "{kind} `{display}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{paste}\n\n{next}",
+                        kind = title_case_for_row(&row),
                         semoji = status_emoji(&row.status),
                         st = row.status,
                         upd = row.updated_at,
@@ -96,21 +116,19 @@ impl SlackRuntime {
                     } else {
                         crate::sources::draft_footer::slack_highlight_active_link(&restored)
                     };
-                    let next = next_slash_hints(&row.draft_id, &row.status);
+                    let next = next_slash_hints(&display, &row.status);
                     if next.is_empty() {
                         format!(
-                            "{kind} `{id}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{body}",
-                            kind = title_case(kind),
-                            id = row.draft_id,
+                            "{kind} `{display}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{body}",
+                            kind = title_case_for_row(&row),
                             semoji = status_emoji(&row.status),
                             st = row.status,
                             upd = row.updated_at,
                         )
                     } else {
                         format!(
-                            "{kind} `{id}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{body}\n\n{next}",
-                            kind = title_case(kind),
-                            id = row.draft_id,
+                            "{kind} `{display}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{body}\n\n{next}",
+                            kind = title_case_for_row(&row),
                             semoji = status_emoji(&row.status),
                             st = row.status,
                             upd = row.updated_at,
@@ -148,18 +166,20 @@ impl SlackRuntime {
     }
 
     async fn delete_one_saved(&self, id: &str) -> String {
-        let Some(kind) = kind_for_id(id) else {
-            return format!("unknown id `{id}` (need DRAFT-… or TWEET-…)");
+        let store_id = resolve_store_id(id);
+        let Some(kind) = kind_for_id(&store_id) else {
+            return format!("unknown id `{id}` (need DRAFT-…, POST-…, TWEET-…, or XPOST-…)");
         };
         let store = match DraftStore::open(&self.config.state_db_path) {
             Ok(s) => s,
             Err(e) => return format!("Could not open store: {e}"),
         };
-        let row = match store.get(id) {
+        let row = match store.get(&store_id) {
             Ok(Some(r)) => r,
             Ok(None) => return format!("No {kind} `{id}`."),
             Err(e) => return format!("Could not load {kind}: {e}"),
         };
+        let display = operator_display_id(&row);
         let pr_note = if row.status == status::PUBLISHED {
             String::new()
         } else {
@@ -171,13 +191,9 @@ impl SlackRuntime {
             pr = row.fork_pr_number.unwrap_or(0),
             "saved: deleting row"
         );
-        match store.delete(id) {
+        match store.delete(&store_id) {
             Ok(true) => {
-                let mut out = format!(
-                    "Deleted {kind} `{id}` (was `{st}`).",
-                    id = row.draft_id,
-                    st = row.status
-                );
+                let mut out = format!("Deleted {kind} `{display}` (was `{st}`).", st = row.status);
                 if !pr_note.is_empty() {
                     out.push('\n');
                     out.push_str(&pr_note);
@@ -190,20 +206,50 @@ impl SlackRuntime {
     }
 }
 
+/// Map operator `POST-` / `XPOST-` ids to the stored `DRAFT-` / `TWEET-` primary key.
+#[must_use]
+pub(crate) fn resolve_store_id(id: &str) -> String {
+    match id.split_once('-') {
+        Some(("POST", rest)) => format!("DRAFT-{rest}"),
+        Some(("XPOST", rest)) => format!("TWEET-{rest}"),
+        _ => id.to_string(),
+    }
+}
+
+/// Operator-facing id: published drafts/tweets show as `POST-` / `XPOST-`.
+#[must_use]
+pub(crate) fn operator_display_id(row: &StoredDraft) -> String {
+    if row.status != status::PUBLISHED {
+        return row.draft_id.clone();
+    }
+    match row.draft_id.split_once('-') {
+        Some(("DRAFT", rest)) => format!("POST-{rest}"),
+        Some(("TWEET", rest)) => format!("XPOST-{rest}"),
+        _ => row.draft_id.clone(),
+    }
+}
+
 fn kind_for_id(id: &str) -> Option<&'static str> {
-    if id.starts_with("TWEET-") {
+    if id.starts_with("TWEET-") || id.starts_with("XPOST-") {
         Some("tweet")
-    } else if id.starts_with("DRAFT-") {
+    } else if id.starts_with("DRAFT-") || id.starts_with("POST-") {
         Some("draft")
     } else {
         None
     }
 }
 
-fn title_case(kind: &str) -> &'static str {
-    match kind {
-        "tweet" => "Tweet",
-        _ => "Draft",
+fn title_case_for_row(row: &StoredDraft) -> &'static str {
+    if row.status == status::PUBLISHED {
+        if row.draft_id.starts_with("TWEET-") {
+            "X post"
+        } else {
+            "Post"
+        }
+    } else if row.draft_id.starts_with("TWEET-") {
+        "Tweet"
+    } else {
+        "Draft"
     }
 }
 
@@ -227,7 +273,8 @@ pub(crate) fn next_slash_hints(id: &str, row_status: &str) -> String {
         status::PUBLISHED => format!(
             ":point_right: Next:\n\n\
 :repeat: /retry_bat {id}\n\n\
-:mag: /show {id}"
+:mag: /show {id}\n\n\
+:wastebasket: /delete {id}"
         ),
         status::FAILED => format!(
             ":point_right: Next:\n\n\
@@ -249,82 +296,121 @@ fn status_emoji(st: &str) -> &'static str {
     }
 }
 
-fn format_saved_list(title: &str, rows: &[StoredDraft]) -> String {
+fn format_saved_list(title: &str, rows: &[StoredDraft], as_posts: bool) -> String {
     let mut out = format!(":clipboard: {title} ({n}, newest first):\n", n = rows.len());
     for row in rows {
         let subj = clip_list_subject(&row.subject);
+        let id = if as_posts {
+            operator_display_id(row)
+        } else {
+            row.draft_id.clone()
+        };
         let _ = writeln!(
             out,
             "`{id}` {semoji} `{st}` - {subj}",
-            id = row.draft_id,
             semoji = status_emoji(&row.status),
             st = row.status,
         );
     }
     let _ = write!(
         out,
-        "\n:mag: Show: /show <ID>, <ID>\n:wastebasket: Delete: /delete <ID>, <ID>"
+        ":mag: Show: `/show <ID>, <ID>`\n:wastebasket: Delete: `/delete <ID>, <ID>`"
     );
     out
 }
 
-fn clip_list_subject(s: &str) -> String {
-    let one = s.split_whitespace().collect::<Vec<_>>().join(" ");
-    if one.chars().count() <= 60 {
-        one
-    } else {
-        format!("{}...", one.chars().take(57).collect::<String>())
+fn clip_list_subject(subject: &str) -> String {
+    const MAX: usize = 72;
+    let one_line = subject.split_whitespace().collect::<Vec<_>>().join(" ");
+    if one_line.chars().count() <= MAX {
+        return one_line;
     }
+    let mut out = String::new();
+    for ch in one_line.chars() {
+        if out.chars().count() + 1 >= MAX.saturating_sub(1) {
+            break;
+        }
+        out.push(ch);
+    }
+    out.push('…');
+    out
 }
 
 async fn close_row_pr(row: &StoredDraft) -> String {
-    let Some(n) = row.fork_pr_number.filter(|n| *n > 0) else {
+    let Some(pr) = row.fork_pr_number.filter(|n| *n > 0) else {
         return String::new();
     };
-    let cfg = match BatGithubConfig::from_env() {
-        Ok(c) => c,
-        Err(e) => return format!("Could not close GitHub PR #{n}: {e}"),
+    let Ok(cfg) = BatGithubConfig::from_env() else {
+        return format!("(could not close fork PR #{pr}: missing GitHub config)");
     };
-    let client = match GithubClient::new(cfg) {
-        Ok(c) => c,
-        Err(e) => return format!("Could not close GitHub PR #{n}: {e}"),
+    let Ok(client) = GithubClient::new(cfg) else {
+        return format!("(could not close fork PR #{pr}: GitHub client)");
     };
-    let res = if row.draft_id.starts_with("TWEET-") {
-        client.close_tweet_pr(n).await
+    let outcome = if row.draft_id.starts_with("TWEET-") {
+        client.close_tweet_pr(pr).await
     } else {
-        client.close_draft_pr(n).await
+        client.close_draft_pr(pr).await
     };
-    match res {
-        Ok(ClosePrOutcome::Closed) => {
-            info!(pr = n, id = %row.draft_id, "saved: closed GitHub PR");
-            format!("Closed GitHub PR #{n}.")
-        }
-        Ok(ClosePrOutcome::AlreadyClosed) => format!("GitHub PR #{n} was already closed."),
+    match outcome {
+        Ok(ClosePrOutcome::Closed) => format!("Closed fork PR #{pr}."),
+        Ok(ClosePrOutcome::AlreadyClosed) => format!("Fork PR #{pr} was already closed."),
         Err(e) => {
-            warn!(error = %e, pr = n, id = %row.draft_id, "saved: close GitHub PR failed");
-            format!("Could not close GitHub PR #{n}: {e}")
+            warn!(error = %e, pr, "saved: close fork PR failed");
+            format!("(could not close fork PR #{pr}: {e})")
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::next_slash_hints;
-    use crate::bat::store::status;
+    use super::*;
 
     #[test]
-    fn next_hints_open_has_rework_change_accept() {
-        let n = next_slash_hints("DRAFT-20260824-000093", status::OPEN);
-        assert!(n.contains("/rework DRAFT-20260824-000093"));
-        assert!(n.contains("/change_url DRAFT-20260824-000093 1"));
-        assert!(n.contains("/accept DRAFT-20260824-000093"));
-        assert!(!n.contains("/retry_bat"));
+    fn resolve_post_xpost_to_store_ids() {
+        assert_eq!(
+            resolve_store_id("POST-20260822-000089"),
+            "DRAFT-20260822-000089"
+        );
+        assert_eq!(
+            resolve_store_id("XPOST-20260825-000073"),
+            "TWEET-20260825-000073"
+        );
+        assert_eq!(
+            resolve_store_id("DRAFT-20260822-000089"),
+            "DRAFT-20260822-000089"
+        );
     }
 
     #[test]
-    fn next_hints_accepted_adds_retry_bat() {
-        let n = next_slash_hints("TWEET-20260824-000001", status::ACCEPTED);
-        assert!(n.contains("/rework TWEET-20260824-000001"));
-        assert!(n.contains("/retry_bat TWEET-20260824-000001"));
+    fn published_display_ids() {
+        let mut draft = StoredDraft {
+            draft_id: "DRAFT-20260822-000089".into(),
+            subject: "x".into(),
+            body: "y".into(),
+            model: String::new(),
+            tokens_in: 0,
+            tokens_out: 0,
+            sources: vec![],
+            link_options: vec![],
+            research_pack: String::new(),
+            status: status::PUBLISHED.into(),
+            created_at: String::new(),
+            updated_at: String::new(),
+            fork_pr_number: None,
+            fork_pr_url: String::new(),
+        };
+        assert_eq!(operator_display_id(&draft), "POST-20260822-000089");
+        draft.draft_id = "TWEET-20260825-000073".into();
+        assert_eq!(operator_display_id(&draft), "XPOST-20260825-000073");
+        draft.status = status::OPEN.into();
+        assert_eq!(operator_display_id(&draft), "TWEET-20260825-000073");
+    }
+
+    #[test]
+    fn next_slash_hints_published() {
+        let n = next_slash_hints("POST-20260822-000089", status::PUBLISHED);
+        assert!(n.contains("/show POST-20260822-000089"));
+        assert!(n.contains("/retry_bat POST-20260822-000089"));
+        assert!(n.contains("/delete POST-20260822-000089"));
     }
 }

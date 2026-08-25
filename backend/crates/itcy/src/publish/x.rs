@@ -409,7 +409,7 @@ pub fn tweet_text_for_api(body: &str) -> String {
     }
     let joined = lines.join("\n").trim().to_string();
     let joined = crate::sources::tweet_footer::strip_own_x_handle(&joined);
-    crate::llm::sanitize::expand_emoji_shortcodes(&joined)
+    crate::llm::sanitize_itcy_text(&joined)
 }
 
 fn is_tweet_operator_chrome(t: &str) -> bool {

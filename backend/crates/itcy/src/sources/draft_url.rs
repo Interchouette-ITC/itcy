@@ -86,9 +86,6 @@ pub fn strip_sources_section(raw: &str) -> String {
     head.to_string()
 }
 
-/// Markers used when inserting a primary link before trailing chrome (if any).
-pub const PRIMARY_LINK_INSERT_MARKERS: &[&str] = &["Sources:", "Sources used:", "Written by AI"];
-
 /// Current in-post publisher URL (bare line preferred; else markdown href), before footer.
 #[must_use]
 pub fn extract_in_post_url(body: &str) -> Option<String> {
