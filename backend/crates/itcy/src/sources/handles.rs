@@ -79,8 +79,9 @@ impl HandlesIndex {
 
     /// Best registry hit for an operator brief (name, profile URL, or `@handle`).
     ///
-    /// Same idea as cite-URL extraction: deterministic, not model-dependent.
-    /// Prefers URL / `@` hits, then the longest name phrase found in the brief.
+    /// Deterministic, not model-dependent. Order: profile URLs, bare `@` tokens, plain
+    /// names in the brief, then article publisher host. Names beat publisher host so a
+    /// subject about Cursor on an `InfoWorld` URL resolves to Cursor, not the publisher.
     #[must_use]
     pub fn primary_from_brief(&self, brief: &str) -> Option<&HandleEntry> {
         if brief.trim().is_empty() || self.entries.is_empty() {
@@ -89,13 +90,13 @@ impl HandlesIndex {
         if let Some(hit) = self.hit_from_urls(brief) {
             return Some(hit);
         }
-        if let Some(hit) = self.hit_from_publisher_host(brief) {
-            return Some(hit);
-        }
         if let Some(hit) = self.hit_from_at_handles(brief) {
             return Some(hit);
         }
-        self.hit_from_names(brief)
+        if let Some(hit) = self.hit_from_names(brief) {
+            return Some(hit);
+        }
+        self.hit_from_publisher_host(brief)
     }
 
     fn hit_from_urls(&self, brief: &str) -> Option<&HandleEntry> {
@@ -159,21 +160,26 @@ impl HandlesIndex {
     }
 
     fn hit_from_names(&self, brief: &str) -> Option<&HandleEntry> {
-        let mut best: Option<(&HandleEntry, usize)> = None;
+        // Longer names win; same length → earlier mention in the brief (topic before aside).
+        let mut best: Option<(&HandleEntry, usize, usize)> = None;
         for entry in &self.entries {
             let name = entry.name.trim();
             if name.len() < 3 {
                 continue;
             }
-            if find_phrase_outside_url(brief, name).is_none() {
+            let Some((start, _)) = find_phrase_outside_url(brief, name) else {
                 continue;
-            }
+            };
             let score = name.len();
-            if best.as_ref().is_none_or(|(_, s)| score > *s) {
-                best = Some((entry, score));
+            let better = match best {
+                None => true,
+                Some((_, s, pos)) => score > s || (score == s && start < pos),
+            };
+            if better {
+                best = Some((entry, score, start));
             }
         }
-        best.map(|(e, _)| e)
+        best.map(|(e, _, _)| e)
     }
 }
 
@@ -1168,12 +1174,155 @@ mod tests {
 
     #[test]
     fn anthropic_subject_keeps_infoworld_publisher_handle() {
+        // Anthropic is not in this index, so publisher host is the only hit.
         let idx = infoworld_index();
         let brief = "Anthropic Opus language problems hidden cost https://www.infoworld.com/article/4211958/x.html";
         let hit = idx
             .primary_from_brief(brief)
-            .expect("publisher wins over subject name");
+            .expect("publisher when subject name is unregistered");
         assert_eq!(hit.name, "InfoWorld");
+    }
+
+    // Cite target is not the article publisher. Same rule for LinkedIn and X packs/bodies.
+    fn cite_vs_publisher_index() -> HandlesIndex {
+        HandlesIndex {
+            entries: vec![
+                HandleEntry {
+                    name: "GitHub".into(),
+                    linkedin: "@github".into(),
+                    x: "@github".into(),
+                    linkedin_url: "https://www.linkedin.com/company/github/".into(),
+                    x_url: "https://x.com/github".into(),
+                },
+                HandleEntry {
+                    name: "Cursor".into(),
+                    linkedin: String::new(),
+                    x: "@cursor_ai".into(),
+                    linkedin_url: String::new(),
+                    x_url: "https://x.com/cursor_ai".into(),
+                },
+                HandleEntry {
+                    name: "InfoWorld".into(),
+                    linkedin: "@infoworld".into(),
+                    x: "@InfoWorld".into(),
+                    linkedin_url: "https://www.linkedin.com/company/infoworld/".into(),
+                    x_url: "https://x.com/InfoWorld".into(),
+                },
+                HandleEntry {
+                    name: "InfoQ".into(),
+                    linkedin: "@infoq".into(),
+                    x: "@InfoQ".into(),
+                    linkedin_url: "https://www.linkedin.com/company/infoq/".into(),
+                    x_url: "https://x.com/InfoQ".into(),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn named_cite_beats_article_publisher_on_x() {
+        let idx = cite_vs_publisher_index();
+        // Curly apostrophe matches live tweet prose (U+2019).
+        let brief = "Cursor\u{2019}s AI-native approach could simplify enterprise coding, but GitHub remains safer https://www.infoworld.com/article/4211505/decoding-origin.html";
+        let hit = idx.primary_from_brief(brief).expect("named entity");
+        assert_eq!(hit.name, "Cursor");
+        assert_eq!(hit.x, "@cursor_ai");
+
+        let mut pack = String::from("## ResearchPack\nsubject: Cursor Origin\nsummary: ship\n");
+        apply_brief_handles_to_pack(&mut pack, brief, &idx);
+        assert!(
+            pack.contains("x=@cursor_ai"),
+            "pack must carry Cursor, not InfoWorld: {pack}"
+        );
+        assert!(
+            !pack.to_ascii_lowercase().contains("infoworld"),
+            "publisher must not win the cite: {pack}"
+        );
+
+        let body = "📜 Cursor\u{2019}s AI-native approach is rewriting code.\n\n#AI #Cursor";
+        let out = ensure_x_handle_from_pack(body, &pack, &idx);
+        assert!(out.contains("@cursor_ai"), "body must tag Cursor: {out}");
+        assert!(
+            !out.contains("Cursor\u{2019}s"),
+            "plain name must become handle: {out}"
+        );
+        assert!(
+            out.contains("#Cursor"),
+            "hashtag must stay plain name: {out}"
+        );
+    }
+
+    #[test]
+    fn named_cite_beats_article_publisher_on_linkedin() {
+        let idx = cite_vs_publisher_index();
+        // Named company first; InfoWorld is only the article host.
+        let brief =
+            "GitHub remains the safer system of record https://www.infoworld.com/article/4211505/x.html";
+        let hit = idx.primary_from_brief(brief).expect("named cite");
+        assert_eq!(hit.name, "GitHub");
+        assert_eq!(hit.linkedin, "@github");
+
+        let mut pack = String::from("## ResearchPack\nsubject: GitHub record\nsummary: ship\n");
+        apply_brief_handles_to_pack(&mut pack, brief, &idx);
+        assert!(
+            pack.contains("linkedin=@github"),
+            "LinkedIn pack must cite GitHub: {pack}"
+        );
+        assert!(
+            !pack.to_ascii_lowercase().contains("infoworld"),
+            "publisher must not win the cite: {pack}"
+        );
+
+        let body = "GitHub remains the safer system of record for builders.";
+        let out = ensure_linkedin_handle_from_pack(body, &pack, &idx);
+        assert!(
+            out.contains("@github"),
+            "LinkedIn body must tag cite: {out}"
+        );
+        assert!(
+            !out.contains("GitHub remains"),
+            "plain cite name must become handle: {out}"
+        );
+    }
+
+    #[test]
+    fn bare_publisher_url_still_resolves_when_no_named_cite() {
+        let idx = cite_vs_publisher_index();
+        let info_world = idx
+            .primary_from_brief(
+                "cite https://www.infoworld.com/article/4211958/anthropics-opus-language-problems.html",
+            )
+            .expect("InfoWorld host");
+        assert_eq!(info_world.name, "InfoWorld");
+        let info_q = idx
+            .primary_from_brief(
+                "cite https://www.infoq.com/news/2026/08/aws-bench-agent-evaluation",
+            )
+            .expect("InfoQ host - second publisher, not InfoWorld-hardcoded");
+        assert_eq!(info_q.name, "InfoQ");
+    }
+
+    #[test]
+    fn seed_handles_tweet074_cursor_not_publisher() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../handles.toml");
+        let idx = load_handles_from(&path).expect("seed handles.toml");
+        let brief = "Cursor\u{2019}s AI-native approach could simplify software development, but gaps in enterprise controls, security and ecosystem depth mean GitHub remains the safer system of record for now, analysts say. https://www.infoworld.com/article/4211505/decoding-origin-cursors-github-rival-that-was-launched-during-the-latters-outage.html";
+        let hit = idx.primary_from_brief(brief).expect("Cursor from seed");
+        assert_eq!(hit.name, "Cursor");
+        assert_eq!(hit.x, "@cursor_ai");
+        assert!(
+            !hit.x.eq_ignore_ascii_case("@InfoWorld"),
+            "must not fall back to article publisher"
+        );
+
+        let mut pack = String::from("## ResearchPack\nsubject: Cursor Origin\nsummary: ship\n");
+        apply_brief_handles_to_pack(&mut pack, brief, &idx);
+        assert!(pack.contains("x=@cursor_ai"), "seed pack: {pack}");
+        assert!(!pack.to_ascii_lowercase().contains("infoworld"));
+
+        let body = "📜 Cursor\u{2019}s AI-native approach is rewriting code, but 🔐 enterprise security gaps still make GitHub the safer ship. 🦀\n#AI #DevTools #GitHub #Cursor";
+        let out = ensure_x_handle_from_pack(body, &pack, &idx);
+        assert!(out.contains("@cursor_ai"), "tweet074 body: {out}");
     }
 
     #[test]
