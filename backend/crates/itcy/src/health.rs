@@ -358,6 +358,7 @@ pub async fn e2e_publish(
             pubs_pr_number: body.pubs_pr_number,
             body: text.to_string(),
             quote_tweet_id: body.quote_tweet_id.filter(|s| !s.trim().is_empty()),
+            in_reply_to_tweet_id: None,
         };
         return match crate::publish::ship_x_post(
             state.github_hooks.state_db_path.as_str(),

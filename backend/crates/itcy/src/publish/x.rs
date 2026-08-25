@@ -20,13 +20,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::process::Command;
 use tracing::{info, warn};
 
-/// Request for one X post (text + optional quote tweet).
+/// Request for one X post (text + optional quote tweet or threaded reply).
 #[derive(Debug, Clone)]
 pub struct XPublishRequest {
     pub tweet_id: Option<String>,
     pub pubs_pr_number: Option<u64>,
     pub body: String,
     pub quote_tweet_id: Option<String>,
+    /// When set, ship as a threaded reply under this status (not a new root / quote).
+    pub in_reply_to_tweet_id: Option<String>,
 }
 
 /// Resolves X ship mode: `ITCY_X_PUBLISH_MODE` → `[x].publish_mode` → `fallback`.
@@ -67,6 +69,7 @@ pub async fn ship_x_post(
         mode = mode.as_str(),
         tweet_id = request.tweet_id.as_deref().unwrap_or(""),
         quote = request.quote_tweet_id.as_deref().unwrap_or(""),
+        in_reply_to = request.in_reply_to_tweet_id.as_deref().unwrap_or(""),
         "publish: x ship starting"
     );
     let audit = PublishAuditStore::open(state_db_path.as_ref())
@@ -108,20 +111,24 @@ fn playground_x_post(request: &XPublishRequest) -> PublishResult {
         .tweet_id
         .as_deref()
         .filter(|s| !s.is_empty())
+        .or(request.in_reply_to_tweet_id.as_deref())
+        .filter(|s| !s.is_empty())
         .map_or_else(|| "unknown".into(), |s| s.replace(['/', ' '], "-"));
     let status_id = format!("playground-{slug}");
     let url = x_status_public_url(&status_id);
     let texts = tweet_texts_for_api(&request.body);
     let reply = texts.get(1).map(|_| format!("{url}-2"));
+    let mut detail = x_ship_detail(
+        Some(&url),
+        request.quote_tweet_id.as_deref(),
+        reply.as_deref(),
+    );
+    detail = append_in_reply_detail(detail, trim_opt_id(request.in_reply_to_tweet_id.as_deref()));
     PublishResult {
         mode: PublishMode::Playground,
         linkedin_urn: Some(status_id),
-        linkedin_url: Some(url.clone()),
-        detail: x_ship_detail(
-            Some(&url),
-            request.quote_tweet_id.as_deref(),
-            reply.as_deref(),
-        ),
+        linkedin_url: Some(url),
+        detail,
     }
 }
 
@@ -137,35 +144,24 @@ async fn production_x_post(request: &XPublishRequest) -> Result<PublishResult, P
 }
 
 async fn brave_x_post(request: &XPublishRequest) -> Result<PublishResult, PublishError> {
+    let in_reply_to = trim_opt_id(request.in_reply_to_tweet_id.as_deref());
+    reject_quote_with_in_reply(request.quote_tweet_id.as_deref(), in_reply_to)?;
     let (text, reply) = ship_texts(&request.body)?;
+    reject_overflow_with_in_reply(in_reply_to, reply.is_some())?;
     let script = resolve_post_twitter_cmd().ok_or_else(|| {
         PublishError::Other("scripts/post-twitter.sh not found (Brave X ship)".into())
     })?;
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_nanos());
-    let tmp_path = std::env::temp_dir().join(format!("itcy-x-post-{stamp}.txt"));
-    let reply_path = reply
-        .as_ref()
-        .map(|_| std::env::temp_dir().join(format!("itcy-x-reply-{stamp}.txt")));
-    std::fs::write(&tmp_path, text.as_bytes())
-        .map_err(|e| PublishError::Other(format!("write tweet file: {e}")))?;
-    if let (Some(path), Some(body)) = (reply_path.as_ref(), reply.as_ref()) {
-        std::fs::write(path, body.as_bytes())
-            .map_err(|e| PublishError::Other(format!("write reply file: {e}")))?;
-    }
+    let (tmp_path, reply_path) = write_brave_text_files(&text, reply.as_deref())?;
     let mut cmd = Command::new(&script);
     cmd.arg(&tmp_path);
-    if let Some(qid) = request
-        .quote_tweet_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(qid) = trim_opt_id(request.quote_tweet_id.as_deref()) {
         cmd.arg(qid);
     }
     if let Some(path) = reply_path.as_ref() {
         cmd.env("ITCY_TWITTER_REPLY_TEXT_FILE", path);
+    }
+    if let Some(parent) = in_reply_to {
+        cmd.env("ITCY_TWITTER_IN_REPLY_TO_STATUS_ID", parent);
     }
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     info!(script = %script.display(), "publish: x Brave ship starting");
@@ -185,7 +181,69 @@ async fn brave_x_post(request: &XPublishRequest) -> Result<PublishResult, Publis
             out.status.code()
         )));
     }
-    let parsed: serde_json::Value = serde_json::from_str(&stdout).map_err(|e| {
+    brave_result_from_stdout(&stdout, &stderr, request, in_reply_to)
+}
+
+fn trim_opt_id(raw: Option<&str>) -> Option<&str> {
+    raw.map(str::trim).filter(|s| !s.is_empty())
+}
+
+fn reject_quote_with_in_reply(
+    quote: Option<&str>,
+    in_reply_to: Option<&str>,
+) -> Result<(), PublishError> {
+    if in_reply_to.is_some() && trim_opt_id(quote).is_some() {
+        return Err(PublishError::Other(
+            "X ship cannot set both quote_tweet_id and in_reply_to_tweet_id".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn reject_overflow_with_in_reply(
+    in_reply_to: Option<&str>,
+    has_overflow_reply: bool,
+) -> Result<(), PublishError> {
+    if in_reply_to.is_some() && has_overflow_reply {
+        return Err(PublishError::Other(
+            "threaded reply ship expects a single tweet body (no overflow self-reply file)".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn write_brave_text_files(
+    text: &str,
+    reply: Option<&str>,
+) -> Result<(PathBuf, Option<PathBuf>), PublishError> {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let tmp_path = std::env::temp_dir().join(format!("itcy-x-post-{stamp}.txt"));
+    let reply_path = reply.map(|_| std::env::temp_dir().join(format!("itcy-x-reply-{stamp}.txt")));
+    std::fs::write(&tmp_path, text.as_bytes())
+        .map_err(|e| PublishError::Other(format!("write tweet file: {e}")))?;
+    if let (Some(path), Some(body)) = (reply_path.as_ref(), reply) {
+        std::fs::write(path, body.as_bytes())
+            .map_err(|e| PublishError::Other(format!("write reply file: {e}")))?;
+    }
+    Ok((tmp_path, reply_path))
+}
+
+fn append_in_reply_detail(mut detail: String, parent: Option<&str>) -> String {
+    if let Some(parent) = parent {
+        detail = format!("{detail}; reply to https://x.com/i/status/{parent}");
+    }
+    detail
+}
+
+fn brave_result_from_stdout(
+    stdout: &str,
+    stderr: &str,
+    request: &XPublishRequest,
+    in_reply_to: Option<&str>,
+) -> Result<PublishResult, PublishError> {
+    let parsed: serde_json::Value = serde_json::from_str(stdout).map_err(|e| {
         PublishError::Other(format!(
             "Brave X post JSON parse: {e}; stdout={stdout}; stderr={stderr}"
         ))
@@ -194,16 +252,12 @@ async fn brave_x_post(request: &XPublishRequest) -> Result<PublishResult, Publis
         let detail = parsed
             .get("detail")
             .and_then(|v| v.as_str())
-            .unwrap_or(stdout.as_str());
+            .unwrap_or(stdout);
         return Err(PublishError::Other(format!(
             "Brave X post refused: {detail}"
         )));
     }
-    let quote_id = request
-        .quote_tweet_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
+    let quote_id = trim_opt_id(request.quote_tweet_id.as_deref());
     let posted = posted_status_from_brave(&parsed, quote_id);
     if posted.is_none() {
         warn!(
@@ -218,11 +272,15 @@ async fn brave_x_post(request: &XPublishRequest) -> Result<PublishResult, Publis
         .map(str::trim)
         .filter(|s| !s.is_empty());
     let (id, public) = posted.unzip();
+    let detail = append_in_reply_detail(
+        x_ship_detail(public.as_deref(), quote_id, reply_url),
+        in_reply_to,
+    );
     Ok(PublishResult {
         mode: PublishMode::Production,
         linkedin_urn: id,
-        linkedin_url: public.clone(),
-        detail: x_ship_detail(public.as_deref(), quote_id, reply_url),
+        linkedin_url: public,
+        detail,
     })
 }
 
@@ -310,15 +368,16 @@ async fn api_x_post(request: &XPublishRequest) -> Result<PublishResult, PublishE
                 .into(),
         ));
     }
+    let in_reply_to = trim_opt_id(request.in_reply_to_tweet_id.as_deref());
+    reject_quote_with_in_reply(request.quote_tweet_id.as_deref(), in_reply_to)?;
     let (text, reply) = ship_texts(&request.body)?;
+    reject_overflow_with_in_reply(in_reply_to, reply.is_some())?;
     let mut payload = serde_json::json!({ "text": text });
-    if let Some(qid) = request
-        .quote_tweet_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(qid) = trim_opt_id(request.quote_tweet_id.as_deref()) {
         payload["quote_tweet_id"] = serde_json::Value::String(qid.to_string());
+    }
+    if let Some(parent) = in_reply_to {
+        payload["reply"] = serde_json::json!({ "in_reply_to_tweet_id": parent });
     }
     let url = format!("{TWITTER_API_V2_BASE}/tweets");
     let auth = oauth1_header("POST", &url, &creds)?;
@@ -346,15 +405,19 @@ async fn api_x_post(request: &XPublishRequest) -> Result<PublishResult, PublishE
     } else {
         None
     };
-    Ok(PublishResult {
-        mode: PublishMode::Production,
-        linkedin_urn: Some(id),
-        linkedin_url: Some(public.clone()),
-        detail: x_ship_detail(
+    let detail = append_in_reply_detail(
+        x_ship_detail(
             Some(&public),
             request.quote_tweet_id.as_deref(),
             reply_url.as_deref(),
         ),
+        in_reply_to,
+    );
+    Ok(PublishResult {
+        mode: PublishMode::Production,
+        linkedin_urn: Some(id),
+        linkedin_url: Some(public),
+        detail,
     })
 }
 
@@ -578,6 +641,7 @@ mod tests {
             pubs_pr_number: Some(1),
             body: "hi".into(),
             quote_tweet_id: None,
+            in_reply_to_tweet_id: None,
         });
         assert!(link.linkedin_url.unwrap().contains("Interchouette"));
         assert!(link.detail.contains("https://x.com/Interchouette/status/"));
@@ -587,11 +651,22 @@ mod tests {
             pubs_pr_number: Some(1),
             body: "hi".into(),
             quote_tweet_id: Some("99".into()),
+            in_reply_to_tweet_id: None,
         });
         assert!(quote.linkedin_url.unwrap().contains("Interchouette"));
         assert!(quote.detail.contains("https://x.com/Interchouette/status/"));
         assert!(quote.detail.contains("Quote of https://x.com/i/status/99"));
         assert!(!quote.detail.contains("x.com/someone"));
+        let threaded = playground_x_post(&XPublishRequest {
+            tweet_id: None,
+            pubs_pr_number: None,
+            body: "owl reply".into(),
+            quote_tweet_id: None,
+            in_reply_to_tweet_id: Some("2092338421779796069".into()),
+        });
+        assert!(threaded
+            .detail
+            .contains("reply to https://x.com/i/status/2092338421779796069"));
     }
 
     #[test]
@@ -641,6 +716,7 @@ https://blog.dante.company/en/articles/github-models-retirement-migration-2026-0
             pubs_pr_number: Some(18),
             body: body.into(),
             quote_tweet_id: None,
+            in_reply_to_tweet_id: None,
         });
         assert!(r.detail.contains("-2"), "{}", r.detail);
         let texts = tweet_texts_for_api(body);
@@ -728,6 +804,7 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
             pubs_pr_number: Some(45),
             body: body.into(),
             quote_tweet_id: Some("2089811385899160055".into()),
+            in_reply_to_tweet_id: None,
         };
         prepare_x_publish_request(&mut req);
         assert!(

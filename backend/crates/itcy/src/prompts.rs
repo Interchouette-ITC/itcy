@@ -79,8 +79,12 @@ pub const DRAFT_REWORK_SYSTEM_CORE: &str = prompt!("draft_rework_system.md");
 /// `LinkedIn` comment-reply system (`/accept_comment_reply`).
 pub const COMMENT_REPLY_SYSTEM_CORE: &str = prompt!("comment_reply_system.md");
 
+/// X tweet-reply system (`/accept_tweet_reply`).
+pub const TWEET_REPLY_SYSTEM_CORE: &str = prompt!("tweet_reply_system.md");
+
 const SELF_USER_TMPL: &str = prompt!("self_user.md");
 const COMMENT_REPLY_USER_TMPL: &str = prompt!("comment_reply_user.md");
+const TWEET_REPLY_USER_TMPL: &str = prompt!("tweet_reply_user.md");
 
 fn fill(tmpl: &str, key: &str, value: &str) -> String {
     tmpl.replace(&format!("{{{key}}}"), value)
@@ -162,6 +166,13 @@ pub fn comment_reply_user_message(
     let mut s = fill(COMMENT_REPLY_USER_TMPL, "parent_post", parent_post);
     s = fill(&s, "comment_author", comment_author);
     fill(&s, "comment_body", comment_body)
+}
+
+/// `/accept_tweet_reply` user turn (parent tweet author + body).
+#[must_use]
+pub fn tweet_reply_user_message(tweet_author: &str, tweet_body: &str) -> String {
+    let s = fill(TWEET_REPLY_USER_TMPL, "tweet_author", tweet_author);
+    fill(&s, "tweet_body", tweet_body)
 }
 
 /// Subject-locked fallback when the writer returns thin / scratchpad text.

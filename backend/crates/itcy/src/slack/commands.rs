@@ -46,12 +46,8 @@ pub enum OperatorCommand {
     },
     /// Build + post numbered subject digest to `#daily-digest`.
     DailyDigest,
-    /// Fetch `LinkedIn` comment URL and draft a short paste reply (no BAT / no ship).
-    AcceptCommentReply {
-        url: String,
-    },
-    /// Draft + ship a reply via `LinkedIn` MCP `reply_to_comment` (needs dashCommentUrn).
-    ShipCommentReply {
+    /// Draft a `LinkedIn` or X threaded reply (`CREPLY-` / `XREPLY-`).
+    ReplyComment {
         url: String,
     },
     /// Tor enrich one personal `LinkedIn` post URL into corpus.
@@ -125,8 +121,7 @@ pub const fn slash_command_name(cmd: &OperatorCommand) -> &'static str {
         OperatorCommand::ChangeUrl { .. } => "/change_url",
         OperatorCommand::ProposeDraft { .. } => "/propose_draft",
         OperatorCommand::DailyDigest => "/daily_digest",
-        OperatorCommand::AcceptCommentReply { .. } => "/accept_comment_reply",
-        OperatorCommand::ShipCommentReply { .. } => "/ship_comment_reply",
+        OperatorCommand::ReplyComment { .. } => "/reply_comment",
         OperatorCommand::Enrich { .. } => "/enrich",
         OperatorCommand::Ingest { .. } => "/ingest",
         OperatorCommand::TweetAbout { .. } => "/tweet_about",
@@ -168,8 +163,7 @@ pub const KNOWN_SLASH_COMMANDS: &[&str] = &[
     "tweet_farce",
     "retry_bat",
     "daily_digest",
-    "accept_comment_reply",
-    "ship_comment_reply",
+    "reply_comment",
     "enrich",
     "ingest",
     "handle_add",
@@ -268,11 +262,8 @@ pub fn command_ack_text(cmd: &OperatorCommand) -> String {
             ack_propose("/propose_draft", digest_id.as_deref(), indices)
         }
         OperatorCommand::DailyDigest => "Received /daily_digest".into(),
-        OperatorCommand::AcceptCommentReply { url } => {
-            format!("Received /accept_comment_reply {url}")
-        }
-        OperatorCommand::ShipCommentReply { url } => {
-            format!("Received /ship_comment_reply {url}")
+        OperatorCommand::ReplyComment { url } => {
+            format!("Received /reply_comment {url}")
         }
         OperatorCommand::Enrich { url } => format!("Received /enrich {url}"),
         OperatorCommand::Ingest { url } => format!("Received /ingest {url}"),
@@ -535,13 +526,9 @@ pub fn parse_slash_command(command: &str, text: &str) -> Result<OperatorCommand,
         "help" => Ok(OperatorCommand::Help),
         "status_itcy" => Ok(OperatorCommand::Status),
         "daily_digest" => Ok(OperatorCommand::DailyDigest),
-        "accept_comment_reply" => {
-            let url = parse_comment_reply_url(args)?;
-            Ok(OperatorCommand::AcceptCommentReply { url })
-        }
-        "ship_comment_reply" => {
-            let url = parse_comment_reply_url(args)?;
-            Ok(OperatorCommand::ShipCommentReply { url })
+        "reply_comment" => {
+            let url = parse_slash_url(args)?;
+            Ok(OperatorCommand::ReplyComment { url })
         }
         "enrich" => {
             let url = parse_slash_url(args)?;
@@ -622,7 +609,7 @@ fn parse_saved_slash(cmd: &str, args: &str) -> Option<Result<OperatorCommand, St
         "show" => parse_show_ids_cmd(args),
         "delete" => parse_saved_ids_cmd(
             args,
-            "usage: /delete <DRAFT-…|POST-…|TWEET-…|XPOST-…>[, <ID>…]",
+            "usage: /delete <DRAFT-…|POST-…|TWEET-…|XPOST-…|CREPLY-…|XREPLY-…>[, <ID>…]",
             |ids| OperatorCommand::Delete { ids },
         ),
         _ => return None,
@@ -634,17 +621,21 @@ fn parse_lifecycle_slash(cmd: &str, args: &str) -> Option<Result<OperatorCommand
         "accept" => {
             let Some(id) = extract_draft_or_tweet_id(args) else {
                 return Some(Err(
-                    "usage: /accept <DRAFT-YYYYMMDD-NNNNNN|TWEET-YYYYMMDD-NNNNNN>".into(),
+                    "usage: /accept <DRAFT-…|TWEET-…|CREPLY-…|XREPLY-…>".into()
                 ));
             };
             Ok(OperatorCommand::Accept { draft_id: id })
         }
         "rework" => {
             let Some((id, rest)) = split_draft_or_tweet_id_and_rest(args) else {
-                return Some(Err("usage: /rework <DRAFT-…|TWEET-…> <instructions>".into()));
+                return Some(Err(
+                    "usage: /rework <DRAFT-…|TWEET-…|CREPLY-…|XREPLY-…> <instructions>".into(),
+                ));
             };
             if rest.is_empty() {
-                return Some(Err("usage: /rework <DRAFT-…|TWEET-…> <instructions>".into()));
+                return Some(Err(
+                    "usage: /rework <DRAFT-…|TWEET-…|CREPLY-…|XREPLY-…> <instructions>".into(),
+                ));
             }
             Ok(OperatorCommand::Rework {
                 draft_id: id,
@@ -657,6 +648,11 @@ fn parse_lifecycle_slash(cmd: &str, args: &str) -> Option<Result<OperatorCommand
                     "usage: /change_url <DRAFT-…|TWEET-…> <0|1|2|3|https://…>".into(),
                 ));
             };
+            if crate::sources::reply_comment::is_reply_id(&id) {
+                return Some(Err(
+                    "replies have no cite URL; use `/rework` then `/accept`".into(),
+                ));
+            }
             // One token only: pasted Next: footers append more slash lines after `1`.
             let choice = rest
                 .split_whitespace()
@@ -735,10 +731,6 @@ fn parse_tweet_slash(cmd: &str, args: &str) -> Option<Result<OperatorCommand, St
         "propose_tweet" => parse_propose_tweet_args(args),
         _ => return None,
     })
-}
-
-fn parse_comment_reply_url(args: &str) -> Result<String, String> {
-    parse_slash_url(args)
 }
 
 fn parse_slash_url(args: &str) -> Result<String, String> {
@@ -891,7 +883,8 @@ fn parse_saved_ids_cmd(
 }
 
 fn parse_show_ids_cmd(args: &str) -> Result<OperatorCommand, String> {
-    const USAGE: &str = "usage: /show <DRAFT-…|POST-…|TWEET-…|XPOST-…|DIGEST-…>[, <ID>…]";
+    const USAGE: &str =
+        "usage: /show <DRAFT-…|POST-…|TWEET-…|XPOST-…|CREPLY-…|XREPLY-…|DIGEST-…>[, <ID>…]";
     let ids = collect_ids(args, draft_tweet_post_or_digest_id_from_token);
     if ids.is_empty() {
         return Err(USAGE.into());
@@ -929,7 +922,10 @@ fn collect_ids(args: &str, parse_one: fn(&str) -> Option<String>) -> Vec<String>
 }
 
 fn draft_or_tweet_id_from_token(raw: &str) -> Option<String> {
-    draft_id_from_token(raw).or_else(|| tweet_id_from_token(raw))
+    draft_id_from_token(raw)
+        .or_else(|| tweet_id_from_token(raw))
+        .or_else(|| id_from_token(raw, "CREPLY-"))
+        .or_else(|| id_from_token(raw, "XREPLY-"))
 }
 
 /// First `DRAFT-…` or `TWEET-…` in slash args.
@@ -999,12 +995,12 @@ pub const fn help_text() -> &'static str {
      • `/draft_about <subject>, <instructions>` - draft; a https in instructions is the in-post cite\n\
      • `/draft_about_itc` or `/draft_about_itc <subject>, <instructions>` - LinkedIn draft about Interchouette / our projects\n\
      • `/draft_about_itcy` or `/draft_about_itcy <instructions>` - LinkedIn self-introduction post as ITCy (first-person, stack disclosure)\n\
-     • `/rework <Draft-ID|Tweet-ID> <instructions>` - rewrite saved draft or tweet (until Post / XPOST)\n\
-     • `/change_url <Draft-ID|Tweet-ID> <0|1|2|3|https://…>` - set the link (`1`/`2`/`3` or URL); `0` = no link\n\
-     • `/accept <Draft-ID|Tweet-ID>` - open/update BAT PR (LinkedIn `drafts` or X `drafts_tweet`; safe to re-run; publishes if Approve is on GitHub but webhook missed)\n\
-     • `/list` - list drafts, tweets, and shipped Posts / X posts\n\
-     • `/show <Draft-ID|Post-ID|Tweet-ID|XPOST-ID|DIGEST-…>[, <ID>]` - show body/paste, or re-post a stored digest to `#daily-digest`\n\
-     • `/delete <Draft-ID|Tweet-ID>[, <ID>]` - delete saved row(s) and close GitHub PRs if open\n\
+     • `/rework <Draft-ID|Tweet-ID|Reply-ID> <instructions>` - rewrite saved draft, tweet, or reply (until Post / XPOST / ship)\n\
+     • `/change_url <Draft-ID|Tweet-ID> <0|1|2|3|https://…>` - set the link (`1`/`2`/`3` or URL); `0` = no link (not for replies)\n\
+     • `/accept <Draft-ID|Tweet-ID|Reply-ID>` - BAT PR for DRAFT/TWEET; direct ship for CREPLY/XREPLY\n\
+     • `/list` - list drafts, tweets, replies, and shipped Posts / X posts\n\
+     • `/show <Draft-ID|Post-ID|Tweet-ID|XPOST-ID|CREPLY-…|XREPLY-…|DIGEST-…>[, <ID>]` - show body/paste, or re-post a stored digest to `#daily-digest`\n\
+     • `/delete <Draft-ID|Tweet-ID|CREPLY-…|XREPLY-…>[, <ID>]` - delete saved row(s) and close GitHub PRs if open\n\
      • `/retry_bat <Draft-ID|Tweet-ID|XPOST-ID>` - re-ship after BAT (missed webhook or X/LinkedIn ship failed)\n\
      • `/enrich <url>` - enrich corpus with a personal LinkedIn post (Tor)\n\
      • `/ingest <url>` - ingest public article or LinkedIn Pulse (clearnet)\n\
@@ -1018,8 +1014,7 @@ pub const fn help_text() -> &'static str {
      • `/tweet_about_itcy` or `/tweet_about_itcy <instructions>` - X self-introduction tweet as ITCy (first-person, stack disclosure)\n\
      • `/propose_tweet` - new tweet from corpus\n\
      • `/propose_tweet <DIGEST-…>, <1|1,3>` or `/propose_tweet <N>` - new tweets from that digest's propositions\n\
-     • `/accept_comment_reply <https://…>` - fetch LinkedIn comment, draft a short paste reply (no ship)\n\
-     • `/ship_comment_reply <https://…>` - draft + ship reply via LinkedIn MCP (needs dashCommentUrn)\n\
+     • `/reply_comment <https://…>` - LinkedIn comment or X status → saved CREPLY-/XREPLY- draft; `/accept` ships (no BAT PR)\n\
      *Freeform chat:* anything else (informal / informational; tools OK). No draft/BAT/corpus ingest here."
 }
 
@@ -1430,28 +1425,43 @@ Written by AI - ITCy - model ollama/qwen3:8b\n\
             parse_slash_command("/daily_digest", "").unwrap(),
             OperatorCommand::DailyDigest
         );
+    }
+
+    #[test]
+    fn parses_reply_comment_slash_workflows() {
         let c = parse_slash_command(
-            "/accept_comment_reply",
+            "/reply_comment",
             "https://www.linkedin.com/feed/update/urn:li:activity:123/",
         )
         .unwrap();
         match c {
-            OperatorCommand::AcceptCommentReply { url } => {
+            OperatorCommand::ReplyComment { url } => {
                 assert!(url.contains("linkedin.com"));
             }
             other => panic!("{other:?}"),
         }
-        let shipped = parse_slash_command(
-            "/ship_comment_reply",
-            "https://www.linkedin.com/feed/update/urn:li:activity:123/?dashCommentUrn=urn%3Ali%3Afsd_comment%3A%281%2Curn%3Ali%3Aactivity%3A123%29",
+        let x = parse_slash_command(
+            "/reply_comment",
+            "https://x.com/grok/status/2092338421779796069",
         )
         .unwrap();
-        match shipped {
-            OperatorCommand::ShipCommentReply { url } => {
-                assert!(url.contains("activity:123"));
+        match x {
+            OperatorCommand::ReplyComment { url } => {
+                assert!(url.contains("grok/status"));
             }
             other => panic!("{other:?}"),
         }
+        assert_eq!(
+            parse_slash_command("/accept", "XREPLY-20260825-000001").unwrap(),
+            OperatorCommand::Accept {
+                draft_id: "XREPLY-20260825-000001".into()
+            }
+        );
+        assert!(
+            parse_slash_command("/change_url", "XREPLY-20260825-000001 1")
+                .unwrap_err()
+                .contains("no cite URL")
+        );
     }
 
     #[test]
@@ -1546,8 +1556,9 @@ Written by AI - ITCy - model ollama/qwen3:8b\n\
         assert!(h.contains("/draft_about"));
         assert!(h.contains("/draft_about_itc"));
         assert!(h.contains("/draft_tweet_about_itc"));
-        assert!(h.contains("/accept_comment_reply"));
-        assert!(h.contains("/ship_comment_reply"));
+        assert!(h.contains("/reply_comment"));
+        assert!(!h.contains("/accept_comment_reply"));
+        assert!(!h.contains("/ship_tweet_reply"));
         assert!(h.contains("/propose_draft"));
         assert!(h.contains("/daily_digest"));
         assert!(h.contains("/tweet_about"));
@@ -1909,16 +1920,10 @@ Written by AI - ITCy - model ollama/qwen3:8b\n\
             ),
             (OperatorCommand::DailyDigest, "Received /daily_digest"),
             (
-                OperatorCommand::AcceptCommentReply {
-                    url: "https://www.linkedin.com/feed/update/urn:li:activity:1".into(),
+                OperatorCommand::ReplyComment {
+                    url: "https://x.com/grok/status/2092338421779796069".into(),
                 },
-                "Received /accept_comment_reply https://www.linkedin.com/feed/update/urn:li:activity:1",
-            ),
-            (
-                OperatorCommand::ShipCommentReply {
-                    url: "https://www.linkedin.com/feed/update/urn:li:activity:1".into(),
-                },
-                "Received /ship_comment_reply https://www.linkedin.com/feed/update/urn:li:activity:1",
+                "Received /reply_comment https://x.com/grok/status/2092338421779796069",
             ),
             (
                 OperatorCommand::Enrich {
