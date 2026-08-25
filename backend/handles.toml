@@ -115,7 +115,9 @@ x_url = "https://x.com/sogetilabs"
 
 [[handle]]
 name = "Cursor"
+linkedin = "@cursorai"
 x = "@cursor_ai"
+linkedin_url = "https://www.linkedin.com/company/cursorai/"
 x_url = "https://x.com/cursor_ai"
 
 [[handle]]

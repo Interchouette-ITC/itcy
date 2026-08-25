@@ -688,9 +688,12 @@ pub fn apply_brief_handles_to_pack(pack: &mut String, brief: &str, index: &Handl
 /// Put the pack's `LinkedIn` `@handle` in the body (name to handle, or lead line).
 ///
 /// Skips the Interchouette brand handle (see [`ensure_linkedin_brand_mention`]).
+/// When the pack only has `x=` (partial registry at draft time), still resolve the
+/// entry's `LinkedIn` handle from that X handle so cite inject works after the
+/// registry gains a `LinkedIn` field.
 #[must_use]
 pub fn ensure_linkedin_handle_from_pack(body: &str, pack: &str, index: &HandlesIndex) -> String {
-    let Some(handle) = handle_from_pack(pack, "linkedin=") else {
+    let Some(handle) = linkedin_handle_for_pack(pack, index) else {
         return body.to_string();
     };
     if handle.eq_ignore_ascii_case(LINKEDIN_BRAND_HANDLE) {
@@ -789,6 +792,21 @@ fn handle_from_pack(pack: &str, key: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// `LinkedIn` `@` for the pack: prefer `linkedin=`, else the registry row matched by `x=`.
+fn linkedin_handle_for_pack(pack: &str, index: &HandlesIndex) -> Option<String> {
+    if let Some(h) = handle_from_pack(pack, "linkedin=") {
+        return Some(h);
+    }
+    let x = handle_from_pack(pack, "x=")?;
+    index.entries.iter().find_map(|e| {
+        if e.x.eq_ignore_ascii_case(&x) && !e.linkedin.is_empty() {
+            Some(e.linkedin.clone())
+        } else {
+            None
+        }
+    })
 }
 
 fn format_handles_line(linkedin: &str, x: &str) -> Option<String> {
@@ -1196,9 +1214,9 @@ mod tests {
                 },
                 HandleEntry {
                     name: "Cursor".into(),
-                    linkedin: String::new(),
+                    linkedin: "@cursorai".into(),
                     x: "@cursor_ai".into(),
-                    linkedin_url: String::new(),
+                    linkedin_url: "https://www.linkedin.com/company/cursorai/".into(),
                     x_url: "https://x.com/cursor_ai".into(),
                 },
                 HandleEntry {
@@ -1310,6 +1328,7 @@ mod tests {
         let hit = idx.primary_from_brief(brief).expect("Cursor from seed");
         assert_eq!(hit.name, "Cursor");
         assert_eq!(hit.x, "@cursor_ai");
+        assert_eq!(hit.linkedin, "@cursorai");
         assert!(
             !hit.x.eq_ignore_ascii_case("@InfoWorld"),
             "must not fall back to article publisher"
@@ -1318,11 +1337,53 @@ mod tests {
         let mut pack = String::from("## ResearchPack\nsubject: Cursor Origin\nsummary: ship\n");
         apply_brief_handles_to_pack(&mut pack, brief, &idx);
         assert!(pack.contains("x=@cursor_ai"), "seed pack: {pack}");
+        assert!(
+            pack.contains("linkedin=@cursorai"),
+            "seed LinkedIn pack: {pack}"
+        );
         assert!(!pack.to_ascii_lowercase().contains("infoworld"));
 
         let body = "📜 Cursor\u{2019}s AI-native approach is rewriting code, but 🔐 enterprise security gaps still make GitHub the safer ship. 🦀\n#AI #DevTools #GitHub #Cursor";
         let out = ensure_x_handle_from_pack(body, &pack, &idx);
         assert!(out.contains("@cursor_ai"), "tweet074 body: {out}");
+    }
+
+    #[test]
+    fn draft098_cursor_linkedin_cite_not_publisher() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../handles.toml");
+        let idx = load_handles_from(&path).expect("seed handles.toml");
+        let brief = "Cursor\u{2019}s AI-native approach is a bold move https://www.infoworld.com/article/4211505/decoding-origin-cursors-github-rival-that-was-launched-during-the-latters-outage.html";
+        let mut pack = String::from("## ResearchPack\nsubject: Cursor Origin\nsummary: ship\n");
+        apply_brief_handles_to_pack(&mut pack, brief, &idx);
+        assert!(
+            pack.contains("linkedin=@cursorai"),
+            "LinkedIn pack must cite Cursor: {pack}"
+        );
+        assert!(!pack.to_ascii_lowercase().contains("infoworld"));
+
+        let body = "Cursor\u{2019}s AI-native approach is a bold move, shifting from a plugin-based model.\n\nGitHub remains the safer bet.";
+        let out = ensure_linkedin_handle_from_pack(body, &pack, &idx);
+        assert!(
+            out.contains("@cursorai"),
+            "LinkedIn body must tag Cursor: {out}"
+        );
+        assert!(
+            !out.starts_with("Cursor"),
+            "plain Cursor name must become handle: {out}"
+        );
+    }
+
+    #[test]
+    fn linkedin_inject_from_x_only_pack_when_registry_has_linkedin() {
+        let idx = cite_vs_publisher_index();
+        // Stale pack from when Cursor had X only (real DRAFT-098 shape).
+        let pack = "subject: Cursor\nhandles: x=@cursor_ai\n";
+        let body = "Cursor\u{2019}s AI-native approach is a bold move.";
+        let out = ensure_linkedin_handle_from_pack(body, pack, &idx);
+        assert!(
+            out.contains("@cursorai"),
+            "x-only pack must still resolve LinkedIn via registry: {out}"
+        );
     }
 
     #[test]
