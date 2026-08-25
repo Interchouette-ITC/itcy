@@ -1374,6 +1374,40 @@ mod tests {
     }
 
     #[test]
+    fn draft102_sourcegraph_linkedin_cite_from_seed() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../handles.toml");
+        let idx = load_handles_from(&path).expect("seed handles.toml");
+        let brief =
+            "Amp AI coding agent by Sourcegraph https://sourcegraph.com/blog/agentic-coding";
+        let hit = idx
+            .primary_from_brief(brief)
+            .expect("Sourcegraph from seed");
+        assert_eq!(hit.name, "Sourcegraph");
+        assert_eq!(hit.x, "@Sourcegraph");
+        assert_eq!(hit.linkedin, "@sourcegraph");
+
+        let mut pack =
+            String::from("## ResearchPack\nsubject: Amp by Sourcegraph\nsummary: ship\n");
+        apply_brief_handles_to_pack(&mut pack, brief, &idx);
+        assert!(
+            pack.contains("linkedin=@sourcegraph"),
+            "LinkedIn pack must cite Sourcegraph: {pack}"
+        );
+        assert!(pack.contains("x=@Sourcegraph"), "X pack: {pack}");
+
+        let body = "Sourcegraph\u{2019}s Amp isn\u{2019}t just another autocomplete tool.";
+        let out = ensure_linkedin_handle_from_pack(body, &pack, &idx);
+        assert!(
+            out.contains("@sourcegraph"),
+            "LinkedIn body must tag Sourcegraph: {out}"
+        );
+        assert!(
+            !out.starts_with("Sourcegraph"),
+            "plain Sourcegraph name must become handle: {out}"
+        );
+    }
+
+    #[test]
     fn linkedin_inject_from_x_only_pack_when_registry_has_linkedin() {
         let idx = cite_vs_publisher_index();
         // Stale pack from when Cursor had X only (real DRAFT-098 shape).

@@ -128,6 +128,13 @@ linkedin_url = "https://www.linkedin.com/company/localstack-cloud/"
 x_url = "https://x.com/localstack"
 
 [[handle]]
+name = "Sourcegraph"
+linkedin = "@sourcegraph"
+x = "@Sourcegraph"
+linkedin_url = "https://www.linkedin.com/company/sourcegraph/"
+x_url = "https://x.com/Sourcegraph"
+
+[[handle]]
 name = "SpaceX"
 linkedin = "@spacex"
 x = "@SpaceX"
