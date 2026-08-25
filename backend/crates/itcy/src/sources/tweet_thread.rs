@@ -116,11 +116,8 @@ fn grow_root_until_reply_fits(root: &mut String, leftover: &mut String, trailer:
             if sentence.is_empty() {
                 break;
             }
-            // Whole sentence only: never word-dribble into a new sentence (TWEET-080).
-            let grown = append_word(root, &sentence);
-            if fits_x_limit(&grown) {
-                *root = grown;
-                *leftover = rest;
+            // Prefer whole next sentence; word-split inside it only when packing requires it.
+            if try_grow_root_with_chunk(root, leftover, &sentence, &rest) {
                 continue;
             }
             break;
@@ -571,11 +568,9 @@ fn take_beats_fitting(head: &str, limit: usize) -> (String, String) {
             continue;
         }
         let remain = remaining_after(&kept, limit);
-        // Do not mid-cut a later beat when root already has whole beats (TWEET-080 wink).
-        if !kept.is_empty() {
-            break;
-        }
-        let (piece, rest_beat) = take_prefix_fitting(&beats[i], remain);
+        // Fill leftover root room with whole sentences from the next beat only.
+        // Bare word-prefix here mid-cut TWEET-080's wink (`…does` / `it for you?`).
+        let (piece, rest_beat) = take_sentence_prefix_fitting(&beats[i], remain);
         if !piece.is_empty() {
             kept.push(piece);
             return (kept.join("\n\n"), join_rest(rest_beat, &beats[i + 1..]));
@@ -597,13 +592,37 @@ fn remaining_after(kept: &[String], limit: usize) -> usize {
     limit.saturating_sub(used).saturating_sub(2)
 }
 
-fn remaining_after_lines(kept: &[String], limit: usize) -> usize {
-    if kept.is_empty() {
-        return limit;
+/// Whole sentences from `text` that fit `limit` (never mid-sentence word cuts).
+fn take_sentence_prefix_fitting(text: &str, limit: usize) -> (String, String) {
+    let text = text.trim();
+    if limit == 0 || text.is_empty() {
+        return (String::new(), text.to_string());
     }
-    limit
-        .saturating_sub(x_weighted_len(&kept.join("\n")))
-        .saturating_sub(1)
+    if fits_limit(text, limit) {
+        return (text.to_string(), String::new());
+    }
+    let mut kept = String::new();
+    let mut rest = text.to_string();
+    loop {
+        let (sentence, after) = take_leading_sentence(&rest);
+        if sentence.is_empty() {
+            break;
+        }
+        let candidate = if kept.is_empty() {
+            sentence.clone()
+        } else {
+            format!("{kept}\n{sentence}")
+        };
+        if !fits_limit(&candidate, limit) {
+            break;
+        }
+        kept = candidate;
+        rest = after;
+        if rest.trim().is_empty() {
+            break;
+        }
+    }
+    (kept, rest)
 }
 
 /// Prefix fits `limit` at word boundaries; suffix is the remaining words/lines.
@@ -649,51 +668,6 @@ fn join_rest(rest_beat: String, more: &[String]) -> String {
     }
     parts.extend(more.iter().cloned());
     parts.join("\n\n")
-}
-
-fn take_prefix_fitting(text: &str, limit: usize) -> (String, String) {
-    if limit == 0 || text.trim().is_empty() {
-        return (String::new(), text.trim().to_string());
-    }
-    if fits_limit(text, limit) {
-        return (text.trim().to_string(), String::new());
-    }
-    let lines: Vec<&str> = text
-        .lines()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .collect();
-    if lines.is_empty() {
-        return (String::new(), String::new());
-    }
-    let mut kept: Vec<String> = Vec::new();
-    let mut i = 0;
-    while i < lines.len() {
-        let mut candidate = kept.clone();
-        candidate.push(lines[i].to_string());
-        let joined = candidate.join("\n");
-        if fits_limit(&joined, limit) {
-            kept.push(lines[i].to_string());
-            i += 1;
-            continue;
-        }
-        let remain = remaining_after_lines(&kept, limit);
-        let (piece, rest_line) = split_word_prefix(lines[i], remain);
-        if !piece.is_empty() {
-            kept.push(piece);
-            let mut tail: Vec<String> = Vec::new();
-            if !rest_line.is_empty() {
-                tail.push(rest_line);
-            }
-            tail.extend(lines[i + 1..].iter().map(|s| (*s).to_string()));
-            return (kept.join("\n"), tail.join("\n"));
-        }
-        break;
-    }
-    if kept.is_empty() {
-        return split_word_prefix(text, limit);
-    }
-    (kept.join("\n"), lines[i..].join("\n"))
 }
 
 fn pack_tweet_two(leftover: &str, trailer: &str) -> String {
