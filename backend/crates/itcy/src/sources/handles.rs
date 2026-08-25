@@ -1298,7 +1298,7 @@ mod tests {
             .primary_from_brief(
                 "cite https://www.infoq.com/news/2026/08/aws-bench-agent-evaluation",
             )
-            .expect("InfoQ host — second publisher, not InfoWorld-hardcoded");
+            .expect("InfoQ host - second publisher, not InfoWorld-hardcoded");
         assert_eq!(info_q.name, "InfoQ");
     }
 
