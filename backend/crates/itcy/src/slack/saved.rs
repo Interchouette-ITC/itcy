@@ -20,7 +20,13 @@ impl SlackRuntime {
         let posts = self.list_saved_section("DRAFT-", true, "Posts");
         let tweets = self.list_saved_section("TWEET-", false, "Tweets");
         let xposts = self.list_saved_section("TWEET-", true, "X posts");
-        format!("{drafts}\n\n{posts}\n\n{tweets}\n\n{xposts}")
+        let creplies = self.list_saved_section("CREPLY-", false, "LinkedIn replies");
+        let xreplies = self.list_saved_section("XREPLY-", false, "X replies");
+        let shipped_c = self.list_saved_section("CREPLY-", true, "Shipped LinkedIn replies");
+        let shipped_x = self.list_saved_section("XREPLY-", true, "Shipped X replies");
+        format!(
+            "{drafts}\n\n{posts}\n\n{tweets}\n\n{xposts}\n\n{creplies}\n\n{xreplies}\n\n{shipped_c}\n\n{shipped_x}"
+        )
     }
 
     pub(crate) async fn show_saved_ids_reply(&self, ids: &[String]) -> String {
@@ -75,7 +81,7 @@ impl SlackRuntime {
         let store_id = resolve_store_id(id);
         let Some(kind) = kind_for_id(&store_id) else {
             return format!(
-                "unknown id `{id}` (need DRAFT-…, POST-…, TWEET-…, XPOST-…, or DIGEST-…)"
+                "unknown id `{id}` (need DRAFT-…, POST-…, TWEET-…, XPOST-…, CREPLY-…, XREPLY-…, or DIGEST-…)"
             );
         };
         let store = match DraftStore::open(&self.config.state_db_path) {
@@ -100,7 +106,7 @@ impl SlackRuntime {
                         row.tokens_in,
                         row.tokens_out,
                     );
-                    let next = next_slash_hints(&display, &row.status);
+                    let next = reply_or_draft_next(&display, &row);
                     format!(
                         "{kind} `{display}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{paste}\n\n{next}",
                         kind = title_case_for_row(&row),
@@ -116,7 +122,7 @@ impl SlackRuntime {
                     } else {
                         crate::sources::draft_footer::slack_highlight_active_link(&restored)
                     };
-                    let next = next_slash_hints(&display, &row.status);
+                    let next = reply_or_draft_next(&display, &row);
                     if next.is_empty() {
                         format!(
                             "{kind} `{display}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{body}",
@@ -168,7 +174,9 @@ impl SlackRuntime {
     async fn delete_one_saved(&self, id: &str) -> String {
         let store_id = resolve_store_id(id);
         let Some(kind) = kind_for_id(&store_id) else {
-            return format!("unknown id `{id}` (need DRAFT-…, POST-…, TWEET-…, or XPOST-…)");
+            return format!(
+                "unknown id `{id}` (need DRAFT-…, POST-…, TWEET-…, XPOST-…, CREPLY-…, or XREPLY-…)"
+            );
         };
         let store = match DraftStore::open(&self.config.state_db_path) {
             Ok(s) => s,
@@ -234,13 +242,29 @@ fn kind_for_id(id: &str) -> Option<&'static str> {
         Some("tweet")
     } else if id.starts_with("DRAFT-") || id.starts_with("POST-") {
         Some("draft")
+    } else if id.starts_with("CREPLY-") {
+        Some("linkedin reply")
+    } else if id.starts_with("XREPLY-") {
+        Some("x reply")
     } else {
         None
     }
 }
 
 fn title_case_for_row(row: &StoredDraft) -> &'static str {
-    if row.status == status::PUBLISHED {
+    if row.draft_id.starts_with("CREPLY-") {
+        if row.status == status::PUBLISHED {
+            "Shipped LinkedIn reply"
+        } else {
+            "LinkedIn reply"
+        }
+    } else if row.draft_id.starts_with("XREPLY-") {
+        if row.status == status::PUBLISHED {
+            "Shipped X reply"
+        } else {
+            "X reply"
+        }
+    } else if row.status == status::PUBLISHED {
         if row.draft_id.starts_with("TWEET-") {
             "X post"
         } else {
@@ -282,6 +306,14 @@ pub(crate) fn next_slash_hints(id: &str, row_status: &str) -> String {
 :wastebasket: /delete {id}"
         ),
         _ => String::new(),
+    }
+}
+
+fn reply_or_draft_next(display: &str, row: &StoredDraft) -> String {
+    if crate::sources::reply_comment::is_reply_id(&row.draft_id) {
+        crate::sources::reply_comment::reply_next_hints(display, &row.status)
+    } else {
+        next_slash_hints(display, &row.status)
     }
 }
 

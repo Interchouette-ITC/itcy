@@ -21,6 +21,7 @@ pub mod linkedin_extract;
 pub mod live_sites;
 pub mod portability;
 pub mod rag;
+pub mod reply_comment;
 pub mod rework;
 pub mod scrape_cache;
 pub mod self_intro;
@@ -35,6 +36,7 @@ pub mod twitter;
 pub mod twitter_queries;
 pub mod twitter_vault;
 pub mod url_hygiene;
+pub mod x_reply;
 
 pub use digest::{
     build_daily_digest, digest_slack_messages, digest_slack_post, format_digest_slack,

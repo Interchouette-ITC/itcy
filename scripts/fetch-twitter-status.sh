@@ -1,23 +1,13 @@
 #!/usr/bin/env bash
-# X/Twitter production ship via warm Brave profile (pw/profile-x).
-#
-# Same vault copy + CDP attach as fetch-twitter-pulse.sh. Posts one tweet from a
-# UTF-8 text file; optional quote status id as second arg.
+# Fetch one X status via warm Brave profile (pw/profile-x).
 #
 # Usage:
-#   scripts/post-twitter.sh /path/to/tweet.txt
-#   scripts/post-twitter.sh /path/to/tweet.txt 1234567890
-# Prints JSON {ok,status_id,url,reply_url,detail} to stdout.
-# Optional ITCY_TWITTER_REPLY_TEXT_FILE: post that text as a reply to the new tweet.
-# Optional ITCY_TWITTER_IN_REPLY_TO_STATUS_ID: post the text file as a reply under that parent.
+#   scripts/fetch-twitter-status.sh https://x.com/user/status/123
+#   scripts/fetch-twitter-status.sh 123
+# Prints JSON {ok,status_id,url,author,text,detail} to stdout.
 set -euo pipefail
-TEXT_FILE="${1:?tweet text file required}"
-QUOTE_ID="${2:-}"
+TARGET="${1:?x status url or numeric id required}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-if [[ ! -f "$TEXT_FILE" ]]; then
-  echo "tweet text file missing: $TEXT_FILE" >&2
-  exit 2
-fi
 
 unset PLAYWRIGHT_BROWSERS_PATH
 
@@ -63,7 +53,6 @@ if [[ -e "${GOLD}/SingletonLock" ]]; then
   exit 1
 fi
 
-# Refuse before any browser launch if the vault looks logged out.
 if ! python3 - "${COOKIES}" <<'PY'
 import sqlite3, shutil, sys, tempfile
 from pathlib import Path
@@ -100,10 +89,21 @@ then
   exit 2
 fi
 
+STATUS_URL=""
+STATUS_ID=""
+if [[ "$TARGET" =~ ^https?:// ]]; then
+  STATUS_URL="$TARGET"
+elif [[ "$TARGET" =~ ^[0-9]+$ ]]; then
+  STATUS_ID="$TARGET"
+else
+  echo "pass an https://x.com/…/status/… URL or a numeric status id" >&2
+  exit 2
+fi
+
 RUN_ROOT="${ITCY_TWITTER_RUN_DIR:-${ROOT}/pw/profile-x-run}"
 mkdir -p "${RUN_ROOT}"
-WORK="${RUN_ROOT}/run-$$"
-CDP_PORT="${ITCY_TWITTER_CDP_PORT:-9224}"
+WORK="${RUN_ROOT}/status-$$"
+CDP_PORT="${ITCY_TWITTER_STATUS_CDP_PORT:-${ITCY_TWITTER_CDP_PORT:-9225}}"
 BRAVE_PID=""
 
 cleanup() {
@@ -138,7 +138,6 @@ else
     "${WORK}"/Singleton* 2>/dev/null || true
 fi
 
-# Drop restored tabs from the gold copy so CDP starts with a single blank page.
 rm -rf "${WORK}/Default/Sessions" \
   "${WORK}/Default/Session Storage" \
   "${WORK}/Default/Sessions" 2>/dev/null || true
@@ -158,7 +157,6 @@ if [[ -z "${PW_JSON}" || ! -f "${PW_JSON}" ]]; then
   exit 1
 fi
 
-# Headed by default (X is hostile to headless). Override with ITCY_TWITTER_HEADLESS=1.
 HEADLESS="${ITCY_TWITTER_HEADLESS:-0}"
 BRAVE_ARGS=(
   --user-data-dir="${WORK}"
@@ -174,7 +172,7 @@ if [[ "${HEADLESS}" == "1" ]]; then
 fi
 
 nohup "${BROWSER_BIN}" "${BRAVE_ARGS[@]}" \
-  >/tmp/itcy-twitter-brave-$$.log 2>&1 &
+  >/tmp/itcy-twitter-status-brave-$$.log 2>&1 &
 BRAVE_PID=$!
 
 ready=0
@@ -186,14 +184,11 @@ for _ in $(seq 1 50); do
   sleep 0.2
 done
 if [[ "${ready}" != "1" ]]; then
-  echo "Brave CDP not ready on :${CDP_PORT} (see /tmp/itcy-twitter-brave-$$.log)" >&2
+  echo "Brave CDP not ready on :${CDP_PORT} (see /tmp/itcy-twitter-status-brave-$$.log)" >&2
   exit 1
 fi
 
 cd "${ROOT}"
 env PLAYWRIGHT_REQUIRE_FROM="${PW_JSON}" ITCY_TWITTER_CDP_URL="http://127.0.0.1:${CDP_PORT}" \
-  ITCY_TWITTER_POST_TEXT_FILE="${TEXT_FILE}" ITCY_TWITTER_QUOTE_STATUS_ID="${QUOTE_ID}" \
-  ITCY_TWITTER_REPLY_TEXT_FILE="${ITCY_TWITTER_REPLY_TEXT_FILE:-}" \
-  ITCY_TWITTER_IN_REPLY_TO_STATUS_ID="${ITCY_TWITTER_IN_REPLY_TO_STATUS_ID:-}" \
-  ITCY_X_SHIP_DEBUG_DIR="${ITCY_X_SHIP_DEBUG_DIR:-${ROOT}/pw/screenshots/x-ship}" \
-  node "${ROOT}/scripts/post-twitter.mjs"
+  ITCY_TWITTER_STATUS_URL="${STATUS_URL}" ITCY_TWITTER_STATUS_ID="${STATUS_ID}" \
+  node "${ROOT}/scripts/fetch-twitter-status.mjs"

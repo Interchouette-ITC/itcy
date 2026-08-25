@@ -48,6 +48,8 @@ const PROMPT_FILES: &[&str] = &[
     "draft_rework_system.md",
     "comment_reply_system.md",
     "comment_reply_user.md",
+    "tweet_reply_system.md",
+    "tweet_reply_user.md",
 ];
 
 fn main() {
@@ -105,6 +107,7 @@ fn stub_body(name: &str) -> &'static str {
         "tweet_rework_user_farce.md" => "{instructions}\n{id}\n{subject}\n{commentary}\n",
         "self_user.md" => "{surface}\n{instructions}\n",
         "comment_reply_user.md" => "{parent_post}\n{comment_author}\n{comment_body}\n",
+        "tweet_reply_user.md" => "{tweet_author}\n{tweet_body}\n",
         _ => "stub\n",
     }
 }

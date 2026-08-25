@@ -458,7 +458,9 @@ impl SlackRuntime {
                 instructions,
             } => self.draft_about_itc_reply(&subject, &instructions).await,
             OperatorCommand::Accept { draft_id } => {
-                if draft_id.starts_with("TWEET-") {
+                if crate::sources::reply_comment::is_reply_id(&draft_id) {
+                    self.accept_reply_comment_reply(&draft_id).await
+                } else if draft_id.starts_with("TWEET-") {
                     self.accept_tweet_reply(&draft_id).await
                 } else {
                     self.accept_draft_reply(&draft_id).await
@@ -469,14 +471,19 @@ impl SlackRuntime {
                 draft_id,
                 instructions,
             } => {
-                if draft_id.starts_with("TWEET-") {
+                if crate::sources::reply_comment::is_reply_id(&draft_id) {
+                    self.rework_reply_comment_reply(&draft_id, &instructions)
+                        .await
+                } else if draft_id.starts_with("TWEET-") {
                     self.rework_tweet_reply(&draft_id, &instructions).await
                 } else {
                     self.rework_draft_reply(&draft_id, &instructions).await
                 }
             }
             OperatorCommand::ChangeUrl { draft_id, choice } => {
-                if draft_id.starts_with("TWEET-") {
+                if crate::sources::reply_comment::is_reply_id(&draft_id) {
+                    "replies have no cite URL; use `/rework` then `/accept`".into()
+                } else if draft_id.starts_with("TWEET-") {
                     self.change_tweet_url_reply(&draft_id, &choice)
                 } else {
                     self.change_draft_url_reply(&draft_id, &choice)
@@ -499,10 +506,7 @@ impl SlackRuntime {
                 }
             }
             OperatorCommand::DailyDigest => self.daily_digest_reply().await,
-            OperatorCommand::AcceptCommentReply { url } => {
-                self.accept_comment_reply_reply(&url).await
-            }
-            OperatorCommand::ShipCommentReply { url } => self.ship_comment_reply_reply(&url).await,
+            OperatorCommand::ReplyComment { url } => self.reply_comment_reply(&url).await,
             OperatorCommand::Enrich { url } => self.enrich_reply(&url).await,
             OperatorCommand::Ingest { url } => self.ingest_reply(&url).await,
             OperatorCommand::HandleAdd { raw } => self.handle_add_reply(&raw),
@@ -617,18 +621,42 @@ impl SlackRuntime {
         }
     }
 
-    async fn accept_comment_reply_reply(&self, url: &str) -> String {
-        match crate::sources::linkedin_comment::draft_comment_reply_for_slack(&self.llm, url).await
+    async fn reply_comment_reply(&self, url: &str) -> String {
+        match crate::sources::reply_comment::create_reply_comment(
+            &self.llm,
+            &self.config.state_db_path,
+            url,
+        )
+        .await
         {
             Ok(msg) => msg,
-            Err(e) => format!("`/accept_comment_reply` failed: {e}"),
+            Err(e) => format!("`/reply_comment` failed: {e}"),
         }
     }
 
-    async fn ship_comment_reply_reply(&self, url: &str) -> String {
-        match crate::sources::linkedin_comment::ship_comment_reply_via_mcp(&self.llm, url).await {
+    async fn accept_reply_comment_reply(&self, reply_id: &str) -> String {
+        match crate::sources::reply_comment::accept_reply_comment(
+            &self.config.state_db_path,
+            reply_id,
+        )
+        .await
+        {
             Ok(msg) => msg,
-            Err(e) => format!("`/ship_comment_reply` failed: {e}"),
+            Err(e) => format!("Could not accept reply: {e}"),
+        }
+    }
+
+    async fn rework_reply_comment_reply(&self, reply_id: &str, instructions: &str) -> String {
+        match crate::sources::reply_comment::rework_reply_comment(
+            &self.llm,
+            &self.config.state_db_path,
+            reply_id,
+            instructions,
+        )
+        .await
+        {
+            Ok(msg) => msg,
+            Err(e) => format!("Could not rework reply: {e}"),
         }
     }
 

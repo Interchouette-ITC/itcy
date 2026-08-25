@@ -26,6 +26,7 @@ const cdpUrl = process.env.ITCY_TWITTER_CDP_URL || "http://127.0.0.1:9224";
 const textFile = process.env.ITCY_TWITTER_POST_TEXT_FILE || "";
 const quoteId = (process.env.ITCY_TWITTER_QUOTE_STATUS_ID || "").trim();
 const replyFile = (process.env.ITCY_TWITTER_REPLY_TEXT_FILE || "").trim();
+const inReplyToId = (process.env.ITCY_TWITTER_IN_REPLY_TO_STATUS_ID || "").trim();
 
 function looksLoggedOut(url, html) {
   const u = (url || "").toLowerCase();
@@ -451,6 +452,12 @@ async function main() {
     fail(`read tweet file: ${e}`);
   }
   if (!text) fail("empty tweet text");
+  if (inReplyToId && quoteId) {
+    fail("cannot set both ITCY_TWITTER_QUOTE_STATUS_ID and ITCY_TWITTER_IN_REPLY_TO_STATUS_ID");
+  }
+  if (inReplyToId && replyFile) {
+    fail("threaded reply ship does not take ITCY_TWITTER_REPLY_TEXT_FILE");
+  }
   // Cited status already attached in composer; do not also paste that URL.
   text = stripQuotedStatusUrl(text, quoteId);
 
@@ -459,10 +466,29 @@ async function main() {
   const page = context.pages()[0] || (await context.newPage());
 
   try {
-    // Baseline: newest own post before we click Post (so we never claim an old one).
     await goProfile(page);
     const before = await latestOwnOnProfile(page, [], "");
     const beforeId = before && before.id ? before.id : "0";
+
+    if (inReplyToId) {
+      const parent = {
+        id: inReplyToId,
+        url: `https://x.com/i/web/status/${inReplyToId}`,
+      };
+      const found = await postReply(page, text, parent, []);
+      if (!found) {
+        const cap = await captureOverlay(page, "in-reply-resolve-miss");
+        fail(
+          `reply posted but could not resolve status under ${inReplyToId}. screenshot=${relArtifact(cap.png)}`
+        );
+      }
+      if (!statusIdNewer(found.id, beforeId)) {
+        fail(`resolve picked non-newer id ${found.id} (before=${beforeId})`);
+      }
+      ok(found.id, found.url, `brave in-reply ok (parent=${inReplyToId})`, null);
+      return;
+    }
+
     const excludeIds = quoteId ? [quoteId] : [];
 
     let rootToastHref = null;

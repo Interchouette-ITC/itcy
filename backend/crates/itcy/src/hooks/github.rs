@@ -901,6 +901,7 @@ async fn ship_promoted_xpost(
         } else {
             Some(quote.to_string())
         },
+        in_reply_to_tweet_id: None,
     };
     match crate::publish::ship_x_post(state.state_db_path.as_str(), "playground", request, None)
         .await

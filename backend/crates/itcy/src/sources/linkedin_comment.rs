@@ -476,7 +476,12 @@ parent_comment_urn={parent_urn}",
     ))
 }
 
-async fn draft_comment_reply_parts(
+/// Fetch + draft parts for Slack create / ship paths.
+///
+/// # Errors
+///
+/// Returns an operator-facing message on bad URL, Tor miss, extract miss, or LLM failure.
+pub async fn draft_comment_reply_parts(
     llm: &Arc<FailoverRouter>,
     url: &str,
 ) -> Result<(LinkedInCommentTarget, LinkedInCommentContext, String), String> {
