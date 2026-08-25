@@ -134,7 +134,8 @@ pub fn set_single_in_post_url(body: &str, new_url: &str) -> String {
 
 /// Write zero or more bare https lines after commentary (primary / Link cite last).
 ///
-/// Drops prior URL-only lines in the head, then appends each URL on its own line.
+/// Drops prior URL-only lines and bare `https://` tokens glued onto prose (model often
+/// ends a paragraph with the cite URL). Then appends each URL on its own line.
 #[must_use]
 pub fn set_in_post_https_lines(body: &str, urls: &[String]) -> String {
     let split_at = footer_start(body).unwrap_or(body.len());
@@ -144,7 +145,11 @@ pub fn set_in_post_https_lines(body: &str, urls: &[String]) -> String {
         if is_url_only_line(line) {
             continue;
         }
-        lines.push(strip_inline_markdown_links(line));
+        let cleaned = strip_bare_https_tokens(&strip_inline_markdown_links(line));
+        if cleaned.trim().is_empty() {
+            continue;
+        }
+        lines.push(cleaned);
     }
     while lines.last().is_some_and(|l| l.trim().is_empty()) {
         lines.pop();
@@ -238,7 +243,7 @@ fn strip_inline_markdown_links(line: &str) -> String {
     while let Some(open) = rest.find('[') {
         out.push_str(&rest[..open]);
         let after = &rest[open..];
-        // `[label](href)` — https href: drop whole token (bare line owns the URL);
+        // `[label](href)` - https href: drop whole token (bare line owns the URL);
         // empty / non-https href: keep label as plain text.
         if let Some(mid) = after.find("](") {
             let label = &after[1..mid];
@@ -260,6 +265,22 @@ fn strip_inline_markdown_links(line: &str) -> String {
     }
     out.push_str(rest);
     out
+}
+
+/// Drop bare `https://…` tokens from a commentary line (keeps surrounding prose).
+fn strip_bare_https_tokens(line: &str) -> String {
+    let urls = crate::sources::url_hygiene::extract_https_urls(line);
+    if urls.is_empty() {
+        return line.to_string();
+    }
+    let mut out = line.to_string();
+    for u in urls {
+        out = out.replace(&u, "");
+    }
+    while out.contains("  ") {
+        out = out.replace("  ", " ");
+    }
+    out.trim().to_string()
 }
 
 #[cfg(test)]
@@ -287,6 +308,30 @@ mod tests {
             .unwrap()
             .contains("https://old.example/a"));
         assert!(out.contains("Link options"));
+    }
+
+    #[test]
+    fn strips_trailing_inline_https_keeps_one_bare() {
+        let cite = "https://x.com/mmalisper/status/2091925981363941499";
+        let body = format!(
+            "And if you're using Postgres, it's worth a closer look. {cite}\n\n{cite}\n\nLink: 1\n"
+        );
+        let out = set_single_in_post_url(&body, cite);
+        let head = out.split("\nLink:").next().unwrap();
+        assert_eq!(
+            head.matches(cite).count(),
+            1,
+            "prose+bare duplicate must collapse: {head}"
+        );
+        assert!(
+            head.lines().any(|l| l.trim() == cite),
+            "cite must be its own line: {head}"
+        );
+        assert!(head.contains("closer look"), "prose must survive: {head}");
+        assert!(
+            !head.contains("look. http"),
+            "must not leave glue before URL: {head}"
+        );
     }
 
     #[test]

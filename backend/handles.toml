@@ -121,6 +121,13 @@ linkedin_url = "https://www.linkedin.com/company/cursorai/"
 x_url = "https://x.com/cursor_ai"
 
 [[handle]]
+name = "LocalStack"
+linkedin = "@localstack-cloud"
+x = "@localstack"
+linkedin_url = "https://www.linkedin.com/company/localstack-cloud/"
+x_url = "https://x.com/localstack"
+
+[[handle]]
 name = "SpaceX"
 linkedin = "@spacex"
 x = "@SpaceX"

@@ -17,7 +17,11 @@ use tracing::{info, warn};
 const PACK_CAP: usize = 3;
 const CITE_TEXT_CHARS: usize = 800;
 
-/// Fetch the https from the subject, one Brave search, one X search. Subject URL is always pack slot 1.
+/// Fetch the https from the subject, optionally Brave + X search. Subject URL is always pack slot 1.
+///
+/// When `publisher_options` is true (`LinkedIn` drafts), an X status cite still runs Brave so
+/// Link options 2/3 can be real publishers. Tweets pass false: X-only pack (avoids off-topic
+/// news URLs in the tweet body / options).
 ///
 /// # Errors
 ///
@@ -26,6 +30,7 @@ pub async fn run_short_cite_load(
     subject: &str,
     subject_url: &str,
     tools: Option<&ItcyTools>,
+    publisher_options: bool,
 ) -> Result<(String, Vec<String>, CompletionTrace), RagError> {
     crate::sources::rag::log_pipeline_banner("LOAD (short cite)");
 
@@ -38,10 +43,13 @@ pub async fn run_short_cite_load(
         "load_tweet: cite fetched"
     );
 
+    let x_cite_only = x_status_cite_skips_serp(subject_url, publisher_options);
+
     crate::sources::rag::log_pipeline_step("2/4 brave web_search");
-    // X status cite: fetch that status only. Brave SERP on "Rust LSP …" etc. pulls
+    // Tweet + X status cite: fetch that status only. Brave SERP on a short stub pulls
     // unrelated malware/news into the pack and the writer follows it.
-    let (overview, extracted_n) = if is_x_status_url(subject_url) {
+    // LinkedIn draft + X status: still search so the operator gets up to 3 Link options.
+    let (overview, extracted_n) = if x_cite_only {
         info!("load_tweet: subject is X status; skip brave web_search");
         crate::sources::rag::log_pipeline_step("3/4 extra publisher browse");
         info!("load_tweet: skipped (x status cite)");
@@ -52,7 +60,7 @@ pub async fn run_short_cite_load(
     };
 
     crate::sources::rag::log_pipeline_step("4/4 X search");
-    let (x_extra, x_hits) = if is_x_status_url(subject_url) {
+    let (x_extra, x_hits) = if x_cite_only {
         info!("load_tweet: subject is X status; skip X keyword search");
         (None, 0)
     } else {
@@ -69,9 +77,9 @@ pub async fn run_short_cite_load(
     };
 
     let mut urls = vec![subject_url.to_string()];
-    // Subject X status: pack is that URL (+ optional other X hit). Do not stuff random Brave
-    // publishers into options / the in-tweet link (that is how off-topic news URLs appear).
-    if !is_x_status_url(subject_url) {
+    // Tweet + X status: pack is that URL only. LinkedIn drafts (and non-X cites) take
+    // Brave publishers into options 2/3.
+    if !x_cite_only {
         if let Some(t) = tools {
             push_unique(
                 &mut urls,
@@ -95,6 +103,7 @@ pub async fn run_short_cite_load(
         urls = %urls.join(" | "),
         extracted = extracted_n,
         x_hits,
+        publisher_options,
         "load_tweet: short LOAD pack ready"
     );
     let pack = format_short_pack(subject, subject_url, &cite_text, &overview, &urls);
@@ -204,6 +213,11 @@ fn first_extra_publisher(extracted: &[String], subject_url: &str) -> Option<Stri
         .cloned()
 }
 
+/// Tweets with an X status cite skip SERP. `LinkedIn` drafts keep SERP for Link 2/3.
+fn x_status_cite_skips_serp(subject_url: &str, publisher_options: bool) -> bool {
+    is_x_status_url(subject_url) && !publisher_options
+}
+
 fn push_unique(urls: &mut Vec<String>, more: impl IntoIterator<Item = String>) {
     for u in more {
         if urls.len() >= PACK_CAP {
@@ -271,5 +285,22 @@ mod tests {
             first_extra_publisher(&extracted, "https://x.com/a/status/1").as_deref(),
             Some("https://labs.sogeti.com/x402")
         );
+    }
+
+    #[test]
+    fn linkedin_draft_x_cite_keeps_serp_tweet_skips() {
+        let x = "https://x.com/mmalisper/status/2091925981363941499";
+        assert!(
+            !x_status_cite_skips_serp(x, true),
+            "LinkedIn draft must still search for publisher Link options"
+        );
+        assert!(
+            x_status_cite_skips_serp(x, false),
+            "tweet X cite must skip SERP to avoid off-topic pack"
+        );
+        assert!(!x_status_cite_skips_serp(
+            "https://labs.sogeti.com/pgrust",
+            false
+        ));
     }
 }
