@@ -426,14 +426,18 @@ fn trim_glued_site_suffix(at: &str) -> String {
 
 /// Parse operator free text into a [`HandleEntry`] (name + URLs / `@handles`).
 ///
+/// Requires the **last two** whitespace tokens to each start with `@` or `https://`.
+/// Bare slug pairs (e.g. `rust-bytes-weekly rustaceans_rs`) are a noop error.
+///
 /// # Errors
 ///
-/// Returns a short operator message when nothing usable is present.
+/// Returns a short operator message when nothing usable is present or the gate fails.
 pub fn parse_handle_add(raw: &str) -> Result<HandleEntry, String> {
     let raw = raw.trim();
     if raw.is_empty() {
-        return Err("usage: /handle_add <name> <linkedin-or-x-url|@handle>…".into());
+        return Err("usage: /handle_add <name> <@linkedin|url> <@x|url>".into());
     }
+    refuse_unless_last_two_are_handles(raw)?;
     let urls = crate::sources::url_hygiene::extract_https_urls(raw);
     let ats = extract_at_handles(raw);
     let mut linkedin = String::new();
@@ -468,6 +472,29 @@ pub fn parse_handle_add(raw: &str) -> Result<HandleEntry, String> {
         if linkedin.is_empty() && x.is_empty() {
             x = at_norm;
             x_url = format!("https://x.com/{}", x.trim_start_matches('@'));
+            continue;
+        }
+        if linkedin.is_empty() {
+            linkedin = at_norm;
+            linkedin_url = format!(
+                "https://www.linkedin.com/company/{}/",
+                linkedin.trim_start_matches('@')
+            );
+        }
+    }
+    // Prefer last two @handles as LinkedIn then X when both are bare @handles.
+    let tokens = trailing_handle_tokens(raw);
+    if tokens.len() >= 2 {
+        let a = &tokens[tokens.len() - 2];
+        let b = &tokens[tokens.len() - 1];
+        if a.starts_with('@') && b.starts_with('@') {
+            linkedin.clone_from(a);
+            linkedin_url = format!(
+                "https://www.linkedin.com/company/{}/",
+                a.trim_start_matches('@')
+            );
+            x.clone_from(b);
+            x_url = format!("https://x.com/{}", b.trim_start_matches('@'));
         }
     }
     let name = strip_urls_and_ats(raw).trim().to_string();
@@ -477,7 +504,7 @@ pub fn parse_handle_add(raw: &str) -> Result<HandleEntry, String> {
         name
     };
     if name.is_empty() && linkedin.is_empty() && x.is_empty() {
-        return Err("usage: /handle_add <name> <linkedin-or-x-url|@handle>…".into());
+        return Err("usage: /handle_add <name> <@linkedin|url> <@x|url>".into());
     }
     if name.is_empty() {
         return Err("could not derive a display name; pass a name before the URL/@".into());
@@ -489,6 +516,37 @@ pub fn parse_handle_add(raw: &str) -> Result<HandleEntry, String> {
         linkedin_url,
         x_url,
     })
+}
+
+/// Last two tokens must each be `@handle` or `https://…` (else noop).
+fn refuse_unless_last_two_are_handles(raw: &str) -> Result<(), String> {
+    let tokens = trailing_handle_tokens(raw);
+    if tokens.len() < 2 {
+        return Err("noop: need two trailing @handles or https URLs \
+(usage: /handle_add <name> <@linkedin|url> <@x|url>)"
+            .into());
+    }
+    let a = &tokens[tokens.len() - 2];
+    let b = &tokens[tokens.len() - 1];
+    if !token_is_handle_spec(a) || !token_is_handle_spec(b) {
+        return Err("noop: last two words must be @handles or https:// URLs \
+(got bare slugs — not added)"
+            .into());
+    }
+    Ok(())
+}
+
+fn trailing_handle_tokens(raw: &str) -> Vec<String> {
+    raw.split_whitespace()
+        .map(|t| t.trim_matches(|c| matches!(c, '*' | '_' | '`' | ',' | ';')))
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn token_is_handle_spec(tok: &str) -> bool {
+    let t = tok.trim();
+    t.starts_with('@') || t.starts_with("https://") || t.starts_with("http://")
 }
 
 fn strip_urls_and_ats(raw: &str) -> String {
@@ -606,13 +664,22 @@ pub fn format_handle_add_reply(outcome: &HandleAddOutcome) -> String {
         HandleAddOutcome::Added(e) => ("*Handle added*", e),
         HandleAddOutcome::AlreadyPresent(e) => ("*Handle already present*", e),
     };
-    let mut lines = vec![title.to_string(), format!("• name: {}", e.name)];
-    if !e.linkedin.is_empty() {
-        lines.push(format!("• linkedin: {}", e.linkedin));
-    }
-    if !e.x.is_empty() {
-        lines.push(format!("• x: {}", e.x));
-    }
+    let li = if e.linkedin.is_empty() {
+        "(none)".to_string()
+    } else {
+        e.linkedin.clone()
+    };
+    let x = if e.x.is_empty() {
+        "(none)".to_string()
+    } else {
+        e.x.clone()
+    };
+    let mut lines = vec![
+        title.to_string(),
+        format!("• name: {}", e.name),
+        format!("• linkedin: {li}"),
+        format!("• x: {x}"),
+    ];
     if !e.linkedin_url.is_empty() {
         lines.push(format!("• {}", e.linkedin_url));
     }
@@ -1081,24 +1148,68 @@ mod tests {
 
     #[test]
     fn parse_linkedin_url_only_humanizes_name() {
-        let e = parse_handle_add("https://www.linkedin.com/in/nicholas-matsakis-615614/")
-            .expect("parse");
+        let e = parse_handle_add(
+            "Niko https://www.linkedin.com/in/nicholas-matsakis-615614/ @nikomatsakis",
+        )
+        .expect("parse");
         assert_eq!(e.linkedin, "@nicholas-matsakis-615614");
-        assert!(e.name.contains("Nicholas") || e.name.contains("Matsakis"));
-        assert!(e.x.is_empty());
+        assert!(e.name.contains("Niko"));
+        assert_eq!(e.x, "@nikomatsakis");
     }
 
     #[test]
     fn parse_x_url_only() {
-        let e = parse_handle_add("Wasmer https://x.com/wasmerio").expect("parse");
+        let e = parse_handle_add("Wasmer https://x.com/wasmerio @wasmerio").expect("parse");
         assert_eq!(e.name, "Wasmer");
         assert_eq!(e.x, "@wasmerio");
-        assert!(e.linkedin.is_empty());
+    }
+
+    #[test]
+    fn handle_add_noop_when_last_two_tokens_lack_at() {
+        let err = parse_handle_add("Rust Bytes rust-bytes-weekly rustaceans_rs")
+            .expect_err("bare slugs must noop");
+        assert!(err.contains("noop"), "{err}");
+    }
+
+    #[test]
+    fn handle_add_accepts_name_plus_two_ats() {
+        let e = parse_handle_add("Rust Bytes @rust-bytes @rustaceans_rs").expect("parse");
+        assert_eq!(e.name, "Rust Bytes");
+        assert_eq!(e.linkedin, "@rust-bytes");
+        assert_eq!(e.x, "@rustaceans_rs");
+    }
+
+    #[test]
+    fn handle_add_accepts_linkedin_url_and_x_at() {
+        let e = parse_handle_add(
+            "Niko Matsakis https://www.linkedin.com/in/nicholas-matsakis-615614/ @nikomatsakis",
+        )
+        .expect("parse");
+        assert_eq!(e.name, "Niko Matsakis");
+        assert!(e.linkedin_url.contains("nicholas-matsakis"));
+        assert_eq!(e.x, "@nikomatsakis");
+    }
+
+    #[test]
+    fn format_handle_add_reply_recaps_linkedin_and_x() {
+        let e = HandleEntry {
+            name: "Rust Bytes".into(),
+            linkedin: "@rust-bytes".into(),
+            x: String::new(),
+            linkedin_url: "https://www.linkedin.com/company/rust-bytes/".into(),
+            x_url: String::new(),
+        };
+        let reply = format_handle_add_reply(&HandleAddOutcome::Added(e));
+        assert!(reply.contains("linkedin: @rust-bytes"), "{reply}");
+        assert!(reply.contains("x: (none)"), "{reply}");
     }
 
     #[test]
     fn parse_truncates_junk_after_at() {
-        let e = parse_handle_add("Niko @nikomatsakislinkedin.com junk").expect("parse");
+        let e = parse_handle_add(
+            "Niko https://www.linkedin.com/in/nicholas-matsakis-615614/ @nikomatsakislinkedin.com",
+        )
+        .expect("parse");
         assert_eq!(e.x, "@nikomatsakis");
     }
 
@@ -1111,14 +1222,14 @@ mod tests {
         let first = apply_handle_add(
             &mut idx,
             &path,
-            "Niko Matsakis https://www.linkedin.com/in/nicholas-matsakis-615614/",
+            "Niko Matsakis https://www.linkedin.com/in/nicholas-matsakis-615614/ @nikomatsakis",
         )
         .expect("first");
         assert!(matches!(first, HandleAddOutcome::Added(_)));
         let second = apply_handle_add(
             &mut idx,
             &path,
-            "Other Name https://www.linkedin.com/in/nicholas-matsakis-615614/",
+            "Other Name https://www.linkedin.com/in/nicholas-matsakis-615614/ @other",
         )
         .expect("second");
         assert!(matches!(second, HandleAddOutcome::AlreadyPresent(_)));
@@ -1404,6 +1515,84 @@ mod tests {
         assert!(
             !out.starts_with("Sourcegraph"),
             "plain Sourcegraph name must become handle: {out}"
+        );
+    }
+
+    #[test]
+    fn sourcegraph_beats_publisher_host_when_both_present() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../handles.toml");
+        let idx = load_handles_from(&path).expect("seed handles.toml");
+        let brief = "Amp by Sourcegraph on agentic coding https://www.infoworld.com/article/4211505/decoding-origin.html";
+        let hit = idx.primary_from_brief(brief).expect("named cite");
+        assert_eq!(hit.name, "Sourcegraph");
+        assert_ne!(hit.linkedin.to_ascii_lowercase(), "@infoworld");
+        let mut pack = String::from("## ResearchPack\nsubject: Amp\nsummary: ship\n");
+        apply_brief_handles_to_pack(&mut pack, brief, &idx);
+        assert!(
+            pack.contains("linkedin=@sourcegraph"),
+            "must not fall to InfoWorld publisher: {pack}"
+        );
+        assert!(!pack.to_ascii_lowercase().contains("infoworld"));
+    }
+
+    #[test]
+    fn sourcegraph_linkedin_from_x_only_pack() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../handles.toml");
+        let idx = load_handles_from(&path).expect("seed handles.toml");
+        let pack = "subject: Amp\nhandles: x=@Sourcegraph\n";
+        let body = "Sourcegraph\u{2019}s Amp is agent-first.";
+        let out = ensure_linkedin_handle_from_pack(body, pack, &idx);
+        assert!(
+            out.contains("@sourcegraph"),
+            "x-only pack must still resolve LinkedIn via registry: {out}"
+        );
+    }
+
+    #[test]
+    fn seed_localstack_linkedin_and_x_from_handles_toml() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../handles.toml");
+        let idx = load_handles_from(&path).expect("seed handles.toml");
+        let hit = idx
+            .primary_from_brief("LocalStack local AWS cloud for builders")
+            .expect("LocalStack from seed");
+        assert_eq!(hit.name, "LocalStack");
+        assert_eq!(hit.linkedin, "@localstack-cloud");
+        assert_eq!(hit.x, "@localstack");
+        assert!(!hit.linkedin_url.is_empty());
+        assert!(!hit.x_url.is_empty());
+    }
+
+    #[test]
+    fn equal_length_names_prefer_earlier_brief_mention() {
+        let idx = HandlesIndex {
+            entries: vec![
+                HandleEntry {
+                    name: "Cursor".into(),
+                    linkedin: "@cursorai".into(),
+                    x: "@cursor_ai".into(),
+                    linkedin_url: String::new(),
+                    x_url: String::new(),
+                },
+                HandleEntry {
+                    name: "GitHub".into(),
+                    linkedin: "@github".into(),
+                    x: "@github".into(),
+                    linkedin_url: String::new(),
+                    x_url: String::new(),
+                },
+            ],
+        };
+        assert_eq!(
+            idx.primary_from_brief("GitHub vs Cursor shipping AI coding")
+                .expect("hit")
+                .name,
+            "GitHub"
+        );
+        assert_eq!(
+            idx.primary_from_brief("Cursor vs GitHub shipping AI coding")
+                .expect("hit")
+                .name,
+            "Cursor"
         );
     }
 

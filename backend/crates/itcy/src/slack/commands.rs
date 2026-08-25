@@ -558,7 +558,7 @@ pub fn parse_slash_command(command: &str, text: &str) -> Result<OperatorCommand,
         "handle_add" => {
             if args.is_empty() {
                 return Err(
-                    "usage: /handle_add <name> <linkedin-or-x-url|@handle>…".into(),
+                    "usage: /handle_add <name> <@linkedin|url> <@x|url>".into(),
                 );
             }
             Ok(OperatorCommand::HandleAdd {
@@ -1004,7 +1004,7 @@ pub const fn help_text() -> &'static str {
      • `/retry_bat <Draft-ID|Tweet-ID|XPOST-ID>` - re-ship after BAT (missed webhook or X/LinkedIn ship failed)\n\
      • `/enrich <url>` - enrich corpus with a personal LinkedIn post (Tor)\n\
      • `/ingest <url>` - ingest public article or LinkedIn Pulse (clearnet)\n\
-     • `/handle_add <name> <url|@handle>…` - append LinkedIn/X handles to the registry (hot reload)\n\
+     • `/handle_add <name> <@linkedin|url> <@x|url>` - append LinkedIn/X handles (last two must be @ or https; hot reload)\n\
      • `/daily_digest` - 20 press + 20 For you + 20 Following + 20 tweet searches + 10 Interchouette (5 draft / 5 tweet) into `#daily-digest`\n\
      • `/propose_draft` - new draft from corpus (what we already know)\n\
      • `/propose_draft <DIGEST-…>, <1|1,3>` or `/propose_draft <N>` - new drafts from that digest's propositions\n\
@@ -1138,6 +1138,35 @@ Written by AI - ITCy - model ollama/qwen3:8b\n\
         assert!(!looks_like_bot_draft_paste(
             "/change_url DRAFT-20260825-000102 1"
         ));
+    }
+
+    #[test]
+    fn bot_draft_paste_with_real_accept_line_is_still_detected() {
+        let paste = "Draft ID: DRAFT-20260825-000102\n\n\
+Amp commentary here.\n\n\
+0 = no link. /change_url DRAFT-20260825-000102 <0|1|2|3|url>\n\
+1. https://sourcegraph.com/blog/agentic-coding\n\
+:white_check_mark: /accept DRAFT-20260825-000102";
+        assert!(
+            looks_like_bot_draft_paste(paste),
+            "full bot paste with a real /accept line must still be chrome"
+        );
+    }
+
+    #[test]
+    fn change_url_choice_is_single_token_ignores_trailing_next() {
+        match parse_slash_command(
+            "/change_url",
+            "DRAFT-20260825-000102 1 :point_right: Next: /rework DRAFT-20260825-000102 shorter",
+        )
+        .expect("parse")
+        {
+            OperatorCommand::ChangeUrl { draft_id, choice } => {
+                assert_eq!(draft_id, "DRAFT-20260825-000102");
+                assert_eq!(choice, "1");
+            }
+            other => panic!("expected ChangeUrl 1, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1462,6 +1491,48 @@ Written by AI - ITCy - model ollama/qwen3:8b\n\
                 .unwrap_err()
                 .contains("no cite URL")
         );
+        assert!(
+            parse_slash_command("/change_url", "CREPLY-20260825-000001 1")
+                .unwrap_err()
+                .contains("no cite URL")
+        );
+        assert_eq!(
+            parse_slash_command("/accept", "CREPLY-20260825-000001").unwrap(),
+            OperatorCommand::Accept {
+                draft_id: "CREPLY-20260825-000001".into()
+            }
+        );
+        assert!(matches!(
+            parse_slash_command("/rework", "XREPLY-20260825-000001 shorter").unwrap(),
+            OperatorCommand::Rework { .. }
+        ));
+        assert!(matches!(
+            parse_slash_command("/show", "CREPLY-20260825-000001").unwrap(),
+            OperatorCommand::Show { .. }
+        ));
+        assert!(matches!(
+            parse_slash_command("/delete", "XREPLY-20260825-000001").unwrap(),
+            OperatorCommand::Delete { .. }
+        ));
+    }
+
+    #[test]
+    fn old_accept_ship_comment_tweet_reply_commands_unknown() {
+        for cmd in [
+            "accept_comment_reply",
+            "ship_comment_reply",
+            "accept_tweet_reply",
+            "ship_tweet_reply",
+        ] {
+            assert!(!KNOWN_SLASH_COMMANDS.contains(&cmd), "{cmd}");
+            let err = parse_slash_command(cmd, "https://example.com").unwrap_err();
+            assert!(
+                err.to_ascii_lowercase().contains("unknown")
+                    || err.to_ascii_lowercase().contains("usage")
+                    || err.contains("not a"),
+                "{cmd}: {err}"
+            );
+        }
     }
 
     #[test]

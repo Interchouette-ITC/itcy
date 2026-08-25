@@ -21,8 +21,8 @@ use crate::sources::rag::{
     resolve_session_draft_id, GroundedDraft, RagError, MAX_TOOL_ROUNDS,
 };
 use crate::sources::tweet_footer::{
-    ensure_tweet_cite_line, in_tweet_publisher_url, pick_tweet_cite_options, strip_own_x_handle,
-    tweet_body_exploded,
+    coerce_tweet_body, ensure_tweet_cite_line, in_tweet_publisher_url, pick_tweet_cite_options,
+    strip_own_x_handle, tweet_body_exploded,
 };
 use crate::tools::ItcyTools;
 use std::path::{Path, PathBuf};
@@ -57,13 +57,6 @@ fn session_note(session_dir: Option<&PathBuf>) -> String {
         || "session_dir: (none)".into(),
         |d| format!("session_dir: {}", d.display()),
     )
-}
-
-/// Tweet retry context (bundles pack/research/user to keep arg count in range).
-struct TweetRetryCtx {
-    pack_urls: Vec<String>,
-    research_pack: String,
-    original_user: String,
 }
 
 /// `LinkedIn` self-introduction draft for `/draft_about_itcy`.
@@ -158,14 +151,13 @@ pub async fn build_itcy_self_tweet(
         t.set_draft_policy(&pack_urls).await;
     }
     log_pipeline_banner("SELF-INTRO TWEET (X writer)");
-    let tools_dyn: Option<&dyn ToolProvider> = tools.map(|t| t as &dyn ToolProvider);
-    let user = self_user_message("x", instructions);
+    // Identity pack is static; writer must not tool-drift or essay-retry.
     let messages = vec![
         LlmMessage::system(self_tweet_system_prompt()),
-        LlmMessage::user(user.clone()),
+        LlmMessage::user(self_user_message("x", instructions)),
     ];
     let (response, trace) = match router
-        .complete_with_tools(TaskKind::Draft, &messages, tools_dyn, MAX_TOOL_ROUNDS)
+        .complete_with_tools(TaskKind::Draft, &messages, None, 0)
         .await
     {
         Ok(v) => v,
@@ -179,14 +171,10 @@ pub async fn build_itcy_self_tweet(
             return Err(e.into());
         }
     };
-    let body = crate::sources::tweet::scrub_tweet_body(&response.message.content);
+    let mut body = crate::sources::tweet::scrub_tweet_body(&response.message.content);
     if tweet_body_exploded(&body) {
-        let ctx = TweetRetryCtx {
-            pack_urls,
-            research_pack,
-            original_user: user,
-        };
-        return retry_self_tweet(router, db_path, tools, tools_dyn, session_dir, ctx).await;
+        warn!("self_tweet: writer dump coerced to tweet shape (no retry)");
+        body = coerce_tweet_body(&body, subject);
     }
     let tweet_id = resolve_session_draft_id(tools, db_path).await;
     end_session_best_effort(
@@ -202,60 +190,6 @@ pub async fn build_itcy_self_tweet(
         tweet_id,
         pack_urls,
         research_pack,
-    ))
-}
-
-async fn retry_self_tweet(
-    router: &FailoverRouter,
-    db_path: &Path,
-    tools: Option<&ItcyTools>,
-    tools_dyn: Option<&dyn ToolProvider>,
-    session_dir: Option<PathBuf>,
-    ctx: TweetRetryCtx,
-) -> Result<GroundedDraft, RagError> {
-    let subject = "ITCy self-introduction";
-    warn!("self_tweet: writer dumped an essay; retrying tweet-only");
-    let retry_user = format!(
-        "{}\n\nPREVIOUS OUTPUT WAS REJECTED (essay). Output ONLY the tweet (3-4 aerated beats + tags + at most ONE bare https). No Sources. No headings.",
-        ctx.original_user
-    );
-    let retry_messages = vec![
-        LlmMessage::system(self_tweet_system_prompt()),
-        LlmMessage::user(retry_user),
-    ];
-    let (response2, trace2) = match router
-        .complete_with_tools(TaskKind::Draft, &retry_messages, tools_dyn, MAX_TOOL_ROUNDS)
-        .await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            end_session_best_effort(
-                tools,
-                session_dir.as_ref(),
-                &format!("self tweet retry failed: {e}"),
-            )
-            .await;
-            return Err(e.into());
-        }
-    };
-    let body2 = crate::sources::tweet::scrub_tweet_body(&response2.message.content);
-    end_session_best_effort(
-        tools,
-        session_dir.as_ref(),
-        &session_note(session_dir.as_ref()),
-    )
-    .await;
-    if tweet_body_exploded(&body2) {
-        return Err(RagError::NotATweet);
-    }
-    let tweet_id = resolve_session_draft_id(tools, db_path).await;
-    Ok(assemble_tweet_draft(
-        subject,
-        &body2,
-        &trace2,
-        tweet_id,
-        ctx.pack_urls,
-        ctx.research_pack,
     ))
 }
 

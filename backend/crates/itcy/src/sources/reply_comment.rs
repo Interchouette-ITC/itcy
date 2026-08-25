@@ -143,14 +143,27 @@ pub async fn create_reply_comment(
             "usage: /reply_comment <linkedin activity https://… | x.com/…/status/…>".into(),
         );
     }
-    let lower = url.to_ascii_lowercase();
+    match reply_prefix_for_url(url)? {
+        "CREPLY" => create_linkedin_reply(llm, db_path, url).await,
+        "XREPLY" => create_x_reply(llm, db_path, url).await,
+        _ => unreachable!("reply_prefix_for_url only returns CREPLY|XREPLY"),
+    }
+}
+
+/// Map operator URL → reply id prefix (`CREPLY` / `XREPLY`). Offline-testable.
+///
+/// # Errors
+///
+/// When the URL is neither `LinkedIn` nor X status.
+pub fn reply_prefix_for_url(url: &str) -> Result<&'static str, String> {
+    let lower = url.trim().to_ascii_lowercase();
     if lower.contains("linkedin.com/") {
-        create_linkedin_reply(llm, db_path, url).await
+        Ok("CREPLY")
     } else if lower.contains("x.com/")
         || lower.contains("twitter.com/")
-        || url.bytes().all(|b| b.is_ascii_digit())
+        || url.trim().bytes().all(|b| b.is_ascii_digit())
     {
-        create_x_reply(llm, db_path, url).await
+        Ok("XREPLY")
     } else {
         Err("URL must be a LinkedIn activity or an X status permalink".into())
     }
@@ -429,12 +442,12 @@ pub async fn accept_reply_comment(db_path: &Path, reply_id: &str) -> Result<Stri
     Ok(ship_msg)
 }
 
-async fn ship_x_reply(
-    db_path: &Path,
+/// Build the X API ship request for an `XREPLY-` (thread reply, never quote).
+fn x_reply_publish_request(
     reply_id: &str,
     meta: &ReplyMeta,
     reply_text: &str,
-) -> Result<String, String> {
+) -> Result<XPublishRequest, String> {
     let status_id = meta
         .status_id
         .clone()
@@ -446,13 +459,22 @@ async fn ship_x_reply(
             x_weighted_len(reply_text)
         ));
     }
-    let request = XPublishRequest {
+    Ok(XPublishRequest {
         tweet_id: Some(reply_id.to_string()),
         pubs_pr_number: None,
         body: reply_text.to_string(),
         quote_tweet_id: None,
-        in_reply_to_tweet_id: Some(status_id.clone()),
-    };
+        in_reply_to_tweet_id: Some(status_id),
+    })
+}
+
+async fn ship_x_reply(
+    db_path: &Path,
+    reply_id: &str,
+    meta: &ReplyMeta,
+    reply_text: &str,
+) -> Result<String, String> {
+    let request = x_reply_publish_request(reply_id, meta, reply_text)?;
     let result = ship_x_post(db_path, "playground", request, None)
         .await
         .map_err(|e| format!("X reply ship: {e}"))?;
@@ -557,6 +579,63 @@ mod tests {
         assert!(is_reply_id("CREPLY-20260825-000001"));
         assert!(is_reply_id("XREPLY-20260825-000001"));
         assert!(!is_reply_id("TWEET-20260825-000001"));
+    }
+
+    #[test]
+    fn reply_comment_routes_x_status_to_xreply_prefix() {
+        assert_eq!(
+            reply_prefix_for_url("https://x.com/grok/status/2092338421779796069").unwrap(),
+            "XREPLY"
+        );
+        assert_eq!(
+            reply_prefix_for_url("2092338421779796069").unwrap(),
+            "XREPLY"
+        );
+    }
+
+    #[test]
+    fn reply_comment_routes_linkedin_to_creply_prefix() {
+        assert_eq!(
+            reply_prefix_for_url(
+                "https://www.linkedin.com/feed/update/urn:li:activity:123/?dashCommentUrn=x"
+            )
+            .unwrap(),
+            "CREPLY"
+        );
+    }
+
+    #[test]
+    fn reply_next_hints_omit_change_url() {
+        let h = reply_next_hints("XREPLY-20260825-000001", status::OPEN);
+        assert!(h.contains("/accept XREPLY-20260825-000001"), "{h}");
+        assert!(h.contains("/rework XREPLY-20260825-000001"), "{h}");
+        assert!(!h.contains("/change_url"), "{h}");
+        let c = reply_next_hints("CREPLY-20260825-000001", status::OPEN);
+        assert!(c.contains("/accept CREPLY-20260825-000001"), "{c}");
+        assert!(!c.contains("/change_url"), "{c}");
+    }
+
+    #[test]
+    fn x_publish_request_sets_in_reply_to_for_xreply() {
+        let meta = ReplyMeta {
+            surface: "x".into(),
+            url: "https://x.com/grok/status/2092338421779796069".into(),
+            author: "Grok (@grok)".into(),
+            parent_body: "hi".into(),
+            target_body: String::new(),
+            activity_id: None,
+            comment_id: None,
+            status_id: Some("2092338421779796069".into()),
+        };
+        let req = x_reply_publish_request("XREPLY-20260825-000001", &meta, "short reply 🦉")
+            .expect("request");
+        assert_eq!(req.tweet_id.as_deref(), Some("XREPLY-20260825-000001"));
+        assert_eq!(
+            req.in_reply_to_tweet_id.as_deref(),
+            Some("2092338421779796069")
+        );
+        assert!(req.quote_tweet_id.is_none());
+        assert!(req.pubs_pr_number.is_none());
     }
 
     #[test]

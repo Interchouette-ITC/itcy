@@ -51,15 +51,35 @@ pub fn layout_x_thread(text: &str) -> Vec<String> {
         return Vec::new();
     }
     let peeled = peel_trailer(&text);
-    let one = join_head_trailer(&peeled.head, &peeled.trailer);
+    let head = promote_line_breaks_to_beats(&peeled.head);
+    let one = join_head_trailer(&head, &peeled.trailer);
     if fits_x_limit(&one) {
         return vec![one];
     }
     // No tags/URL trailer: keep one root by dropping whole trailing beats (never mid-sentence first).
     if peeled.trailer.is_empty() {
-        return vec![fit_by_dropping_beats(&peeled.head)];
+        return vec![fit_by_dropping_beats(&head)];
     }
-    forward_fill_split(&peeled.head, &peeled.trailer)
+    forward_fill_split(&head, &peeled.trailer)
+}
+
+/// Single newlines between commentary lines → paragraph beats (X craft).
+///
+/// Writers often emit one `\n` between beats; without this, `take_beats_fitting`
+/// treats the whole head as one beat and word-splits mid-sentence (TWEET-080).
+fn promote_line_breaks_to_beats(head: &str) -> String {
+    let head = head.trim();
+    if head.is_empty() {
+        return String::new();
+    }
+    if head.contains("\n\n") {
+        return head.to_string();
+    }
+    head.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 fn forward_fill_split(head: &str, trailer: &str) -> Vec<String> {
@@ -92,6 +112,19 @@ fn grow_root_until_reply_fits(root: &mut String, leftover: &mut String, trailer:
             break;
         }
         if root_ends_sentence(root) {
+            let (sentence, rest) = take_leading_sentence(leftover);
+            if sentence.is_empty() {
+                break;
+            }
+            // Prefer whole next sentence; word-split inside it only when packing requires it.
+            if try_grow_root_with_chunk(root, leftover, &sentence, &rest) {
+                continue;
+            }
+            break;
+        }
+        // Root mid-sentence: complete the current sentence by words, or take the rest of
+        // the first leftover sentence if root is empty and that sentence alone overflows.
+        if root.trim().is_empty() {
             let (sentence, rest) = take_leading_sentence(leftover);
             if sentence.is_empty() {
                 break;
@@ -535,7 +568,9 @@ fn take_beats_fitting(head: &str, limit: usize) -> (String, String) {
             continue;
         }
         let remain = remaining_after(&kept, limit);
-        let (piece, rest_beat) = take_prefix_fitting(&beats[i], remain);
+        // Fill leftover root room with whole sentences from the next beat only.
+        // Bare word-prefix here mid-cut TWEET-080's wink (`…does` / `it for you?`).
+        let (piece, rest_beat) = take_sentence_prefix_fitting(&beats[i], remain);
         if !piece.is_empty() {
             kept.push(piece);
             return (kept.join("\n\n"), join_rest(rest_beat, &beats[i + 1..]));
@@ -557,13 +592,37 @@ fn remaining_after(kept: &[String], limit: usize) -> usize {
     limit.saturating_sub(used).saturating_sub(2)
 }
 
-fn remaining_after_lines(kept: &[String], limit: usize) -> usize {
-    if kept.is_empty() {
-        return limit;
+/// Whole sentences from `text` that fit `limit` (never mid-sentence word cuts).
+fn take_sentence_prefix_fitting(text: &str, limit: usize) -> (String, String) {
+    let text = text.trim();
+    if limit == 0 || text.is_empty() {
+        return (String::new(), text.to_string());
     }
-    limit
-        .saturating_sub(x_weighted_len(&kept.join("\n")))
-        .saturating_sub(1)
+    if fits_limit(text, limit) {
+        return (text.to_string(), String::new());
+    }
+    let mut kept = String::new();
+    let mut rest = text.to_string();
+    loop {
+        let (sentence, after) = take_leading_sentence(&rest);
+        if sentence.is_empty() {
+            break;
+        }
+        let candidate = if kept.is_empty() {
+            sentence.clone()
+        } else {
+            format!("{kept}\n{sentence}")
+        };
+        if !fits_limit(&candidate, limit) {
+            break;
+        }
+        kept = candidate;
+        rest = after;
+        if rest.trim().is_empty() {
+            break;
+        }
+    }
+    (kept, rest)
 }
 
 /// Prefix fits `limit` at word boundaries; suffix is the remaining words/lines.
@@ -609,51 +668,6 @@ fn join_rest(rest_beat: String, more: &[String]) -> String {
     }
     parts.extend(more.iter().cloned());
     parts.join("\n\n")
-}
-
-fn take_prefix_fitting(text: &str, limit: usize) -> (String, String) {
-    if limit == 0 || text.trim().is_empty() {
-        return (String::new(), text.trim().to_string());
-    }
-    if fits_limit(text, limit) {
-        return (text.trim().to_string(), String::new());
-    }
-    let lines: Vec<&str> = text
-        .lines()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .collect();
-    if lines.is_empty() {
-        return (String::new(), String::new());
-    }
-    let mut kept: Vec<String> = Vec::new();
-    let mut i = 0;
-    while i < lines.len() {
-        let mut candidate = kept.clone();
-        candidate.push(lines[i].to_string());
-        let joined = candidate.join("\n");
-        if fits_limit(&joined, limit) {
-            kept.push(lines[i].to_string());
-            i += 1;
-            continue;
-        }
-        let remain = remaining_after_lines(&kept, limit);
-        let (piece, rest_line) = split_word_prefix(lines[i], remain);
-        if !piece.is_empty() {
-            kept.push(piece);
-            let mut tail: Vec<String> = Vec::new();
-            if !rest_line.is_empty() {
-                tail.push(rest_line);
-            }
-            tail.extend(lines[i + 1..].iter().map(|s| (*s).to_string()));
-            return (kept.join("\n"), tail.join("\n"));
-        }
-        break;
-    }
-    if kept.is_empty() {
-        return split_word_prefix(text, limit);
-    }
-    (kept.join("\n"), lines[i..].join("\n"))
 }
 
 fn pack_tweet_two(leftover: &str, trailer: &str) -> String {
@@ -960,6 +974,52 @@ https://smallcultfollowing.com/babysteps/blog/2026/07/15/battery-packs";
         assert!(parts[1].contains("Cargo bp") || parts[1].contains("dependency guesswork"));
         assert!(parts[1].contains("#Rust"));
         assert!(parts[1].contains("smallcultfollowing.com"));
+    }
+
+    #[test]
+    fn xpost080_gemini_wink_sentence_not_midcut() {
+        // TWEET-20260825-000080 / https://x.com/Interchouette/status/2092343006229619187
+        // Stored body used single newlines between beats; ship must not cut the wink mid-sentence.
+        let body = "\
+Tweet ID: TWEET-20260825-000080
+
+Google’s Gemini AI just did what every Rustacean dreams of: rewriting C/C++ code into safe Rust, catching a memory-safety bug along the way. 🦀⚡
+It’s not just a rewrite, it’s a proof of concept for scaling memory safety at scale. 🔧
+Who needs a security audit when your AI does it for you? 🤖
+
+#Rust #MemorySafety #AI #OpenSource
+
+https://x.com/rustaceans_rs/status/2092134050060275910
+
+Link: 1
+0 = no link. /change_url TWEET-20260825-000080 <0|1|2|3|url>
+1. https://x.com/rustaceans_rs/status/2092134050060275910
+
+Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:120";
+        let api = crate::publish::tweet_text_for_api(body);
+        let parts = layout_x_thread(&api);
+        assert!(parts.len() <= 2, "unexpected part count: {parts:?}");
+        let wink = "Who needs a security audit when your AI does it for you?";
+        let joined = parts.join("\n---\n");
+        assert!(
+            parts.iter().any(|p| p.contains(wink)),
+            "wink must stay contiguous on one side: {joined}"
+        );
+        for p in &parts {
+            assert!(!p.trim_end().ends_with("does"), "mid-cut on does: {p}");
+            assert!(
+                !p.trim_start().starts_with("it for you?"),
+                "reply must not start mid-wink: {p}"
+            );
+            assert!(
+                !p.contains("does\n\nit for you") && !p.contains("does\nit for you"),
+                "no break inside wink: {p}"
+            );
+            assert!(fits_x_limit(p), "over 280: {} {}", x_weighted_len(p), p);
+        }
+        if parts.len() == 2 {
+            assert!(parts[1].contains('#') || parts[1].contains("rustaceans_rs"));
+        }
     }
 
     #[test]

@@ -359,6 +359,48 @@ mod tests {
     }
 
     #[test]
+    fn set_in_post_https_lines_preserves_internal_blank_lines() {
+        let body = "Para one.\n\nPara two.\n\nhttps://old.example/a\n";
+        let out = set_in_post_https_lines(
+            body,
+            &[
+                "https://github.com/Interchouette-ITC/evaluator".into(),
+                "https://x.com/a/status/1".into(),
+            ],
+        );
+        let head = out.split("Link:").next().unwrap_or(&out);
+        assert!(
+            head.contains("Para one.\n\nPara two."),
+            "internal blank lines must survive multi-URL normalize: {head:?}"
+        );
+        let https_count = head
+            .lines()
+            .filter(|l| l.trim().starts_with("https://"))
+            .count();
+        assert_eq!(https_count, 2);
+    }
+
+    #[test]
+    fn inline_and_bare_same_host_collapse_once() {
+        let cite = "https://sourcegraph.com/blog/agentic-coding";
+        let body = format!(
+            "Amp ships agentic coding. See {cite} for the write-up.\n\n{cite}\n\nLink: 1\n"
+        );
+        let out = set_single_in_post_url(&body, cite);
+        let head = out.split("\nLink:").next().unwrap();
+        assert_eq!(
+            head.matches(cite).count(),
+            1,
+            "inline+bare same URL must collapse once: {head}"
+        );
+        assert!(
+            head.lines().any(|l| l.trim() == cite),
+            "cite must be its own line: {head}"
+        );
+        assert!(head.contains("Amp ships"), "prose must survive: {head}");
+    }
+
+    #[test]
     fn strips_markdown_and_keeps_one_bare_url() {
         let body = "Hello\n\n[https://old.example/a](https://old.example/a)\nhttps://old.example/a\n\nSources:\n- x\n";
         let out = set_single_in_post_url(body, "https://new.example/b");

@@ -474,6 +474,136 @@ pub fn tweet_body_exploded(raw: &str) -> bool {
         || text.starts_with("### ")
 }
 
+const COERCE_MAX_CHARS: usize = 420;
+const COERCE_MAX_BEATS: usize = 4;
+
+/// Soft-recover an essay / FAQ dump into a short X-shaped commentary (no LLM retry).
+///
+/// Strips markdown headings and FAQ chrome, keeps leading beats under a char budget,
+/// and falls back to a subject-locked stub when nothing usable remains.
+#[must_use]
+pub fn coerce_tweet_body(raw: &str, subject: &str) -> String {
+    let scrubbed = strip_essay_chrome(raw);
+    let aerated = aerate_tweet_commentary(&scrubbed);
+    let clipped = clip_tweet_beats(&aerated, COERCE_MAX_BEATS, COERCE_MAX_CHARS);
+    if !clipped.trim().is_empty() && !tweet_body_exploded(&clipped) {
+        return clipped;
+    }
+    if !clipped.trim().is_empty() {
+        let tighter = clip_tweet_beats(&clipped, 3, 280);
+        if !tighter.trim().is_empty() {
+            return tighter;
+        }
+    }
+    stub_tweet_from_subject(subject)
+}
+
+fn strip_essay_chrome(raw: &str) -> String {
+    let mut out = Vec::new();
+    for line in raw.lines() {
+        let t = line.trim();
+        if t.is_empty() {
+            out.push(String::new());
+            continue;
+        }
+        if t.starts_with("## ") || t.starts_with("### ") || t == "##" || t == "###" {
+            continue;
+        }
+        let low = t.to_ascii_lowercase();
+        if low.contains("based on the information provided")
+            || low.contains("based on the provided information")
+            || low.contains("what should you do next")
+            || low.contains("curated researchpack")
+            || low.contains("recommended reading order")
+            || low.starts_with("researchpack")
+        {
+            continue;
+        }
+        out.push(t.to_string());
+    }
+    // Collapse runs of blank lines.
+    let mut cleaned = Vec::new();
+    let mut blank = false;
+    for line in out {
+        if line.is_empty() {
+            if !cleaned.is_empty() && !blank {
+                cleaned.push(String::new());
+                blank = true;
+            }
+            continue;
+        }
+        blank = false;
+        cleaned.push(line);
+    }
+    cleaned.join("\n")
+}
+
+fn clip_tweet_beats(text: &str, max_beats: usize, max_chars: usize) -> String {
+    let beats: Vec<&str> = text
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    if beats.is_empty() {
+        // Single-newline dense dump: take first lines as beats.
+        let lines: Vec<&str> = text
+            .lines()
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && !s.starts_with('#'))
+            .take(max_beats)
+            .collect();
+        let joined = lines.join("\n\n");
+        return trim_chars(&joined, max_chars);
+    }
+    let mut kept = Vec::new();
+    let mut chars = 0usize;
+    for beat in beats.into_iter().take(max_beats) {
+        let add = beat.chars().count();
+        if !kept.is_empty() && chars + add > max_chars {
+            break;
+        }
+        kept.push(beat);
+        chars += add;
+        if chars >= max_chars {
+            break;
+        }
+    }
+    trim_chars(&kept.join("\n\n"), max_chars)
+}
+
+fn trim_chars(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let mut out = String::new();
+    for ch in text.chars() {
+        if out.chars().count() + 1 > max_chars {
+            break;
+        }
+        out.push(ch);
+    }
+    out.trim_end().to_string()
+}
+
+fn stub_tweet_from_subject(subject: &str) -> String {
+    let topic = subject
+        .split_whitespace()
+        .filter(|w| !w.starts_with("http"))
+        .take(12)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let topic = if topic.is_empty() {
+        "this tooling story".to_string()
+    } else {
+        topic
+    };
+    format!(
+        "Builders should watch how {topic} lands in real repos. 🤖\n\n\
+Worth tracking as the stack keeps moving. 🦉\n\n\
+#AI #DevTools #Builders"
+    )
+}
+
 /// Blank line between sentence beats when the writer returned one dense line.
 #[must_use]
 pub fn aerate_tweet_commentary(text: &str) -> String {
@@ -861,6 +991,51 @@ Recommended reading order next.\n"
         assert!(!tweet_body_exploded(
             "Agents still cannot pay. Casper’s x402 bet is the part worth quoting.\n"
         ));
+    }
+
+    #[test]
+    fn tweet_body_exploded_by_length_and_line_count() {
+        let long = "word ".repeat(120);
+        assert!(tweet_body_exploded(&long), "over 500 chars");
+        let many_lines = (0..10)
+            .map(|i| format!("beat {i} here"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(tweet_body_exploded(&many_lines), "over 8 nonempty lines");
+        let short = "Hook beat. 🤖\n\nAngle beat. 🦉\n\nWink beat. 🦀\n\n#AI #Rust";
+        assert!(!tweet_body_exploded(short));
+    }
+
+    #[test]
+    fn coerce_tweet_body_strips_faq_and_keeps_short_beats() {
+        let essay = "Based on the information provided, here is a guide.\n\n\
+## ResearchPack\n\n\
+Amp by Sourcegraph runs on your repo. 🤖\n\n\
+It is more agent than autocomplete. 🦉\n\n\
+Builders should watch the independence move. 🚀\n\n\
+What should you do next? Read more.";
+        let out = coerce_tweet_body(essay, "Amp Sourcegraph agent");
+        assert!(!out.to_ascii_lowercase().contains("researchpack"), "{out}");
+        assert!(
+            !out.to_ascii_lowercase().contains("what should you do next"),
+            "{out}"
+        );
+        assert!(!tweet_body_exploded(&out), "{out}");
+        assert!(
+            out.contains("Amp") || out.contains("Sourcegraph") || out.contains("agent"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn coerce_tweet_body_stub_when_empty_after_strip() {
+        let out = coerce_tweet_body(
+            "## Only a heading\n\nBased on the information provided",
+            "Amp by Sourcegraph",
+        );
+        assert!(!out.is_empty());
+        assert!(!tweet_body_exploded(&out), "{out}");
+        assert!(out.contains("Amp") || out.contains("Sourcegraph"), "{out}");
     }
 
     #[test]
