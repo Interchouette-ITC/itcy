@@ -139,6 +139,8 @@ pub async fn rework_stored_draft(
         promote_link_option(&mut link_options, &primary);
         body = set_single_in_post_url(&body, &primary);
     }
+    (body, link_options) =
+        crate::sources::publisher_url::finalize_reachable_link_options(&body, link_options).await;
     body = strip_leading_draft_id(&body);
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = crate::sources::handles::ensure_linkedin_handle_from_pack(&body, &pack, &handles);

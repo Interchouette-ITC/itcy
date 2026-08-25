@@ -486,7 +486,7 @@ impl SlackRuntime {
                 } else if draft_id.starts_with("TWEET-") {
                     self.change_tweet_url_reply(&draft_id, &choice)
                 } else {
-                    self.change_draft_url_reply(&draft_id, &choice)
+                    self.change_draft_url_reply(&draft_id, &choice).await
                 }
             }
             OperatorCommand::List => self.list_saved_reply(),
@@ -1054,7 +1054,7 @@ Status: **published** (do not rework this id).",
         }
     }
 
-    fn change_draft_url_reply(&self, draft_id: &str, choice: &str) -> String {
+    async fn change_draft_url_reply(&self, draft_id: &str, choice: &str) -> String {
         let mut stored = match ensure_open_for_edit(&self.config.state_db_path, draft_id) {
             Ok(d) => d,
             Err(e) => return format!("Could not edit draft: {e}"),
@@ -1105,6 +1105,11 @@ Status: **published** (do not rework this id).",
                 )
             }
             UrlChoice::Url(new_url) => {
+                if let Err(reason) =
+                    crate::sources::publisher_url::probe_publisher_url(&new_url).await
+                {
+                    return format!("Link not reachable: {new_url} ({reason})");
+                }
                 info!(
                     draft_id = %draft_id,
                     choice = %choice,

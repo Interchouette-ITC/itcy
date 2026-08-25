@@ -97,6 +97,12 @@ pub async fn run_short_cite_load(
         push_unique(&mut urls, std::iter::once(u));
     }
     urls.truncate(PACK_CAP);
+    urls = crate::sources::publisher_url::filter_reachable_publisher_urls(urls).await;
+    if !urls.iter().any(|u| u == subject_url) {
+        return Err(RagError::Store(format!(
+            "cite URL not reachable: {subject_url}"
+        )));
+    }
     crate::sources::rag::log_pipeline_step("pack");
     info!(
         cites = urls.len(),
