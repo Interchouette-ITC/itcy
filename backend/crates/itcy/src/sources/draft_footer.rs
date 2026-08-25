@@ -88,7 +88,10 @@ pub fn pick_link_options(pack_urls: &[String], body: &str) -> Vec<String> {
     out
 }
 
-/// If the body has no https publisher URL but we have options, insert the primary https line.
+/// Ensure a bare publisher https line with a blank line before it.
+///
+/// When the body already has an in-post cite, keep that URL and normalize spacing.
+/// When missing, insert `primary` via [`crate::sources::draft_url::set_single_in_post_url`].
 #[must_use]
 pub fn ensure_primary_link_line(body: &str, primary: Option<&str>) -> String {
     let Some(primary) = primary else {
@@ -98,15 +101,12 @@ pub fn ensure_primary_link_line(body: &str, primary: Option<&str>) -> String {
         .lines()
         .any(crate::sources::draft_url::is_in_post_https_line)
     {
-        return body.to_string();
+        return crate::sources::draft_url::extract_in_post_url(body).map_or_else(
+            || body.to_string(),
+            |url| crate::sources::draft_url::set_single_in_post_url(body, &url),
+        );
     }
-    for marker in crate::sources::draft_url::PRIMARY_LINK_INSERT_MARKERS {
-        if let Some(idx) = body.find(marker) {
-            let (head, tail) = body.split_at(idx);
-            return format!("{}\n{}\n\n{}", head.trim_end(), primary, tail);
-        }
-    }
-    format!("{}\n\n{}", body.trim_end(), primary)
+    crate::sources::draft_url::set_single_in_post_url(body, primary)
 }
 
 /// Put Draft ID first (operator reference), then body, then `Link: N` / `0`.
@@ -561,9 +561,48 @@ mod tests {
     #[test]
     fn ensure_inserts_primary_when_missing() {
         let body = "Commentary here.";
-        let out = ensure_primary_link_line(body, Some("https://labs.sogeti.com/article"));
-        assert!(out.contains("https://labs.sogeti.com/article"));
+        let cite = "https://labs.sogeti.com/article";
+        let out = ensure_primary_link_line(body, Some(cite));
+        assert!(out.contains(cite));
         assert!(out.contains("Commentary here."));
+        assert!(
+            out.contains("Commentary here.\n\nhttps://"),
+            "blank line before cite: {out}"
+        );
+    }
+
+    #[test]
+    fn ensure_normalizes_blank_line_before_existing_cite() {
+        let cite =
+            "https://blog.rust-lang.org/inside-rust/2026/08/18/reducing-target-dir-size-on-nightly";
+        let body = format!(
+            "I'm watching how these small changes become habits. 🦉\n{cite}\n\nWritten by AI - ITCy - model ollama/qwen3:8b <in:1 out:1>"
+        );
+        let out = ensure_primary_link_line(&body, Some(cite));
+        assert!(
+            out.contains("🦉\n\nhttps://"),
+            "blank line before cite: {out}"
+        );
+        assert!(out.contains("Written by AI"));
+        assert_eq!(
+            out.lines()
+                .filter(|l| l.trim().starts_with("https://"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn ensure_inserts_before_disclosure_with_blank_line() {
+        let cite = "https://labs.sogeti.com/article";
+        let body =
+            "Commentary here.\n\nWritten by AI - ITCy - model ollama/qwen3:8b - tokens in:1 out:1";
+        let out = ensure_primary_link_line(body, Some(cite));
+        assert!(
+            out.contains("Commentary here.\n\nhttps://"),
+            "blank line before cite: {out}"
+        );
+        assert!(out.contains("\n\nWritten by AI"));
     }
 
     #[test]

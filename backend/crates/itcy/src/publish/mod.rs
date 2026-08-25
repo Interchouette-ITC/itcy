@@ -100,6 +100,17 @@ pub struct PublishResult {
     pub detail: String,
 }
 
+impl PublishResult {
+    /// Slack ship-notice body: public URL when known (same shape as X), else `detail`.
+    #[must_use]
+    pub fn ship_notice_text(&self) -> &str {
+        self.linkedin_url
+            .as_deref()
+            .filter(|u| !u.is_empty())
+            .unwrap_or(self.detail.as_str())
+    }
+}
+
 /// Errors from config, credentials, or the publish path.
 #[derive(Debug, Error)]
 pub enum PublishError {
@@ -275,6 +286,27 @@ mod tests {
         assert_eq!(PublishMode::parse("mock").unwrap(), PublishMode::Playground);
         assert_eq!(PublishMode::parse("live").unwrap(), PublishMode::Production);
         assert!(PublishMode::parse("dry-run").is_err());
+    }
+
+    #[test]
+    fn ship_notice_prefers_public_url() {
+        let with_url = PublishResult {
+            mode: PublishMode::Production,
+            linkedin_urn: Some("urn:li:share:1".into()),
+            linkedin_url: Some("https://www.linkedin.com/feed/update/urn:li:share:1".into()),
+            detail: "mcp ship ok Published text post".into(),
+        };
+        assert_eq!(
+            with_url.ship_notice_text(),
+            "https://www.linkedin.com/feed/update/urn:li:share:1"
+        );
+        let no_url = PublishResult {
+            mode: PublishMode::Playground,
+            linkedin_urn: None,
+            linkedin_url: None,
+            detail: "playground ship ok".into(),
+        };
+        assert_eq!(no_url.ship_notice_text(), "playground ship ok");
     }
 
     #[tokio::test]

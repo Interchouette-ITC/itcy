@@ -32,6 +32,42 @@ pub fn sanitize_itcy_text(input: &str) -> String {
     s
 }
 
+/// Sanitize commentary; leave operator chrome / disclosure (`Link:`, `Written by AI`, …) untouched.
+///
+/// Models often leave spaced-hyphen pauses in stored bodies; paste and pack must still clean them
+/// without turning `Written by AI - ITCy - model` into commas.
+#[must_use]
+pub fn sanitize_body_keep_operator_chrome(body: &str) -> String {
+    const MARKERS: &[&str] = &[
+        "\nLink options",
+        "\nLink:",
+        "\nX:",
+        "\nCite =",
+        "\nCite:",
+        "\n0 = no link",
+        "\n0 = no cite",
+        "\nSources:",
+        "\nSources used:",
+        "\nWritten by AI",
+    ];
+    let mut cut = body.len();
+    for m in MARKERS {
+        if let Some(i) = body.find(m) {
+            cut = cut.min(i);
+        }
+    }
+    let head = body[..cut].trim_end();
+    let tail = body[cut..].trim_start();
+    let clean = sanitize_itcy_text(head);
+    if tail.is_empty() {
+        clean
+    } else if clean.is_empty() {
+        tail.to_string()
+    } else {
+        format!("{clean}\n\n{tail}")
+    }
+}
+
 /// `word - word` / NBSP-hyphen-NBSP → `word, word`. Leaves `memory-safety` alone.
 fn replace_spaced_hyphen_pauses(input: &str) -> String {
     let chars: Vec<char> = input.chars().collect();
@@ -270,6 +306,25 @@ mod tests {
         let compound = sanitize_itcy_text("memory-safety and C/C++ stay hyphenated.");
         assert!(compound.contains("memory-safety"));
         assert!(compound.contains("C/C++"));
+    }
+
+    #[test]
+    fn sanitize_body_keeps_disclosure_hyphens() {
+        let body = "\
+The problem with Opus is not just its quirks - it is the cost of fixing them. 📜
+
+https://www.infoworld.com/article/4211958/example.html
+
+Link: 1
+0 = no link. /change_url DRAFT-1 <0|1|2|3|url>
+1. https://www.infoworld.com/article/4211958/example.html
+
+Written by AI - ITCy - model ollama/qwen3:8b - tokens in:1 out:1";
+        let out = sanitize_body_keep_operator_chrome(body);
+        assert!(out.contains("quirks, it is the cost"));
+        assert!(!out.split("Written by AI").next().unwrap().contains(" - "));
+        assert!(out.contains("Written by AI - ITCy - model ollama/qwen3:8b - tokens in:1 out:1"));
+        assert!(out.contains("Link: 1"));
     }
 
     #[test]

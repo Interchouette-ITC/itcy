@@ -401,14 +401,14 @@ pub fn linkedin_text_for_api(body: &str) -> String {
     while prose.last().is_some_and(|l| l.trim().is_empty()) {
         prose.pop();
     }
-    let mut out = prose.join("\n");
+    let mut out = crate::llm::sanitize_itcy_text(&prose.join("\n"));
     if !disclosure.is_empty() {
         if !out.is_empty() {
             out.push_str("\n\n");
         }
         out.push_str(&disclosure.join("\n"));
     }
-    crate::llm::sanitize::expand_emoji_shortcodes(out.trim())
+    out.trim().to_string()
 }
 
 fn is_linkedin_id_header(t: &str) -> bool {
@@ -514,6 +514,23 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:3918 out:290\n";
         let out = linkedin_text_for_api("Hello :owl:\n\nhttps://example.com/a\n");
         assert!(out.contains('🦉'), "{out}");
         assert!(!out.contains(":owl:"));
+    }
+
+    #[test]
+    fn linkedin_text_converts_spaced_hyphen_pauses() {
+        let body = "\
+Draft ID: DRAFT-1\n\
+\n\
+quirks - it is the cost\n\
+\n\
+https://example.com/a\n\
+\n\
+Link: 1\n\
+Written by AI - ITCy - model ollama/qwen3:8b - tokens in:1 out:1\n";
+        let out = linkedin_text_for_api(body);
+        assert!(out.contains("quirks, it is the cost"), "{out}");
+        assert!(!out.split("Written by AI").next().unwrap().contains(" - "));
+        assert!(out.contains("Written by AI - ITCy - model"));
     }
 
     #[test]

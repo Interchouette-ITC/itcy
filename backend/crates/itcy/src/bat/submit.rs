@@ -302,7 +302,6 @@ async fn ship_promoted_artefact(
     if let Ok(store) = DraftStore::open(db_path) {
         let _ = store.mark_status_from(&promoted.draft_id, status::ACCEPTED, status::PUBLISHED);
         let _ = store.mark_status_from(&promoted.draft_id, status::OPEN, status::PUBLISHED);
-        let _ = store.delete(&promoted.draft_id);
     }
     Ok(RetryBatResult {
         draft_id: promoted.draft_id,
@@ -329,8 +328,9 @@ async fn ship_promoted_x(
     };
     match crate::publish::ship_x_post(db_path, "playground", request, None).await {
         Ok(r) => {
-            crate::slack::api::post_ship_notice(&promoted.post_id, &r.detail).await;
-            Ok(r.detail)
+            let notice = r.ship_notice_text().to_string();
+            crate::slack::api::post_ship_notice(&promoted.post_id, &notice).await;
+            Ok(notice)
         }
         Err(e) => {
             crate::slack::api::post_ship_fail(&promoted.post_id, &e.to_string()).await;
@@ -360,8 +360,9 @@ async fn ship_promoted_linkedin(
     .await
     {
         Ok(r) => {
-            crate::slack::api::post_ship_notice(&promoted.post_id, &r.detail).await;
-            Ok(r.detail)
+            let notice = r.ship_notice_text().to_string();
+            crate::slack::api::post_ship_notice(&promoted.post_id, &notice).await;
+            Ok(notice)
         }
         Err(e) => {
             crate::slack::api::post_ship_fail(&promoted.post_id, &e.to_string()).await;
