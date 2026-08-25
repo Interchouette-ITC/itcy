@@ -352,6 +352,10 @@ impl SlackRuntime {
                 text,
             } => {
                 log_slack_incoming(&text);
+                if crate::slack::commands::looks_like_bot_draft_paste(&text) {
+                    info!("slack: ignore pasted draft/show chrome (no inline slash / freeform)");
+                    return;
+                }
                 match classify_channel_text(&text) {
                     ChannelTextKind::TextCommand(cmd) => {
                         let reply = self.dispatch_command(cmd).await;

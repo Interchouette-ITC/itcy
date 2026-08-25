@@ -416,7 +416,9 @@ pub fn classify_channel_text(text: &str) -> ChannelTextKind {
 
 /// First **known** `/cmd` in `text` → (`/cmd`, remaining args).
 ///
-/// Skips URL path noise and any `/token` not in [`KNOWN_SLASH_COMMANDS`].
+/// Skips URL path noise, unknown `/token`s, and operator **help chrome** lines
+/// (`/change_url … <0|1|2|3|url>`, `/rework … <instructions>`) so pasted draft
+/// footers do not dispatch as live commands.
 fn extract_inline_slash(text: &str) -> Option<(String, String)> {
     let bytes = text.as_bytes();
     let mut i = 0;
@@ -452,11 +454,35 @@ fn extract_inline_slash(text: &str) -> Option<(String, String)> {
             i = name_end;
             continue;
         }
-        let cmd = text[i..name_end].to_string();
         let args = text[name_end..].trim().to_string();
+        if slash_args_look_like_usage_chrome(name, &args) {
+            i = name_end;
+            continue;
+        }
+        let cmd = text[i..name_end].to_string();
         return Some((cmd, args));
     }
     None
+}
+
+/// True when args are the bot's usage placeholder, not an operator choice.
+fn slash_args_look_like_usage_chrome(cmd: &str, args: &str) -> bool {
+    match cmd {
+        "change_url" => args.contains("<0|1|2|3"),
+        "rework" => args.contains("<instructions>"),
+        _ => false,
+    }
+}
+
+/// Pasted draft / `/show` chrome: do not treat as operator input (inline slash or freeform).
+#[must_use]
+pub fn looks_like_bot_draft_paste(text: &str) -> bool {
+    let t = text;
+    t.contains("0 = no link")
+        || t.contains("Written by AI - ITCy")
+        || t.contains(":point_right: Next:")
+        || t.contains("Draft ID:")
+        || t.contains("Tweet ID:")
 }
 
 /// Split `/draft_about` args: `subject, instructions` (first comma).
@@ -631,14 +657,21 @@ fn parse_lifecycle_slash(cmd: &str, args: &str) -> Option<Result<OperatorCommand
                     "usage: /change_url <DRAFT-…|TWEET-…> <0|1|2|3|https://…>".into(),
                 ));
             };
-            if rest.is_empty() {
+            // One token only: pasted Next: footers append more slash lines after `1`.
+            let choice = rest
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_matches(|c: char| matches!(c, ',' | ':' | '.'))
+                .to_string();
+            if choice.is_empty() {
                 return Some(Err(
                     "usage: /change_url <DRAFT-…|TWEET-…> <0|1|2|3|https://…>".into(),
                 ));
             }
             Ok(OperatorCommand::ChangeUrl {
                 draft_id: id,
-                choice: rest,
+                choice,
             })
         }
         _ => return None,
@@ -1073,6 +1106,43 @@ mod tests {
         );
         assert_eq!(parse_text_command("status"), None);
         assert_eq!(parse_text_command("hello"), None);
+    }
+
+    #[test]
+    fn inline_slash_skips_change_url_usage_chrome() {
+        let paste = "0 = no link. /change_url DRAFT-20260825-000102 <0|1|2|3|url>\n\
+1. https://sourcegraph.com/blog/agentic-coding\n\
+:link: /change_url DRAFT-20260825-000102 1\n\
+:white_check_mark: /accept DRAFT-20260825-000102";
+        let r = parse_inline_slash_text(paste)
+            .expect("real Next hint present")
+            .expect("valid change_url 1");
+        match r {
+            OperatorCommand::ChangeUrl { draft_id, choice } => {
+                assert_eq!(draft_id, "DRAFT-20260825-000102");
+                assert_eq!(choice, "1");
+            }
+            other => panic!("expected ChangeUrl 1, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn inline_slash_skips_usage_when_only_chrome() {
+        let paste = "Received /change_url DRAFT-20260825-000102, <0|1|2|3|url> :one: :dart:\n\
+Written by AI - ITCy - model ollama/qwen3:8b\n\
+:point_right: Next: :pencil2: /rework DRAFT-20260825-000102 <instructions>";
+        assert!(parse_inline_slash_text(paste).is_none());
+        assert!(looks_like_bot_draft_paste(paste));
+    }
+
+    #[test]
+    fn draft_paste_chrome_is_detected() {
+        assert!(looks_like_bot_draft_paste(
+            "Draft ID: DRAFT-1\n\nHi\n\n0 = no link. /change_url DRAFT-1 <0|1|2|3|url>"
+        ));
+        assert!(!looks_like_bot_draft_paste(
+            "/change_url DRAFT-20260825-000102 1"
+        ));
     }
 
     #[test]
