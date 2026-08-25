@@ -142,6 +142,7 @@ pub async fn rework_stored_draft(
     body = strip_leading_draft_id(&body);
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = crate::sources::handles::ensure_linkedin_handle_from_pack(&body, &pack, &handles);
+    body = crate::sources::draft_url::ensure_linkedin_paragraph_gaps(&body);
     let body = compose_draft_message(&body, &stored.draft_id, &link_options);
     let body = with_disclosure(&body, &trace);
     info!(

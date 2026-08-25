@@ -132,6 +132,50 @@ pub fn set_single_in_post_url(body: &str, new_url: &str) -> String {
     set_in_post_https_lines(body, &urls)
 }
 
+/// Ensure a blank line between consecutive prose paragraphs (`LinkedIn` drafts).
+///
+/// Writers often emit a single `\n` between paragraphs; paste then looks dense. Does not
+/// invent tweet-style short beats; only inserts a gap when two non-empty, non-URL lines
+/// would otherwise sit adjacent.
+#[must_use]
+pub fn ensure_linkedin_paragraph_gaps(body: &str) -> String {
+    let split_at = footer_start(body).unwrap_or(body.len());
+    let (head, tail) = body.split_at(split_at);
+    let mut lines: Vec<String> = Vec::new();
+    for line in head.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            if lines.last().is_some_and(|l| !l.trim().is_empty()) {
+                lines.push(String::new());
+            }
+            continue;
+        }
+        if is_in_post_https_line(line) {
+            while lines.last().is_some_and(|l| l.trim().is_empty()) {
+                lines.pop();
+            }
+            if !lines.is_empty() {
+                lines.push(String::new());
+            }
+            lines.push(trimmed.to_string());
+            continue;
+        }
+        if lines.last().is_some_and(|l| !l.trim().is_empty()) {
+            lines.push(String::new());
+        }
+        lines.push(line.to_string());
+    }
+    while lines.last().is_some_and(|l| l.trim().is_empty()) {
+        lines.pop();
+    }
+    let mut out = lines.join("\n");
+    if !tail.is_empty() {
+        out.push_str("\n\n");
+        out.push_str(tail.trim_start());
+    }
+    out
+}
+
 /// Write zero or more bare https lines after commentary (primary / Link cite last).
 ///
 /// Drops prior URL-only lines and bare `https://` tokens glued onto prose (model often
@@ -354,6 +398,27 @@ mod tests {
                 "Para one with a win.\n\nPara two about rhythm.\n\nPara three closer look."
             ),
             "aeration must survive cite normalize: {head:?}"
+        );
+        assert_eq!(head.matches(cite).count(), 1);
+    }
+
+    #[test]
+    fn linkedin_paragraph_gaps_insert_blank_between_dense_paras() {
+        let cite = "https://sourcegraph.com/blog/agentic-coding";
+        let body = format!(
+            "I'm watching how Amp redefines coding. 🦉\n\
+Sourcegraph's Amp isn't just another autocomplete tool.\n\
+The real win? Context-aware coding.\n\n{cite}\n\nLink: 1\n"
+        );
+        let out = ensure_linkedin_paragraph_gaps(&body);
+        let head = out.split("\nLink:").next().unwrap();
+        assert!(
+            head.contains("coding. 🦉\n\nSourcegraph"),
+            "must insert blank after first para: {head:?}"
+        );
+        assert!(
+            head.contains("tool.\n\nThe real win"),
+            "must insert blank between long paras: {head:?}"
         );
         assert_eq!(head.matches(cite).count(), 1);
     }

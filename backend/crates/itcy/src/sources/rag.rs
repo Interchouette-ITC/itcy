@@ -665,6 +665,7 @@ pub async fn build_grounded_draft_with_cite(
     )?;
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = ensure_body_handles_from_pack(tools, &body, &research_pack);
+    body = crate::sources::draft_url::ensure_linkedin_paragraph_gaps(&body);
     let mut link_options = crate::sources::draft_footer::pick_link_options(&pack_urls, &body);
     if let Some(cite) = prefer.as_deref() {
         // Digest / operator cite wins Link:1 (including X status URLs).
@@ -744,6 +745,7 @@ pub async fn build_grounded_draft_from_pack(
     )?;
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = ensure_body_handles_from_pack(tools, &body, &research_pack);
+    body = crate::sources::draft_url::ensure_linkedin_paragraph_gaps(&body);
     let mut link_options = crate::sources::draft_footer::pick_link_options(&urls, &body);
     if let Some(cite) = crate::sources::tweet_footer::extract_brief_cite(subject) {
         crate::sources::draft_url::promote_link_option(&mut link_options, &cite);
