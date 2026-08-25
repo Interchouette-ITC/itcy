@@ -1832,7 +1832,13 @@ fn load_prior_day_seen_keys_on(
 
 fn filter_prior_day_seen(items: &mut Vec<Candidate>, seen: &HashSet<String>) -> usize {
     let before = items.len();
-    items.retain(|c| !seen.contains(&candidate_seen_key(c)));
+    items.retain(|c| {
+        // Portfolio cites are stable GitHub/site URLs; still show daily in INTERCHOUETTE.
+        if is_itc_lane(&c.lane) {
+            return true;
+        }
+        !seen.contains(&candidate_seen_key(c))
+    });
     before.saturating_sub(items.len())
 }
 
@@ -2040,11 +2046,15 @@ mod tests {
     }
 
     fn freshness_cand(title: &str, url: Option<&str>) -> Candidate {
+        freshness_cand_lane(title, url, "live_site")
+    }
+
+    fn freshness_cand_lane(title: &str, url: Option<&str>, lane: &str) -> Candidate {
         Candidate {
             title: title.into(),
             url: url.map(str::to_string),
             subject: title.into(),
-            lane: "live_site".into(),
+            lane: lane.into(),
             weight: 5,
             detail: String::new(),
             query: String::new(),
@@ -2066,6 +2076,44 @@ mod tests {
         let mut items = vec![freshness_cand("Old story", Some("https://example.com/a"))];
         assert_eq!(filter_prior_day_seen(&mut items, &seen), 1);
         assert!(items.is_empty());
+    }
+
+    #[test]
+    fn prior_day_seen_keeps_itc_portfolio_urls() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = dir.path().join("d.db");
+        let id = digest_id_days_ago(1, 1);
+        let url = "https://github.com/Interchouette-ITC/evaluator";
+        insert_digest(
+            &db,
+            &id,
+            &[DigestItem {
+                idx: 1,
+                title: "DRAFT · evaluator".into(),
+                url: Some(url.into()),
+                subject: "evaluator".into(),
+                lane: "itc_draft".into(),
+                weight: 9,
+                detail: "Public evaluator crate.".into(),
+            }],
+        )
+        .unwrap();
+        let seen = load_prior_day_seen_keys(&db).unwrap();
+        assert!(seen.contains(&digest_item_seen_key(Some(url), "DRAFT · evaluator")));
+        let mut items = vec![freshness_cand_lane(
+            "DRAFT · evaluator",
+            Some(url),
+            "itc_draft",
+        )];
+        assert_eq!(filter_prior_day_seen(&mut items, &seen), 0);
+        assert_eq!(items.len(), 1);
+        let mut tweet = vec![freshness_cand_lane(
+            "TWEET · tvscreener-rs",
+            Some("https://github.com/Interchouette-ITC/tvscreener-rs"),
+            "itc_tweet",
+        )];
+        assert_eq!(filter_prior_day_seen(&mut tweet, &seen), 0);
+        assert_eq!(tweet.len(), 1);
     }
 
     #[test]
