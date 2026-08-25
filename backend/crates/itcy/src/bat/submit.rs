@@ -105,12 +105,7 @@ enum BatSurface {
     Tweet,
 }
 
-async fn accept_surface(
-    db_path: &Path,
-    draft_id: &str,
-    surface: BatSurface,
-) -> Result<BatSubmitResult, BatSubmitError> {
-    let draft = load_draft(db_path, draft_id)?;
+fn gate_accept_draft(draft_id: &str, draft: &StoredDraft) -> Result<(), BatSubmitError> {
     match draft.status.as_str() {
         status::OPEN | status::ACCEPTED => {}
         status::PUBLISHED => {
@@ -132,6 +127,22 @@ async fn accept_surface(
         return Err(BatSubmitError::Gate(format!(
             "Draft `{draft_id}` has no body yet (still building?). Wait or `/draft_about` again."
         )));
+    }
+    Ok(())
+}
+
+async fn accept_surface(
+    db_path: &Path,
+    draft_id: &str,
+    surface: BatSurface,
+) -> Result<BatSubmitResult, BatSubmitError> {
+    let draft = load_draft(db_path, draft_id)?;
+    gate_accept_draft(draft_id, &draft)?;
+    if let Err(reason) =
+        crate::sources::publisher_url::require_ship_cite_reachable(&draft.body, &draft.link_options)
+            .await
+    {
+        return Err(BatSubmitError::Gate(reason));
     }
     let cfg = BatGithubConfig::from_env()?;
     let owner = match surface {

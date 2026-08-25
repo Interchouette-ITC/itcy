@@ -285,6 +285,7 @@ async fn enrich_research_pack_urls(
                     }
                     Err(e) => {
                         tracing::warn!(error = %e, url = %u, "load_draft: auto-browse failed");
+                        pack_urls.retain(|x| x != &u);
                     }
                 }
             }
@@ -295,7 +296,7 @@ async fn enrich_research_pack_urls(
             append_browsed_page_to_pack(research_pack, &url, &text);
         }
     }
-    pack_urls
+    crate::sources::publisher_url::filter_reachable_publisher_urls(pack_urls).await
 }
 
 /// Pack cites: LOAD text + browsed pages. SERP leftovers only if both are empty.
@@ -616,11 +617,26 @@ pub async fn build_grounded_draft_with_cite(
     // off-topic SERP rows and the writer follows them.
     let prefer = resolve_draft_cite_url(forced_cite_url, subject);
     let brief_has_cite = prefer.is_some();
-    let (mut research_pack, pack_urls, load_trace) = if let Some(url) = prefer.as_deref() {
+    if let Some(url) = prefer.as_deref() {
+        if let Err(reason) = crate::sources::publisher_url::probe_publisher_url(url).await {
+            return Err(RagError::Store(format!(
+                "cite URL not reachable: {url} ({reason})"
+            )));
+        }
+    }
+    let (mut research_pack, mut pack_urls, load_trace) = if let Some(url) = prefer.as_deref() {
         crate::sources::tweet_load::run_short_cite_load(subject, url, tools, true).await?
     } else {
         run_load_phase(router, subject, tools, tools_dyn, session_dir.as_ref()).await?
     };
+    pack_urls = crate::sources::publisher_url::filter_reachable_publisher_urls(pack_urls).await;
+    if brief_has_cite {
+        if let Some(url) = prefer.as_deref() {
+            if !pack_urls.iter().any(|u| u == url) {
+                pack_urls.insert(0, url.to_string());
+            }
+        }
+    }
     apply_pack_handles(tools, subject, &mut research_pack);
 
     checkpoint_building_pack(db_path, tools, subject, &research_pack, &pack_urls).await;
@@ -670,10 +686,8 @@ pub async fn build_grounded_draft_with_cite(
         // Digest / operator cite wins Link:1 (including X status URLs).
         crate::sources::draft_url::promote_link_option(&mut link_options, cite);
     }
-    body = crate::sources::draft_footer::ensure_primary_link_line(
-        &body,
-        link_options.first().map(String::as_str),
-    );
+    (body, link_options) =
+        crate::sources::publisher_url::finalize_reachable_link_options(&body, link_options).await;
     let body = crate::sources::draft_footer::compose_draft_message(&body, &draft_id, &link_options);
     info!(draft_id = %draft_id, links = link_options.len(), "load_draft: draft id + links attached");
     Ok(GroundedDraft {
@@ -712,7 +726,8 @@ pub async fn build_grounded_draft_from_pack(
 ) -> Result<GroundedDraft, RagError> {
     let session_dir = begin_load_session_dir(tools, db_path, subject).await;
     let brief_has_cite = crate::sources::tweet_footer::extract_brief_cite(subject).is_some();
-    let urls: Vec<String> = pack_urls.to_vec();
+    let mut urls: Vec<String> = pack_urls.to_vec();
+    urls = crate::sources::publisher_url::filter_reachable_publisher_urls(urls).await;
     let mut research_pack = research_pack.to_string();
     apply_pack_handles(tools, subject, &mut research_pack);
     checkpoint_building_pack(db_path, tools, subject, &research_pack, &urls).await;
@@ -748,10 +763,8 @@ pub async fn build_grounded_draft_from_pack(
     if let Some(cite) = crate::sources::tweet_footer::extract_brief_cite(subject) {
         crate::sources::draft_url::promote_link_option(&mut link_options, &cite);
     }
-    body = crate::sources::draft_footer::ensure_primary_link_line(
-        &body,
-        link_options.first().map(String::as_str),
-    );
+    (body, link_options) =
+        crate::sources::publisher_url::finalize_reachable_link_options(&body, link_options).await;
     let body = crate::sources::draft_footer::compose_draft_message(&body, &draft_id, &link_options);
     Ok(GroundedDraft {
         subject: subject.to_string(),

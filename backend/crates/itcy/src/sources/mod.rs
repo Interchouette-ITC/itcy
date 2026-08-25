@@ -20,6 +20,7 @@ pub mod linkedin_comment;
 pub mod linkedin_extract;
 pub mod live_sites;
 pub mod portability;
+pub mod publisher_url;
 pub mod rag;
 pub mod reply_comment;
 pub mod rework;
