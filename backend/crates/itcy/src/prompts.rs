@@ -606,6 +606,34 @@ mod tests {
     }
 
     #[test]
+    fn linkedin_craft_bans_not_just_broader_trend_mush() {
+        assert!(
+            CREATIVE_LINKEDIN.contains("It's not just (another)")
+                || CREATIVE_LINKEDIN.contains("not just another tool"),
+            "Creative LinkedIn must ban not-just slogan class"
+        );
+        assert!(
+            CREATIVE_LINKEDIN.contains("broader trend"),
+            "Creative LinkedIn must ban broader-trend mush"
+        );
+        assert!(
+            FORM_CRAFT_LINKEDIN.contains("not-just / broader-trend")
+                || FORM_CRAFT_LINKEDIN.contains("It's not just another tool"),
+            "Form craft LinkedIn must show not-just mush as a Bad contrast"
+        );
+        let cite_user = DRAFT_USER_SUBJECT_HTTPS_TMPL;
+        assert!(
+            cite_user.contains("Slogan mush") || cite_user.contains("broader trend"),
+            "cite-locked draft user must forbid slogan mush"
+        );
+        assert!(
+            DRAFT_PACK_NOTE_SUBJECT_HTTPS.contains("primary")
+                && DRAFT_PACK_NOTE_SUBJECT_HTTPS.contains("secondary"),
+            "cite pack note must state cite-primary / SERP-secondary hierarchy"
+        );
+    }
+
+    #[test]
     fn draft_pack_note_subject_https_forbids_corpus() {
         let note = draft_pack_note(false, true).to_ascii_lowercase();
         assert!(note.contains("corpus_search"));
