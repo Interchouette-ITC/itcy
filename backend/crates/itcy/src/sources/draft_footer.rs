@@ -439,6 +439,20 @@ mod tests {
     }
 
     #[test]
+    fn pick_link_options_floor_three_when_pack_has_three_domains() {
+        let pack = vec![
+            "https://x.com/a/status/1".into(),
+            "https://labs.sogeti.com/a".into(),
+            "https://decrypt.co/1/b".into(),
+        ];
+        let opts = pick_link_options(&pack, "");
+        assert!(
+            opts.len() >= crate::sources::publisher_url::LINK_OPTIONS_MIN,
+            "LinkedIn Link options floor is 3: {opts:?}"
+        );
+    }
+
+    #[test]
     fn draft_ids_monotonic_and_shaped() {
         let dir = TempDir::new().expect("temp");
         let path = dir.path().join("s.db");

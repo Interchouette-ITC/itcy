@@ -91,6 +91,8 @@ pub async fn build_grounded_tweet(
     );
 
     let tweet_id = resolve_session_draft_id(tools, db_path).await;
+    // Capture before end_session clears EXTRACTED (same timing bug as draft Link refill).
+    let refill_pool = crate::sources::rag::draft_link_refill_pool(tools, &pack_urls).await;
     end_session_best_effort(
         tools,
         session_dir.as_ref(),
@@ -107,7 +109,19 @@ pub async fn build_grounded_tweet(
         tweet_trace.model_label()
     );
     let tweet_body = ensure_tweet_handles_from_pack(tools, &tweet_body, &research_pack);
-    let (body, link_options) = attach_tweet_cites(&tweet_body, &pack_urls, &tweet_id, subject);
+    let mut pack_for_links = pack_urls.clone();
+    for u in refill_pool
+        .iter()
+        .chain(operator_https_urls(subject).iter())
+    {
+        if pack_for_links.len() >= crate::sources::publisher_url::LINK_OPTIONS_CAP {
+            break;
+        }
+        if !pack_for_links.iter().any(|x| x == u) {
+            pack_for_links.push(u.clone());
+        }
+    }
+    let (body, link_options) = attach_tweet_cites(&tweet_body, &pack_for_links, &tweet_id, subject);
     info!(
         tweet_id = %tweet_id,
         cites = link_options.len(),
@@ -260,12 +274,7 @@ pub(crate) fn attach_tweet_cites(
     }
     if let Some(cite) = prefer.as_deref() {
         crate::sources::draft_url::promote_link_option(&mut link_options, cite);
-        // Subject X-only brief: keep status options only (drop off-topic Brave publishers).
-        if is_x_status_url(cite) && !has_non_x_operator {
-            link_options.retain(|u| is_x_status_url(u));
-            crate::sources::draft_url::promote_link_option(&mut link_options, cite);
-        }
-        // One in-post cite only. Extra brief URLs stay in Link: 2/3, not the body.
+        // One in-post cite only. Extra pack / brief URLs stay in Link options, not the body.
         let body = ensure_tweet_cite_line(&body, Some(cite));
         return (
             compose_tweet_message(&body, tweet_id, &link_options),
@@ -317,14 +326,37 @@ Sources:
         let brief = format!("tinyboot, cite {prefer}");
         let (out, opts) = attach_tweet_cites(raw, &pack, "TWEET-1", &brief);
         assert!(!out.contains("Sources:"));
-        assert!(!out.contains("neowin.net"));
-        assert!(out.contains(&format!("1. {prefer}")));
-        assert!(out.contains("Link: 1"));
         assert_eq!(opts[0], prefer);
+        assert!(
+            opts.iter().any(|u| u.contains("neowin.net")),
+            "publisher from pack must stay in Link options: {opts:?}"
+        );
+        assert!(opts.len() >= 2, "X cite + publisher: {opts:?}");
         let api = crate::publish::tweet_text_for_api(&out);
         assert!(api.contains(prefer));
-        assert!(!api.contains("neowin"));
+        assert!(
+            !api.contains("neowin"),
+            "publisher not in tweet body: {api}"
+        );
         assert!(api.contains("tinyboot"));
+    }
+
+    #[test]
+    fn x_status_cite_keeps_at_least_three_link_options_from_pack() {
+        let x = "https://x.com/a/status/1";
+        let p1 = "https://labs.sogeti.com/article-one";
+        let p2 = "https://decrypt.co/999/some-post";
+        let brief = format!("topic, cite {x}");
+        let pack = vec![x.into(), p1.into(), p2.into()];
+        let (_out, opts) =
+            attach_tweet_cites("One line beat.\n\n#Rust\n", &pack, "TWEET-3", &brief);
+        assert!(
+            opts.len() >= crate::sources::publisher_url::LINK_OPTIONS_MIN,
+            "tweet Link options must meet floor of 3: {opts:?}"
+        );
+        assert_eq!(opts[0], x);
+        assert!(opts.iter().any(|u| u == p1));
+        assert!(opts.iter().any(|u| u == p2));
     }
 
     #[test]

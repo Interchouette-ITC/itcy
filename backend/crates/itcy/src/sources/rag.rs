@@ -658,6 +658,8 @@ pub async fn build_grounded_draft_with_cite(
     );
 
     let draft_id = resolve_session_draft_id(tools, db_path).await;
+    // Capture SERP/extracted pool before end_session clears tools.session.
+    let refill_pool = draft_link_refill_pool(tools, &pack_urls).await;
     end_session_best_effort(
         tools,
         session_dir.as_ref(),
@@ -686,7 +688,6 @@ pub async fn build_grounded_draft_with_cite(
         // Digest / operator cite wins Link:1 (including X status URLs).
         crate::sources::draft_url::promote_link_option(&mut link_options, cite);
     }
-    let refill_pool = draft_link_refill_pool(tools, &pack_urls).await;
     (body, link_options) =
         crate::sources::publisher_url::finalize_reachable_link_options_from_pool(
             &body,
@@ -748,6 +749,7 @@ pub async fn build_grounded_draft_from_pack(
     )
     .await?;
     let draft_id = resolve_session_draft_id(tools, db_path).await;
+    let refill_pool = draft_link_refill_pool(tools, &urls).await;
     end_session_best_effort(
         tools,
         session_dir.as_ref(),
@@ -769,7 +771,6 @@ pub async fn build_grounded_draft_from_pack(
     if let Some(cite) = crate::sources::tweet_footer::extract_brief_cite(subject) {
         crate::sources::draft_url::promote_link_option(&mut link_options, &cite);
     }
-    let refill_pool = draft_link_refill_pool(tools, &urls).await;
     (body, link_options) =
         crate::sources::publisher_url::finalize_reachable_link_options_from_pool(
             &body,
@@ -1032,7 +1033,10 @@ fn resolve_draft_cite_url(forced: Option<&str>, subject: &str) -> Option<String>
 }
 
 /// Extra candidates for Link refill after probe drops empty shells / soft 404s.
-async fn draft_link_refill_pool(tools: Option<&ItcyTools>, pack_urls: &[String]) -> Vec<String> {
+pub(crate) async fn draft_link_refill_pool(
+    tools: Option<&ItcyTools>,
+    pack_urls: &[String],
+) -> Vec<String> {
     let mut pool = pack_urls.to_vec();
     if let Some(t) = tools {
         for u in t

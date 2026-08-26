@@ -555,7 +555,7 @@ fn hit_from_tweet(tw: &serde_json::Value, lane_hint: &str) -> Option<TwitterHit>
 }
 
 /// Replace `t.co` with `expanded_url` and append any expanded publisher still missing from text.
-/// Bare display hosts (`hacks.mozilla.org/…`) alone are not enough for cite extract.
+/// Bare `display_url` hosts alone are not enough for cite extract.
 fn tweet_text_with_expanded_urls(tw: &serde_json::Value) -> Option<String> {
     let text = tw.get("text")?.as_str()?.trim();
     if text.is_empty() {
@@ -672,20 +672,19 @@ mod tests {
     #[test]
     fn hit_from_tweet_expands_entities_urls_into_detail() {
         let tw = serde_json::json!({
-            "id": "2092326145312395657",
-            "text": "Mozilla JPEG XL 🦀\n🔗 https://t.co/abc123\n#RustLang",
+            "id": "99",
+            "text": "Codec note 🦀\n🔗 https://t.co/abc123\n#RustLang",
             "entities": {
                 "urls": [{
                     "url": "https://t.co/abc123",
-                    "expanded_url": "https://hacks.mozilla.org/2026/08/intent-to-ship-jpeg-xl",
-                    "display_url": "hacks.mozilla.org/2026/08/intent…"
+                    "expanded_url": "https://labs.sogeti.com/codec-note",
+                    "display_url": "labs.sogeti.com/codec…"
                 }]
             }
         });
         let hit = hit_from_tweet(&tw, "twitter").unwrap();
         assert!(
-            hit.detail
-                .contains("https://hacks.mozilla.org/2026/08/intent-to-ship-jpeg-xl"),
+            hit.detail.contains("https://labs.sogeti.com/codec-note"),
             "{}",
             hit.detail
         );

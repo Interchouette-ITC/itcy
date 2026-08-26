@@ -15,7 +15,10 @@ use std::fmt::Write;
 use tracing::{info, warn};
 
 const PACK_CAP: usize = crate::sources::publisher_url::LINK_OPTIONS_CAP;
-const CITE_TEXT_CHARS: usize = 2000;
+/// Pack summary budget for the browsed cite page. X accessibility trees are verbose; the
+/// JPEG XL card `/url:` sat past 2k (~3.5k). Publisher URLs are still taken from the **full**
+/// browse before this clip.
+const CITE_TEXT_CHARS: usize = 10_000;
 
 /// Label for SERP text in short-cite packs (secondary to the browsed cite page).
 const SERP_SUPPORT_LABEL: &str =
@@ -39,20 +42,11 @@ pub async fn run_short_cite_load(
     crate::sources::rag::log_pipeline_banner("LOAD (short cite)");
 
     crate::sources::rag::log_pipeline_step("1/4 cite");
-    let (cite_text, cite_via) = fetch_subject_url(subject_url, tools).await;
-    info!(
-        url = %subject_url,
-        via = cite_via,
-        chars = cite_text.chars().count(),
-        "load_tweet: cite fetched"
-    );
+    let (cite_text, cite_publishers) = fetch_cite_clipped(subject_url, tools).await;
 
     let x_cite_only = x_status_cite_skips_serp(subject_url, publisher_options);
 
     crate::sources::rag::log_pipeline_step("2/4 brave web_search");
-    // Tweet + X status cite: fetch that status only. Brave SERP on a short stub pulls
-    // unrelated malware/news into the pack and the writer follows it.
-    // LinkedIn draft + X status: still search so the operator gets up to 3 Link options.
     let (overview, extracted_n) = if x_cite_only {
         info!("load_tweet: subject is X status; skip brave web_search");
         crate::sources::rag::log_pipeline_step("3/4 extra publisher browse");
@@ -80,41 +74,21 @@ pub async fn run_short_cite_load(
         pair
     };
 
-    let mut urls = vec![subject_url.to_string()];
-    // Publisher https already in the status/page text beat Brave SERP guesses
-    // (e.g. Mozilla Hacks link inside an X status about JPEG XL).
-    push_unique(
-        &mut urls,
-        crate::sources::url_hygiene::publisher_urls_from_text(&cite_text)
-            .into_iter()
-            .filter(|u| u != subject_url),
-    );
-    // LinkedIn drafts (and non-X cites) also take Brave publishers into options 2/3.
-    // Tweets with an X-only SERP skip still keep in-tweet publishers above.
-    if !x_cite_only {
-        if let Some(t) = tools {
-            push_unique(
-                &mut urls,
-                t.session_extracted_urls()
-                    .await
-                    .into_iter()
-                    .chain(t.session_browsed_urls().await)
-                    .filter(|u| {
-                        is_allowed_tweet_cite(u) && u != subject_url && !is_x_status_url(u)
-                    }),
-            );
-        }
-    }
-    if let Some(u) = x_extra {
-        push_unique(&mut urls, std::iter::once(u));
-    }
-    urls.truncate(PACK_CAP);
-    urls = crate::sources::publisher_url::filter_reachable_publisher_urls(urls).await;
-    if !urls.iter().any(|u| u == subject_url) {
-        return Err(RagError::Store(format!(
-            "cite URL not reachable: {subject_url}"
-        )));
-    }
+    let session = session_publisher_urls(tools, x_cite_only).await;
+    let urls = assemble_and_probe_pack(
+        &PackAssemble {
+            subject_url,
+            subject,
+            cite_publishers: &cite_publishers,
+            cite_text: &cite_text,
+            overview: &overview,
+            session: &session,
+            x_extra,
+        },
+        tools,
+    )
+    .await?;
+
     crate::sources::rag::log_pipeline_step("pack");
     info!(
         cites = urls.len(),
@@ -137,11 +111,89 @@ pub async fn run_short_cite_load(
     ))
 }
 
+/// Full browse/API text → publisher extract → pack clip (10k).
+async fn fetch_cite_clipped(url: &str, tools: Option<&ItcyTools>) -> (String, Vec<String>) {
+    let (cite_raw, cite_via) = fetch_subject_url(url, tools).await;
+    let cite_publishers = crate::sources::url_hygiene::publisher_urls_from_text(&cite_raw);
+    let cite_text = clip(&cite_raw, CITE_TEXT_CHARS);
+    info!(
+        url = %url,
+        via = cite_via,
+        chars = cite_text.chars().count(),
+        raw_chars = cite_raw.chars().count(),
+        cite_pubs = cite_publishers.len(),
+        cite_pub_urls = %cite_publishers.join(" | "),
+        "load_tweet: cite fetched"
+    );
+    (cite_text, cite_publishers)
+}
+
+async fn session_publisher_urls(tools: Option<&ItcyTools>, x_cite_only: bool) -> Vec<String> {
+    if x_cite_only {
+        return Vec::new();
+    }
+    let Some(t) = tools else {
+        return Vec::new();
+    };
+    t.session_extracted_urls()
+        .await
+        .into_iter()
+        .chain(t.session_browsed_urls().await)
+        .collect()
+}
+
+struct PackAssemble<'a> {
+    subject_url: &'a str,
+    subject: &'a str,
+    cite_publishers: &'a [String],
+    cite_text: &'a str,
+    overview: &'a str,
+    session: &'a [String],
+    x_extra: Option<String>,
+}
+
+async fn assemble_and_probe_pack(
+    parts: &PackAssemble<'_>,
+    tools: Option<&ItcyTools>,
+) -> Result<Vec<String>, RagError> {
+    let mut urls = short_cite_pack_candidates(
+        parts.subject_url,
+        parts.subject,
+        parts.cite_publishers,
+        parts.cite_text,
+        parts.overview,
+        parts.session,
+    );
+    if let Some(u) = parts.x_extra.clone() {
+        push_unique(&mut urls, std::iter::once(u));
+    }
+    info!(
+        before_probe = urls.len(),
+        urls = %urls.iter().take(12).cloned().collect::<Vec<_>>().join(" | "),
+        "load_tweet: pack candidates before probe"
+    );
+    let refill_pool = urls.clone();
+    urls.truncate(PACK_CAP);
+    urls = crate::sources::publisher_url::filter_reachable_publisher_urls(urls).await;
+    if !urls.iter().any(|u| u == parts.subject_url) {
+        return Err(RagError::Store(format!(
+            "cite URL not reachable: {}",
+            parts.subject_url
+        )));
+    }
+    if let Some(t) = tools {
+        t.session_record_extracted_urls(&refill_pool).await;
+    }
+    info!(pool = refill_pool.len(), "load_tweet: refill pool retained");
+    Ok(urls)
+}
+
 async fn fetch_subject_url(url: &str, tools: Option<&ItcyTools>) -> (String, &'static str) {
     if let Some(id) = x_status_id(url) {
         if let Ok(tool) = TwitterTool::from_disk() {
             match tool.lookup_status(&id).await {
-                Ok(hit) => return (clip(&hit.detail, CITE_TEXT_CHARS), "api"),
+                // Full detail: pack clip happens after publisher URL extract.
+                Ok(hit) => return (hit.detail, "api"),
                 Err(e) => warn!(error = %e, "load_tweet: status lookup failed; browse"),
             }
         }
@@ -150,7 +202,7 @@ async fn fetch_subject_url(url: &str, tools: Option<&ItcyTools>) -> (String, &'s
         return (String::new(), "none");
     };
     match t.research_browse(url).await {
-        Ok(out) => (clip(&out, CITE_TEXT_CHARS), "browse"),
+        Ok(out) => (out, "browse"),
         Err(e) => {
             warn!(error = %e, url = %url, "load_tweet: cite browse failed");
             (String::new(), "browse-failed")
@@ -236,11 +288,62 @@ fn x_status_cite_skips_serp(subject_url: &str, publisher_options: bool) -> bool 
     is_x_status_url(subject_url) && !publisher_options
 }
 
+/// Build Link-option candidates.
+///
+/// Order is load-bearing: publishers **from the cite page** (tweet card `/url:`) and the
+/// operator brief before Brave EXTRACTED, so SERP SEO scrapers cannot fill [`PACK_CAP`] and
+/// crowd out the article the status actually links.
+#[must_use]
+fn short_cite_pack_candidates(
+    subject_url: &str,
+    subject: &str,
+    cite_publishers: &[String],
+    cite_text: &str,
+    overview: &str,
+    session_urls: &[String],
+) -> Vec<String> {
+    let mut urls = vec![subject_url.to_string()];
+    // 1) Cite-page publishers (full browse extract, not the clipped pack summary).
+    push_unique(
+        &mut urls,
+        cite_publishers
+            .iter()
+            .filter(|u| *u != subject_url && !is_x_status_url(u))
+            .cloned(),
+    );
+    // 2) Operator brief: pasted publisher https next to the X cite.
+    push_unique(
+        &mut urls,
+        crate::sources::tweet_footer::operator_https_urls(subject)
+            .into_iter()
+            .filter(|u| u != subject_url),
+    );
+    // 3) Clipped cite text (backup if extract missed).
+    push_unique(
+        &mut urls,
+        crate::sources::url_hygiene::publisher_urls_from_text(cite_text)
+            .into_iter()
+            .filter(|u| u != subject_url),
+    );
+    // 4) Brave EXTRACTED / browsed (after cite, so News SEO does not steal slots).
+    push_unique(
+        &mut urls,
+        session_urls
+            .iter()
+            .filter(|u| is_allowed_tweet_cite(u) && *u != subject_url && !is_x_status_url(u))
+            .cloned(),
+    );
+    push_unique(
+        &mut urls,
+        crate::sources::url_hygiene::publisher_urls_from_text(overview)
+            .into_iter()
+            .filter(|u| u != subject_url && !is_x_status_url(u)),
+    );
+    urls
+}
+
 fn push_unique(urls: &mut Vec<String>, more: impl IntoIterator<Item = String>) {
     for u in more {
-        if urls.len() >= PACK_CAP {
-            break;
-        }
         if !urls.iter().any(|x| x == &u) {
             urls.push(u);
         }
@@ -351,8 +454,8 @@ mod tests {
     }
 
     #[test]
-    fn cite_clip_budget_is_two_thousand() {
-        assert_eq!(CITE_TEXT_CHARS, 2000);
+    fn cite_clip_budget_is_ten_thousand() {
+        assert_eq!(CITE_TEXT_CHARS, 10_000);
     }
 
     #[test]
@@ -385,23 +488,140 @@ mod tests {
     }
 
     #[test]
-    fn in_tweet_publisher_url_beats_empty_pack_slot() {
-        let cite = "Mozilla wouldn't ship JPEG XL.\n\
-https://hacks.mozilla.org/2026/08/intent-to-ship-jpeg-xl\n";
-        let subject = "https://x.com/ayushagarwal027/status/2092326145312395657";
-        let mut urls = vec![subject.to_string()];
-        push_unique(
-            &mut urls,
-            crate::sources::url_hygiene::publisher_urls_from_text(cite)
-                .into_iter()
-                .filter(|u| u != subject),
-        );
+    fn in_tweet_https_enters_pack_candidates() {
+        let cite = "Builders shipping codecs.\nhttps://labs.sogeti.com/codec-note\n";
+        let subject_url = "https://x.com/a/status/99";
+        let pubs = crate::sources::url_hygiene::publisher_urls_from_text(cite);
+        let urls = short_cite_pack_candidates(subject_url, subject_url, &pubs, cite, "", &[]);
         assert_eq!(
             urls,
             vec![
-                subject.to_string(),
-                "https://hacks.mozilla.org/2026/08/intent-to-ship-jpeg-xl".to_string(),
+                subject_url.to_string(),
+                "https://labs.sogeti.com/codec-note".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn serp_overview_url_equals_lines_become_candidates_min_three() {
+        // Truncated cite browse; SERP overview lists publisher https in `url=` prose.
+        // Any host — not a special-case string match.
+        let x = "https://x.com/a/status/1";
+        let cite = "Page text truncated mid sentence…";
+        let overview = "\
+1. [web-publisher] url=https://labs.sogeti.com/intent-note/\n\
+   title=Some lab post\n\
+2. [news-publisher] url=https://decrypt.co/12345/codec-story\n\
+   title=Codec story\n";
+        let urls = short_cite_pack_candidates(x, x, &[], cite, overview, &[]);
+        assert_eq!(urls.first().map(String::as_str), Some(x));
+        assert!(
+            urls.iter()
+                .any(|u| u == "https://labs.sogeti.com/intent-note"),
+            "overview url= publisher must be a candidate: {urls:?}"
+        );
+        assert!(
+            urls.iter()
+                .any(|u| u == "https://decrypt.co/12345/codec-story"),
+            "second overview url= must be a candidate: {urls:?}"
+        );
+        let opts = crate::sources::draft_footer::pick_link_options(&urls, "");
+        assert!(
+            opts.len() >= crate::sources::publisher_url::LINK_OPTIONS_MIN,
+            "LinkedIn pick must meet floor of 3 when pack has 3 domains: {opts:?}"
+        );
+    }
+
+    #[test]
+    fn cite_publishers_beat_news_serp_before_pack_cap() {
+        // DRAFT-113: News EXTRACTED filled PACK_CAP; mozilla was #3 on All/web and never probed.
+        // Cite-page publishers (tweet card) must occupy slots before SERP News SEO.
+        let x = "https://x.com/ayushagarwal027/status/2092326145312395657";
+        let cite_pubs =
+            vec!["https://hacks.mozilla.org/2026/08/intent-to-ship-jpeg-xl".to_string()];
+        let session = vec![
+            "https://hwbusters.com/news/jpeg-xl-in-firefox-157-mozilla-made-google-rewrite-the-decoder-in-rust-first".into(),
+            "https://freenode.net/article/chromium-plans-to-ship-jpeg-xl-image-decoding-in-blink".into(),
+            "https://compresto.app/blog/jpeg-xl".into(),
+            "https://freetoolonline.com/news/jpeg-xl-returns-chrome-firefox.html".into(),
+            "https://debugbear.com/blog/jpeg-xl-image-format".into(),
+        ];
+        let mut capped = short_cite_pack_candidates(x, x, &cite_pubs, "clipped…", "", &session);
+        capped.truncate(PACK_CAP);
+        assert_eq!(
+            capped.get(1).map(String::as_str),
+            Some("https://hacks.mozilla.org/2026/08/intent-to-ship-jpeg-xl"),
+            "tweet card publisher must be Link slot 2 before News SEO: {capped:?}"
+        );
+    }
+
+    #[test]
+    fn recorded_ayush_jpeg_xl_browse_yields_mozilla_hacks() {
+        // Real browse residue from DRAFT-20260826-000113.
+        let raw = include_str!("fixtures/ayush_jpeg_xl_x_browse.txt");
+        let pubs = crate::sources::url_hygiene::publisher_urls_from_text(raw);
+        assert!(
+            pubs.iter().any(|u| u.contains("hacks.mozilla.org")),
+            "full browse must yield mozilla card URL: {pubs:?}"
+        );
+        // Old 2k clip dropped the card; keep that assert so we never rely on clip alone.
+        let old_clip = clip(raw, 2_000);
+        assert!(
+            !old_clip.contains("hacks.mozilla.org"),
+            "2k clip still omits the card (extract-from-full remains required)"
+        );
+        let x = "https://x.com/ayushagarwal027/status/2092326145312395657";
+        let session = vec![
+            "https://hwbusters.com/news/jpeg-xl".into(),
+            "https://freenode.net/article/chromium".into(),
+            "https://compresto.app/blog/jpeg-xl".into(),
+            "https://freetoolonline.com/news/jpeg-xl".into(),
+        ];
+        let clipped = clip(raw, CITE_TEXT_CHARS);
+        let mut capped = short_cite_pack_candidates(x, x, &pubs, &clipped, "", &session);
+        capped.truncate(PACK_CAP);
+        assert!(
+            capped.iter().any(|u| u.contains("hacks.mozilla.org")),
+            "recorded tweet card must survive PACK_CAP ahead of News SERP: {capped:?}"
+        );
+    }
+
+    #[test]
+    fn session_extracted_still_fills_when_cite_has_no_publisher() {
+        let x = "https://x.com/a/status/1";
+        let cite = "do not replace https://SUBJECT or https://request https://browsers\n";
+        let overview = "url=https://search.brave.com/search?q=jpeg\n";
+        let session = vec![
+            "https://hacks.mozilla.org/2026/08/intent-to-ship-jpeg-xl/".into(),
+            "https://labs.sogeti.com/codec".into(),
+            "https://decrypt.co/1/jpeg-xl".into(),
+            "https://example.org/other".into(),
+        ];
+        let mut capped = short_cite_pack_candidates(x, x, &[], cite, overview, &session);
+        capped.truncate(PACK_CAP);
+        assert!(
+            capped.iter().any(|u| u.contains("hacks.mozilla.org")),
+            "EXTRACTED publisher must still enter when cite has no card: {capped:?}"
+        );
+        assert!(
+            !capped
+                .iter()
+                .any(|u| u == "https://SUBJECT" || u == "https://request"),
+            "prose junk must not occupy pack slots: {capped:?}"
+        );
+    }
+
+    #[test]
+    fn operator_pasted_publisher_in_subject_enters_candidates() {
+        let x = "https://x.com/a/status/1";
+        let brief = format!(
+            "JPEG XL shipping, cite {x} https://hacks.mozilla.org/2026/08/intent-to-ship-jpeg-xl/"
+        );
+        let urls =
+            short_cite_pack_candidates(x, &brief, &[], "truncated cite without url", "", &[]);
+        assert!(
+            urls.iter().any(|u| u.contains("hacks.mozilla.org")),
+            "operator-pasted article must be a pack candidate: {urls:?}"
         );
     }
 }

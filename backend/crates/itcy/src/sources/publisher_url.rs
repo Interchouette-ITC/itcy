@@ -142,12 +142,20 @@ pub async fn probe_publisher_url(url: &str) -> Result<(), String> {
 pub async fn filter_reachable_publisher_urls(urls: Vec<String>) -> Vec<String> {
     let mut out = Vec::new();
     for u in urls {
+        // Never probe prose tokens / SERP chrome (`https://SUBJECT`, Brave search, …).
+        if !is_x_status_url(&u) && !is_allowed_tweet_cite(&u) {
+            warn!(url = %u, "publisher_url: dropped non-cite before probe");
+            continue;
+        }
         if skip_publisher_url_probe(&u) {
             out.push(u);
             continue;
         }
         match probe_publisher_url(&u).await {
-            Ok(()) => out.push(u),
+            Ok(()) => {
+                info!(url = %u, "publisher_url: kept after probe");
+                out.push(u);
+            }
             Err(e) => warn!(url = %u, error = %e, "publisher_url: dropped unreachable"),
         }
     }
