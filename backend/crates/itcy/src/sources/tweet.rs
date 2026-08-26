@@ -18,7 +18,7 @@ use crate::sources::rag::{
     resolve_session_draft_id, run_load_phase, GroundedDraft, RagError,
 };
 use crate::sources::tweet_footer::{
-    aerate_tweet_commentary, coerce_tweet_body, compose_tweet_message, ensure_operator_https_lines,
+    aerate_tweet_commentary, coerce_tweet_body, compose_tweet_message, ensure_tweet_cite_line,
     extract_brief_cite, in_tweet_publisher_url, operator_https_urls, pick_tweet_cite_options,
     strip_brand_org_at_handles, tweet_body_exploded,
 };
@@ -265,19 +265,15 @@ pub(crate) fn attach_tweet_cites(
             link_options.retain(|u| is_x_status_url(u));
             crate::sources::draft_url::promote_link_option(&mut link_options, cite);
         }
-        let required = if operator_urls.is_empty() {
-            vec![cite.to_string()]
-        } else {
-            operator_urls.clone()
-        };
-        let body = ensure_operator_https_lines(&body, &required, Some(cite));
+        // One in-post cite only. Extra brief URLs stay in Link: 2/3, not the body.
+        let body = ensure_tweet_cite_line(&body, Some(cite));
         return (
             compose_tweet_message(&body, tweet_id, &link_options),
             link_options,
         );
     }
     let primary = in_tweet_publisher_url(&link_options).map(str::to_string);
-    let body = ensure_operator_https_lines(&body, &operator_urls, primary.as_deref());
+    let body = ensure_tweet_cite_line(&body, primary.as_deref());
     (
         compose_tweet_message(&body, tweet_id, &link_options),
         link_options,
@@ -332,7 +328,8 @@ Sources:
     }
 
     #[test]
-    fn operator_x_and_github_both_survive_in_body() {
+    fn attach_tweet_cites_one_body_cite_extras_in_link_options() {
+        // New contract (same as LinkedIn draft): one https in body; extras in Link options.
         let raw = "\
 Magecart still lives.
 
@@ -348,10 +345,55 @@ https://x.com/arnaudmerigeau/status/2090774291897786849
         let pack = vec![x.into(), gh.into()];
         let (out, opts) = attach_tweet_cites(raw, &pack, "TWEET-2", &brief);
         let api = crate::publish::tweet_text_for_api(&out);
-        assert!(api.contains(x), "missing X cite: {api}");
-        assert!(api.contains(gh), "missing GitHub: {api}");
+        assert!(api.contains(x), "primary cite in body: {api}");
+        assert!(
+            !api.contains(gh),
+            "extra brief URL must not spam the tweet body: {api}"
+        );
         assert!(!api.contains("@Interchouette-ITC"));
-        assert!(opts.iter().any(|u| u == gh));
+        assert!(opts.iter().any(|u| u == gh), "extra URL in Link options");
         assert_eq!(opts[0], x);
+        assert_eq!(
+            api.lines()
+                .filter(|l| l.trim().starts_with("https://"))
+                .count(),
+            1,
+            "one in-post cite only: {api}"
+        );
+    }
+
+    #[test]
+    fn casper_digest_brief_three_urls_one_in_tweet_body() {
+        // Regression TWEET-085: payouts + status + thepaypers all landed in the body.
+        let payouts = "https://payouts.com";
+        let status = "https://x.com/Casper_Network/status/2092237696139698529";
+        let article = "https://thepaypers.com/payments/news/payoutscom-casper-association-partner-on-ai-agent-payments";
+        let brief = format!("Payouts.com has picked Casper.\n\n{payouts}\n\n{status}\n\n{article}");
+        let raw = format!(
+            "Payouts.com is letting AI agents spend without human keys.\n\
+Casper settles every tiny payment, no extra cost.\n\
+Thousands of transactions, zero friction.\n\n\
+#AI #Payments #Casper\n\n\
+{article}\n"
+        );
+        let pack = vec![
+            article.into(),
+            status.into(),
+            "https://finance.yahoo.com/technology/ai/articles/ode-anthropic-acquires-casper-studios-150000200.html"
+                .into(),
+        ];
+        let (out, opts) = attach_tweet_cites(&raw, &pack, "TWEET-085", &brief);
+        let api = crate::publish::tweet_text_for_api(&out);
+        assert_eq!(
+            api.lines()
+                .filter(|l| l.trim().starts_with("https://"))
+                .count(),
+            1,
+            "one cite in body like LinkedIn draft: {api}"
+        );
+        assert!(api.contains(payouts), "Link:1 from first brief cite: {api}");
+        assert!(opts.iter().any(|u| u == article));
+        assert!(opts.iter().any(|u| u == status));
+        assert!(out.contains("Link: 1"));
     }
 }

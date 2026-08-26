@@ -198,6 +198,10 @@ pub fn is_allowed_tweet_cite(url: &str) -> bool {
     if !t.starts_with("https://") {
         return false;
     }
+    // Soft-wrapped scrapes leave a bare `https://` token; never treat it as a cite.
+    if url_host(&t.to_ascii_lowercase()).is_none() {
+        return false;
+    }
     if is_x_status_url(t) {
         return true;
     }
@@ -266,7 +270,7 @@ pub fn extract_https_urls(text: &str) -> Vec<String> {
             })
             .unwrap_or(rest.len());
         let scrubbed = scrub_https_url(&rest[..end]);
-        if !scrubbed.starts_with("https://") {
+        if !scrubbed.starts_with("https://") || url_host(&scrubbed.to_ascii_lowercase()).is_none() {
             continue;
         }
         if out.iter().any(|x| same_publisher_url(x, &scrubbed)) {
@@ -456,6 +460,8 @@ mod tests {
         assert!(is_allowed_tweet_cite("https://labs.sogeti.com/token-tax"));
         assert!(!is_allowed_tweet_cite("https://www.linkedin.com/posts/x"));
         assert!(!is_allowed_tweet_cite("https://www.example.com/a"));
+        assert!(!is_allowed_tweet_cite("https://"));
+        assert!(extract_https_urls("https://\nPayouts.com has picked").is_empty());
     }
 
     #[test]
