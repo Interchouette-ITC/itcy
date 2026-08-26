@@ -1,18 +1,26 @@
 // Copyright (c) 2026 Interchouette-ITC
 // SPDX-License-Identifier: BUSL-1.1
 
-//! HTTP reachability probe for publisher cites (reject 404 / soft-not-found before ship).
+//! HTTP reachability probe for publisher cites (reject 404 / soft-not-found / empty shells).
 
 use crate::sources::draft_footer::ensure_primary_link_line;
 use crate::sources::draft_url::{extract_in_post_url, set_single_in_post_url};
-use crate::sources::html::extract_page_text;
+use crate::sources::html::extract_articleish_text;
 use crate::sources::ingest::MIN_STORE_CHARS;
-use crate::sources::url_hygiene::is_x_status_url;
+use crate::sources::url_hygiene::{
+    is_allowed_tweet_cite, is_junk_or_search_url, is_x_status_url, same_publisher_domain,
+    scrub_https_url,
+};
 use std::sync::OnceLock;
 use std::time::Duration;
-use tracing::warn;
+use tracing::{info, warn};
 
 const PROBE_BODY_CAP: usize = 256_000;
+
+/// Floor: refill until at least this many reachable Link options (when the pool allows).
+pub const LINK_OPTIONS_MIN: usize = 3;
+/// Ceiling: operator may keep up to this many Link slots (3 is the floor, not the cap).
+pub const LINK_OPTIONS_CAP: usize = 5;
 
 const NOT_FOUND_HTML_MARKERS: &[&str] = &[
     "404 - file or directory not found",
@@ -66,7 +74,11 @@ pub fn evaluate_publisher_probe(status: u16, body: &str) -> Result<(), String> {
     if html_page_looks_like_not_found(body) {
         return Err("page looks like not found".into());
     }
-    let text = extract_page_text(body);
+    // Require a real article/main/Apollo body. Fat Next.js shells return 200 with
+    // nav chrome only; full-page strip would pass MIN_STORE_CHARS and lie.
+    let Some(text) = extract_articleish_text(body) else {
+        return Err("page has no article body".into());
+    };
     let chars = text.chars().count();
     if chars < MIN_STORE_CHARS {
         return Err(format!("page too thin ({chars} chars)"));
@@ -80,7 +92,10 @@ fn skip_publisher_url_probe(url: &str) -> bool {
 }
 
 fn is_loopback_probe_url(url: &str) -> bool {
-    url.starts_with("http://127.0.0.1") || url.starts_with("http://localhost")
+    let u = url.to_ascii_lowercase();
+    u.starts_with("http://127.")
+        || u.starts_with("http://localhost")
+        || u.starts_with("http://[::1]")
 }
 
 fn probe_http_client() -> &'static reqwest::Client {
@@ -99,7 +114,7 @@ fn probe_http_client() -> &'static reqwest::Client {
 ///
 /// # Errors
 ///
-/// Returns a short reason (HTTP code, thin page, soft 404).
+/// Returns a short reason (HTTP code, thin page, soft 404, empty shell).
 pub async fn probe_publisher_url(url: &str) -> Result<(), String> {
     let url = url.trim();
     if url.is_empty() {
@@ -122,34 +137,109 @@ pub async fn probe_publisher_url(url: &str) -> Result<(), String> {
     evaluate_publisher_probe(status, &body)
 }
 
-/// Keep only publisher URLs that respond with real content.
+/// Keep only publisher URLs that respond with real article content.
 #[must_use]
 pub async fn filter_reachable_publisher_urls(urls: Vec<String>) -> Vec<String> {
     let mut out = Vec::new();
     for u in urls {
+        // Never probe prose tokens / SERP chrome (`https://SUBJECT`, Brave search, …).
+        // Unit tests use `http://127.0.0.1` fixtures (same exception as refill).
+        let loopback_test = cfg!(test) && is_loopback_probe_url(&u);
+        if !is_x_status_url(&u) && !is_allowed_tweet_cite(&u) && !loopback_test {
+            warn!(url = %u, "publisher_url: dropped non-cite before probe");
+            continue;
+        }
         if skip_publisher_url_probe(&u) {
             out.push(u);
             continue;
         }
         match probe_publisher_url(&u).await {
-            Ok(()) => out.push(u),
+            Ok(()) => {
+                info!(url = %u, "publisher_url: kept after probe");
+                out.push(u);
+            }
             Err(e) => warn!(url = %u, error = %e, "publisher_url: dropped unreachable"),
         }
     }
     out
 }
 
-/// Drop dead Link options and sync the in-post https line to the first survivor.
+/// Drop dead Link options, refill from `pool` up to [`LINK_OPTIONS_MIN`], sync in-post cite.
 #[must_use]
 pub async fn finalize_reachable_link_options(
     body: &str,
     link_options: Vec<String>,
 ) -> (String, Vec<String>) {
-    let options = filter_reachable_publisher_urls(link_options).await;
+    finalize_reachable_link_options_from_pool(body, link_options, &[]).await
+}
+
+/// Like [`finalize_reachable_link_options`], then probe `pool` until [`LINK_OPTIONS_MIN`] fills.
+/// Keeps up to [`LINK_OPTIONS_CAP`] reachable options when the pack already has more.
+#[must_use]
+pub async fn finalize_reachable_link_options_from_pool(
+    body: &str,
+    link_options: Vec<String>,
+    pool: &[String],
+) -> (String, Vec<String>) {
+    let mut options = filter_reachable_publisher_urls(link_options).await;
+    if options.len() > LINK_OPTIONS_CAP {
+        options.truncate(LINK_OPTIONS_CAP);
+    }
+    if options.len() < LINK_OPTIONS_CAP && !pool.is_empty() {
+        let before = options.len();
+        refill_link_options_from_pool(&mut options, pool).await;
+        if options.len() > before {
+            info!(
+                before,
+                after = options.len(),
+                "publisher_url: refilled Link options from SERP pool"
+            );
+        }
+    }
+    if options.len() < LINK_OPTIONS_MIN {
+        warn!(
+            n = options.len(),
+            min = LINK_OPTIONS_MIN,
+            "publisher_url: fewer than 3 reachable Link options after probe+refill"
+        );
+    }
     let primary = options.first().map(String::as_str);
     let mut prose = set_single_in_post_url(body, primary.unwrap_or(""));
     prose = ensure_primary_link_line(&prose, primary);
     (prose, options)
+}
+
+async fn refill_link_options_from_pool(options: &mut Vec<String>, pool: &[String]) {
+    for raw in pool {
+        if options.len() >= LINK_OPTIONS_CAP {
+            break;
+        }
+        let scrubbed = scrub_https_url(raw);
+        let loopback_test = cfg!(test) && is_loopback_probe_url(&scrubbed);
+        if scrubbed.is_empty() {
+            continue;
+        }
+        if is_junk_or_search_url(&scrubbed) && !loopback_test {
+            continue;
+        }
+        if !is_allowed_tweet_cite(&scrubbed) && !is_x_status_url(&scrubbed) && !loopback_test {
+            continue;
+        }
+        if options
+            .iter()
+            .any(|u| same_publisher_domain(u, &scrubbed) || u == &scrubbed)
+        {
+            continue;
+        }
+        if skip_publisher_url_probe(&scrubbed) {
+            options.push(scrubbed);
+            continue;
+        }
+        match probe_publisher_url(&scrubbed).await {
+            Ok(()) => options.push(scrubbed),
+            Err(e) => warn!(url = %scrubbed, error = %e, "publisher_url: pool candidate dropped"),
+        }
+    }
 }
 
 /// Gate BAT accept: the cite that ships must not 404.
@@ -204,6 +294,16 @@ mod tests {
             "<html><head><title>News</title></head><body><article>{body}</article></body></html>"
         );
         evaluate_publisher_probe(200, &html).expect("ok article");
+    }
+
+    #[test]
+    fn evaluate_rejects_fat_spa_shell_without_article() {
+        let chrome = "nav word ".repeat(80);
+        let html = format!(
+            "<html><head><title>App</title></head><body><div id=\"root\">{chrome}</div></body></html>"
+        );
+        let err = evaluate_publisher_probe(200, &html).expect_err("empty shell");
+        assert!(err.contains("no article") || err.contains("thin"), "{err}");
     }
 
     #[test]
@@ -275,5 +375,52 @@ mod tests {
         let body = format!("Post prose.\n\n{dead}\n");
         let (_prose, opts) = finalize_reachable_link_options(&body, vec![dead.clone()]).await;
         assert!(opts.is_empty(), "dead link must not remain in Link options");
+    }
+
+    #[tokio::test]
+    async fn finalize_refills_from_pool_after_empty_shell_probe() {
+        let body_ok = "word ".repeat(120);
+        let app = Router::new()
+            .route(
+                "/shell",
+                get(|| async {
+                    (
+                        axum::http::StatusCode::OK,
+                        "<html><body><div id=\"root\">nav only</div></body></html>".to_string(),
+                    )
+                }),
+            )
+            .route(
+                "/ok",
+                get(move || {
+                    let b = body_ok.clone();
+                    async move {
+                        (
+                            axum::http::StatusCode::OK,
+                            format!("<html><body><article>{b}</article></body></html>"),
+                        )
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr: SocketAddr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve");
+        });
+        let shell = format!("http://{addr}/shell");
+        let ok = format!("http://{addr}/ok");
+        let (_prose, opts) = finalize_reachable_link_options_from_pool(
+            "Post.\n",
+            vec![shell.clone()],
+            std::slice::from_ref(&ok),
+        )
+        .await;
+        assert!(
+            !opts.iter().any(|u| u == &shell),
+            "empty shell must not stay: {opts:?}"
+        );
+        assert_eq!(opts, vec![ok], "pool article must refill Link options");
     }
 }

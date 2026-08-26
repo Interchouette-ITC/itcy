@@ -408,7 +408,7 @@ pub fn classify_channel_text(text: &str) -> ChannelTextKind {
 /// First **known** `/cmd` in `text` → (`/cmd`, remaining args).
 ///
 /// Skips URL path noise, unknown `/token`s, and operator **help chrome** lines
-/// (`/change_url … <0|1|2|3|url>`, `/rework … <instructions>`) so pasted draft
+/// (`/change_url … <0|1|2|3|4|5|url>`, `/rework … <instructions>`) so pasted draft
 /// footers do not dispatch as live commands.
 fn extract_inline_slash(text: &str) -> Option<(String, String)> {
     let bytes = text.as_bytes();
@@ -645,7 +645,7 @@ fn parse_lifecycle_slash(cmd: &str, args: &str) -> Option<Result<OperatorCommand
         "change_url" => {
             let Some((id, rest)) = split_draft_or_tweet_id_and_rest(args) else {
                 return Some(Err(
-                    "usage: /change_url <DRAFT-…|TWEET-…> <0|1|2|3|https://…>".into(),
+                    "usage: /change_url <DRAFT-…|TWEET-…> <0|1|2|3|4|5|https://…>".into(),
                 ));
             };
             if crate::sources::reply_comment::is_reply_id(&id) {
@@ -662,7 +662,7 @@ fn parse_lifecycle_slash(cmd: &str, args: &str) -> Option<Result<OperatorCommand
                 .to_string();
             if choice.is_empty() {
                 return Some(Err(
-                    "usage: /change_url <DRAFT-…|TWEET-…> <0|1|2|3|https://…>".into(),
+                    "usage: /change_url <DRAFT-…|TWEET-…> <0|1|2|3|4|5|https://…>".into(),
                 ));
             }
             Ok(OperatorCommand::ChangeUrl {
@@ -996,7 +996,7 @@ pub const fn help_text() -> &'static str {
      • `/draft_about_itc` or `/draft_about_itc <subject>, <instructions>` - LinkedIn draft about Interchouette / our projects\n\
      • `/draft_about_itcy` or `/draft_about_itcy <instructions>` - LinkedIn self-introduction post as ITCy (first-person, stack disclosure)\n\
      • `/rework <Draft-ID|Tweet-ID|Reply-ID> <instructions>` - rewrite saved draft, tweet, or reply (until Post / XPOST / ship)\n\
-     • `/change_url <Draft-ID|Tweet-ID> <0|1|2|3|https://…>` - set the link (`1`/`2`/`3` or URL); `0` = no link (not for replies)\n\
+     • `/change_url <Draft-ID|Tweet-ID> <0|1|2|3|4|5|https://…>` - set the link (`1`–`5` or URL); `0` = no link (not for replies)\n\
      • `/accept <Draft-ID|Tweet-ID|Reply-ID>` - BAT PR for DRAFT/TWEET; direct ship for CREPLY/XREPLY\n\
      • `/list` - list drafts, tweets, replies, and shipped Posts / X posts\n\
      • `/show <Draft-ID|Post-ID|Tweet-ID|XPOST-ID|CREPLY-…|XREPLY-…|DIGEST-…>[, <ID>]` - show body/paste, or re-post a stored digest to `#daily-digest`\n\
@@ -1105,7 +1105,7 @@ mod tests {
 
     #[test]
     fn inline_slash_skips_change_url_usage_chrome() {
-        let paste = "0 = no link. /change_url DRAFT-20260825-000102 <0|1|2|3|url>\n\
+        let paste = "0 = no link. /change_url DRAFT-20260825-000102 <0|1|2|3|4|5|url>\n\
 1. https://sourcegraph.com/blog/agentic-coding\n\
 :link: /change_url DRAFT-20260825-000102 1\n\
 :white_check_mark: /accept DRAFT-20260825-000102";
@@ -1123,7 +1123,7 @@ mod tests {
 
     #[test]
     fn inline_slash_skips_usage_when_only_chrome() {
-        let paste = "Received /change_url DRAFT-20260825-000102, <0|1|2|3|url> :one: :dart:\n\
+        let paste = "Received /change_url DRAFT-20260825-000102, <0|1|2|3|4|5|url> :one: :dart:\n\
 Written by AI - ITCy - model ollama/qwen3:8b\n\
 :point_right: Next: :pencil2: /rework DRAFT-20260825-000102 <instructions>";
         assert!(parse_inline_slash_text(paste).is_none());
@@ -1133,7 +1133,7 @@ Written by AI - ITCy - model ollama/qwen3:8b\n\
     #[test]
     fn draft_paste_chrome_is_detected() {
         assert!(looks_like_bot_draft_paste(
-            "Draft ID: DRAFT-1\n\nHi\n\n0 = no link. /change_url DRAFT-1 <0|1|2|3|url>"
+            "Draft ID: DRAFT-1\n\nHi\n\n0 = no link. /change_url DRAFT-1 <0|1|2|3|4|5|url>"
         ));
         assert!(!looks_like_bot_draft_paste(
             "/change_url DRAFT-20260825-000102 1"
@@ -1144,7 +1144,7 @@ Written by AI - ITCy - model ollama/qwen3:8b\n\
     fn bot_draft_paste_with_real_accept_line_is_still_detected() {
         let paste = "Draft ID: DRAFT-20260825-000102\n\n\
 Amp commentary here.\n\n\
-0 = no link. /change_url DRAFT-20260825-000102 <0|1|2|3|url>\n\
+0 = no link. /change_url DRAFT-20260825-000102 <0|1|2|3|4|5|url>\n\
 1. https://sourcegraph.com/blog/agentic-coding\n\
 :white_check_mark: /accept DRAFT-20260825-000102";
         assert!(

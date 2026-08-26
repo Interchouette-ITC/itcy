@@ -58,9 +58,10 @@ pub fn next_tweet_id(db_path: &Path) -> Result<String, TweetFooterError> {
     Ok(format!("TWEET-{day}-{next:06}"))
 }
 
-/// Up to 3 pack cites (publisher **and** X status). Operator picks `1`/`2`/`3`.
+/// Up to [`crate::sources::publisher_url::LINK_OPTIONS_CAP`] pack cites (publisher **and** X status).
 #[must_use]
 pub fn pick_tweet_cite_options(pack_urls: &[String], body: &str) -> Vec<String> {
+    use crate::sources::publisher_url::LINK_OPTIONS_CAP;
     use crate::sources::url_hygiene::{same_publisher_domain, scrub_https_url};
 
     let pack = filter_tweet_cite_urls(pack_urls);
@@ -80,7 +81,7 @@ pub fn pick_tweet_cite_options(pack_urls: &[String], body: &str) -> Vec<String> 
             continue;
         }
         out.push(scrubbed);
-        if out.len() == 3 {
+        if out.len() == LINK_OPTIONS_CAP {
             break;
         }
     }
@@ -235,8 +236,8 @@ pub fn compose_tweet_message(body: &str, tweet_id: &str, cites: &[String]) -> St
             let _ = writeln!(out, "Link: 0");
         }
     }
-    let _ = writeln!(out, "0 = no link. /change_url {tweet_id} <0|1|2|3|url>");
-    for (i, u) in cites.iter().take(3).enumerate() {
+    let _ = writeln!(out, "0 = no link. /change_url {tweet_id} <0|1|2|3|4|5|url>");
+    for (i, u) in cites.iter().enumerate() {
         let _ = writeln!(out, "{}. {u}", i + 1);
     }
     out.trim_end().to_string()
@@ -858,7 +859,7 @@ Optimizer magic.
 https://hotpath.rs/blog/profiling-rust-guide
 
 Link: 2
-0 = no link. /change_url TWEET-20260814-000016 <0|1|2|3|url>
+0 = no link. /change_url TWEET-20260814-000016 <0|1|2|3|4|5|url>
 1. https://x.com/ayushagarwal027/status/2087899096606761217
 2. https://hotpath.rs/blog/profiling-rust-guide
 3. https://hotpath.rs/blog/rust-performance-profiling";

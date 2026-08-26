@@ -1,0 +1,49 @@
+browse_url opened=https://x.com/ayushagarwal027/status/2092326145312395657
+final_url=https://x.com/ayushagarwal027/status/2092326145312395657
+SUPPORT ONLY: use facts from this page to support the OPERATOR SUBJECT. Do NOT rewrite the post as a summary of this page. Do NOT change the subject to match this page. Cite final_url only if it is ON-TOPIC for the operator request.
+
+Page text / snapshot (truncated):
+### Page
+- Page URL: https://x.com/ayushagarwal027/status/2092326145312395657
+- Page Title: ayush🔮👨‍💻🔮 on X: "Mozilla wouldn't ship JPEG XL until someone rewrote the decoder in Rust. Google Research did it. Now default support is rolling out across browsers. 🦀 Firefox kept JPEG XL behind a flag since 2021. The reference decoder was 100,000 lines of multithreaded C++ : too much attac… / X
+- Console: 3 errors, 2 warnings
+### Snapshot
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e4]:
+      - link "X" [ref=e6] [cursor=pointer]:
+        - /url: /
+    - main [ref=e9]:
+      - generic [ref=e12]:
+        - button "Back" [ref=e13] [cursor=pointer]
+        - heading "Post" [level=2] [ref=e18]
+      - generic [ref=e19]:
+        - 'heading "ayush🔮👨‍💻🔮 on X: \"Mozilla wouldn''t ship JPEG XL until someone rewrote the decoder in Rust. Google Research did it. Now default support is rolling out across browsers. 🦀 Firefox kept JPEG XL behind a flag since 2021. The reference decoder was 100,000 lines of multithreaded C++ : too much attack\"" [level=1] [ref=e20]'
+        - generic [ref=e21]:
+          - list [ref=e22]:
+            - listitem [ref=e23]:
+              - article [ref=e26]:
+                - generic [ref=e27]:
+                  - generic [ref=e28]:
+                    - generic [ref=e29]:
+                      - link [ref=e408] [cursor=pointer]:
+                        - /url: /ayushagarwal027
+                        - img "user avatar" [ref=e410]
+                      - generic [ref=e36]:
+                        - generic [ref=e411]:
+                          - generic [ref=e412]:
+                            - link "ayush🔮👨‍💻🔮" [ref=e413] [cursor=pointer]:
+                              - /url: https://x.com/ayushagarwal027
+                            - button "Verified account" [ref=e417] [cursor=pointer]
+                          - link "@ayushagarwal027" [ref=e421] [cursor=pointer]:
+                            - /url: https://x.com/ayushagarwal027
+                        - button "More" [ref=e49] [cursor=pointer]
+                    - generic [ref=e52]:
+                      - generic [ref=e53]:
+                        - text: "Mozilla wouldn't ship JPEG XL until someone rewrote the decoder in Rust. Google Research did it. Now default support is rolling out across browsers. 🦀 Firefox kept JPEG XL behind a flag since 2021. The reference decoder was 100,000 lines of multithreaded C++ : too much attack surface for a format barely anyone used yet. So Mozilla made a deal: build a safe, fast, compact Rust decoder, and Firefox ships it. Google Research delivered jxl-rs. Where it stands: → Firefox 157 (late September) : committed to default-on, intent to ship posted this week → Chromium merged the same decoder in January, live behind a flag since Chrome 145, with intent to ship filed → Safari has supported JPEG XL since 2023, minus a few features like progressive rendering Second major memory-safe Rust decoder to land in billion-user browsers this year, after image-png took over PNG decoding in Chromium. A real pattern, one format at a time. 🔗"
+                        - link "hacks.mozilla.org/2026/08/intent…" [ref=e54] [cursor=pointer]:
+                          - /url: http://hacks.mozilla.org/2026/08/intent-to-ship-jpeg-xl
+                        - link "#RustLang" [ref=e55] [cursor=pointer]:
+                          - /url: https://x.com/hashtag/RustLang
+                        - link "#MemorySafety" [ref=e56] [

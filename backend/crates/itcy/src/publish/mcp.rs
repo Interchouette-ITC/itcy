@@ -492,7 +492,7 @@ The project, rangular, is a tiny experiment. 🦀\n\
 https://github.com/Interchouette-ITC/rangular\n\
 \n\
 Link: 1\n\
-0 = no link. /change_url DRAFT-20260824-000093 <0|1|2|3|url>\n\
+0 = no link. /change_url DRAFT-20260824-000093 <0|1|2|3|4|5|url>\n\
 1. https://github.com/Interchouette-ITC/rangular\n\
 2. https://interchouette.net/news\n\
 \n\

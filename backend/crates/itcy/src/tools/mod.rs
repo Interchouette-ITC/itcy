@@ -181,6 +181,14 @@ impl ItcyTools {
             .unwrap_or_default()
     }
 
+    /// Merge URLs into the active research session EXTRACTED list (refill after probe).
+    pub async fn session_record_extracted_urls(&self, urls: &[String]) {
+        let guard = self.session.lock().await;
+        if let Some(s) = guard.as_ref() {
+            s.record_extracted_urls(urls);
+        }
+    }
+
     pub async fn session_browse_excerpts(&self) -> Vec<(String, String)> {
         let guard = self.session.lock().await;
         guard

@@ -9,11 +9,13 @@
 
 use crate::sources::url_hygiene::is_linkedin_host;
 
-/// True for a body line that is a non-LinkedIn `https://` publisher URL.
+/// True for a body line that is a non-LinkedIn `https://` publisher URL (host required).
 #[must_use]
 pub fn is_in_post_https_line(line: &str) -> bool {
     let t = line.trim();
-    t.starts_with("https://") && !is_linkedin_host(t)
+    t.starts_with("https://")
+        && !is_linkedin_host(t)
+        && crate::sources::url_hygiene::publisher_host(t).is_some()
 }
 
 /// True when a line is only a markdown link or a bare https URL (drop on normalize).
@@ -106,10 +108,10 @@ pub fn extract_in_post_url(body: &str) -> Option<String> {
     None
 }
 
-/// Move `url` to index 0 of `options` (insert if missing). Caps at 3.
+/// Move `url` to index 0 of `options` (insert if missing). Caps at [`LINK_OPTIONS_CAP`].
 pub fn promote_link_option(options: &mut Vec<String>, url: &str) {
     let url = crate::sources::url_hygiene::scrub_https_url(url);
-    if url.is_empty() {
+    if url.is_empty() || crate::sources::url_hygiene::publisher_host(&url).is_none() {
         return;
     }
     options.retain(|u| {
@@ -117,7 +119,7 @@ pub fn promote_link_option(options: &mut Vec<String>, url: &str) {
             && !crate::sources::url_hygiene::same_publisher_domain(u, &url)
     });
     options.insert(0, url);
-    options.truncate(3);
+    options.truncate(crate::sources::publisher_url::LINK_OPTIONS_CAP);
 }
 
 /// Replace / normalize so the commentary head has **exactly one** bare https URL line.
@@ -127,7 +129,12 @@ pub fn set_single_in_post_url(body: &str, new_url: &str) -> String {
     let urls = if new_url.trim().is_empty() {
         Vec::new()
     } else {
-        vec![crate::sources::url_hygiene::scrub_https_url(new_url)]
+        let scrubbed = crate::sources::url_hygiene::scrub_https_url(new_url);
+        if crate::sources::url_hygiene::publisher_host(&scrubbed).is_none() {
+            Vec::new()
+        } else {
+            vec![scrubbed]
+        }
     };
     set_in_post_https_lines(body, &urls)
 }
@@ -200,35 +207,38 @@ pub enum UrlChoice {
     Url(String),
 }
 
-/// Resolve change-url arg: `0` clears, `1`/`2`/`3` index into `link_options`, or raw https.
+/// Resolve change-url arg: `0` clears, `1`..=`5` index into `link_options`, or raw https.
 ///
 /// # Errors
 ///
 /// Returns `Err(String)` with an operator-facing message when validation or lookup fails.
 pub fn resolve_url_choice(arg: &str, link_options: &[String]) -> Result<UrlChoice, String> {
+    use crate::sources::publisher_url::LINK_OPTIONS_CAP;
     let t = arg.trim();
     if t.is_empty() {
-        return Err("need 0 (no link), link index 1-3, or an https URL".into());
+        return Err("need 0 (no link), link index 1-5, or an https URL".into());
     }
     if t == "0" {
         return Ok(UrlChoice::Clear);
     }
     if let Ok(n) = t.parse::<usize>() {
-        if (1..=3).contains(&n) {
+        if (1..=LINK_OPTIONS_CAP).contains(&n) {
             return link_options
                 .get(n - 1)
                 .cloned()
                 .map(UrlChoice::Url)
                 .ok_or_else(|| format!("no link option {n} on this draft"));
         }
-        return Err("link index must be 0 (clear), 1, 2, or 3".into());
+        return Err("link index must be 0 (clear), or 1-5".into());
     }
     if t.starts_with("https://") {
-        return Ok(UrlChoice::Url(
-            t.trim_end_matches(['.', ',', ')', ']']).to_string(),
-        ));
+        let scrubbed = crate::sources::url_hygiene::scrub_https_url(t);
+        if crate::sources::url_hygiene::publisher_host(&scrubbed).is_none() {
+            return Err("https URL needs a host (not bare https://)".into());
+        }
+        return Ok(UrlChoice::Url(scrubbed));
     }
-    Err("expected 0, 1, 2, 3, or an https:// URL".into())
+    Err("expected 0, 1-5, or an https:// URL".into())
 }
 
 fn markdown_href(line: &str) -> Option<String> {
@@ -236,8 +246,9 @@ fn markdown_href(line: &str) -> Option<String> {
     let rest = &line[start + 2..];
     let end = rest.find(')')?;
     let u = rest[..end].trim();
-    if u.starts_with("https://") {
-        Some(u.to_string())
+    let scrubbed = crate::sources::url_hygiene::scrub_https_url(u);
+    if crate::sources::url_hygiene::publisher_host(&scrubbed).is_some() {
+        Some(scrubbed)
     } else {
         None
     }
@@ -249,7 +260,7 @@ fn strip_inline_markdown_links(line: &str) -> String {
     while let Some(open) = rest.find('[') {
         out.push_str(&rest[..open]);
         let after = &rest[open..];
-        // `[label](href)` - https href: drop whole token (bare line owns the URL);
+        // `[label](href)` - https href with a real host: drop whole token (bare line owns the URL);
         // empty / non-https href: keep label as plain text.
         if let Some(mid) = after.find("](") {
             let label = &after[1..mid];
@@ -257,7 +268,10 @@ fn strip_inline_markdown_links(line: &str) -> String {
             if let Some(close_rel) = after[href_start..].find(')') {
                 let href = after[href_start..href_start + close_rel].trim();
                 let after_token = &after[href_start + close_rel + 1..];
-                if href.starts_with("https://") {
+                let scrubbed = crate::sources::url_hygiene::scrub_https_url(href);
+                if scrubbed.starts_with("https://")
+                    && crate::sources::url_hygiene::publisher_host(&scrubbed).is_some()
+                {
                     rest = after_token;
                     continue;
                 }

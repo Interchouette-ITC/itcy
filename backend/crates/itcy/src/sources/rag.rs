@@ -658,6 +658,8 @@ pub async fn build_grounded_draft_with_cite(
     );
 
     let draft_id = resolve_session_draft_id(tools, db_path).await;
+    // Capture SERP/extracted pool before end_session clears tools.session.
+    let refill_pool = draft_link_refill_pool(tools, &pack_urls).await;
     end_session_best_effort(
         tools,
         session_dir.as_ref(),
@@ -687,7 +689,12 @@ pub async fn build_grounded_draft_with_cite(
         crate::sources::draft_url::promote_link_option(&mut link_options, cite);
     }
     (body, link_options) =
-        crate::sources::publisher_url::finalize_reachable_link_options(&body, link_options).await;
+        crate::sources::publisher_url::finalize_reachable_link_options_from_pool(
+            &body,
+            link_options,
+            &refill_pool,
+        )
+        .await;
     let body = crate::sources::draft_footer::compose_draft_message(&body, &draft_id, &link_options);
     info!(draft_id = %draft_id, links = link_options.len(), "load_draft: draft id + links attached");
     Ok(GroundedDraft {
@@ -742,6 +749,7 @@ pub async fn build_grounded_draft_from_pack(
     )
     .await?;
     let draft_id = resolve_session_draft_id(tools, db_path).await;
+    let refill_pool = draft_link_refill_pool(tools, &urls).await;
     end_session_best_effort(
         tools,
         session_dir.as_ref(),
@@ -764,7 +772,12 @@ pub async fn build_grounded_draft_from_pack(
         crate::sources::draft_url::promote_link_option(&mut link_options, &cite);
     }
     (body, link_options) =
-        crate::sources::publisher_url::finalize_reachable_link_options(&body, link_options).await;
+        crate::sources::publisher_url::finalize_reachable_link_options_from_pool(
+            &body,
+            link_options,
+            &refill_pool,
+        )
+        .await;
     let body = crate::sources::draft_footer::compose_draft_message(&body, &draft_id, &link_options);
     Ok(GroundedDraft {
         subject: subject.to_string(),
@@ -1017,6 +1030,27 @@ fn resolve_draft_cite_url(forced: Option<&str>, subject: &str) -> Option<String>
         .filter(|u| !u.is_empty() && crate::sources::url_hygiene::is_allowed_tweet_cite(u))
         .map(str::to_string)
         .or_else(|| crate::sources::tweet_footer::extract_brief_cite(subject))
+}
+
+/// Extra candidates for Link refill after probe drops empty shells / soft 404s.
+pub(crate) async fn draft_link_refill_pool(
+    tools: Option<&ItcyTools>,
+    pack_urls: &[String],
+) -> Vec<String> {
+    let mut pool = pack_urls.to_vec();
+    if let Some(t) = tools {
+        for u in t
+            .session_extracted_urls()
+            .await
+            .into_iter()
+            .chain(t.session_browsed_urls().await)
+        {
+            if !pool.iter().any(|x| x == &u) {
+                pool.push(u);
+            }
+        }
+    }
+    pool
 }
 
 fn scrub_urls_outside_pack(body: &str, pack_urls: &[String]) -> String {

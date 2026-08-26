@@ -140,7 +140,12 @@ pub async fn rework_stored_draft(
         body = set_single_in_post_url(&body, &primary);
     }
     (body, link_options) =
-        crate::sources::publisher_url::finalize_reachable_link_options(&body, link_options).await;
+        crate::sources::publisher_url::finalize_reachable_link_options_from_pool(
+            &body,
+            link_options,
+            &pack_urls,
+        )
+        .await;
     body = strip_leading_draft_id(&body);
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = crate::sources::handles::ensure_linkedin_handle_from_pack(&body, &pack, &handles);

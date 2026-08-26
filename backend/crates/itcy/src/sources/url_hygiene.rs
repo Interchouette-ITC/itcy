@@ -145,6 +145,27 @@ fn url_host(url_lower: &str) -> Option<&str> {
     }
 }
 
+/// True when the host looks like a real DNS name (`a.b`), not a prose token (`SUBJECT`).
+#[must_use]
+pub fn host_looks_like_dns(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    let Some(host) = url_host(&lower) else {
+        return false;
+    };
+    let host = host.strip_prefix("www.").unwrap_or(host);
+    if host == "localhost" {
+        return true;
+    }
+    // Single-label junk from soft-wrap / SERP chrome: https://SUBJECT, https://request, …
+    host.contains('.')
+        && host.split('.').all(|label| {
+            !label.is_empty()
+                && label
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        })
+}
+
 /// Drop SERP / placeholder URLs from pack / disclosure labels.
 #[must_use]
 pub fn filter_publisher_urls(urls: &[String]) -> Vec<String> {
@@ -200,6 +221,9 @@ pub fn is_allowed_tweet_cite(url: &str) -> bool {
     }
     // Soft-wrapped scrapes leave a bare `https://` token; never treat it as a cite.
     if url_host(&t.to_ascii_lowercase()).is_none() {
+        return false;
+    }
+    if !host_looks_like_dns(t) {
         return false;
     }
     if is_x_status_url(t) {
@@ -259,18 +283,30 @@ pub fn scrub_https_url(url: &str) -> String {
 }
 
 /// Unique scrubbed `https://` URLs found in `text` (order preserved).
+///
+/// Soft-wrapped scrapes (`https://` on one line, host/path on the next) are rejoined.
+/// A bare `https://` with no host is never returned.
 #[must_use]
 pub fn extract_https_urls(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
-    for (i, _) in text.match_indices("https://") {
+    let mut search_from = 0;
+    while let Some(rel) = text[search_from..].find("https://") {
+        let i = search_from + rel;
         let rest = &text[i..];
-        let end = rest
-            .find(|c: char| {
-                c.is_whitespace() || matches!(c, '|' | ')' | ']' | '<' | '`' | '"' | '\'' | '*')
-            })
-            .unwrap_or(rest.len());
-        let scrubbed = scrub_https_url(&rest[..end]);
-        if !scrubbed.starts_with("https://") || url_host(&scrubbed.to_ascii_lowercase()).is_none() {
+        let candidate = soft_wrapped_https(rest).unwrap_or_else(|| {
+            let end = rest
+                .find(|c: char| {
+                    c.is_whitespace() || matches!(c, '|' | ')' | ']' | '<' | '`' | '"' | '\'' | '*')
+                })
+                .unwrap_or(rest.len());
+            rest[..end].to_string()
+        });
+        search_from = i + "https://".len();
+        let scrubbed = scrub_https_url(&candidate);
+        if !scrubbed.starts_with("https://")
+            || url_host(&scrubbed.to_ascii_lowercase()).is_none()
+            || !host_looks_like_dns(&scrubbed)
+        {
             continue;
         }
         if out.iter().any(|x| same_publisher_url(x, &scrubbed)) {
@@ -279,6 +315,159 @@ pub fn extract_https_urls(text: &str) -> Vec<String> {
         out.push(scrubbed);
     }
     out
+}
+
+/// When `from_https` is `https://` then whitespace/newline then `host/path`, join them.
+fn soft_wrapped_https(from_https: &str) -> Option<String> {
+    let after = from_https.strip_prefix("https://")?;
+    let first_end = after.find('\n').unwrap_or(after.len());
+    let on_line = after[..first_end].trim();
+    if !on_line.is_empty() {
+        return None;
+    }
+    let next = after[first_end..]
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())?;
+    if next.starts_with("http://") || next.starts_with("https://") {
+        return None;
+    }
+    // First token only (`https://\nPayouts.com has picked` → payouts.com).
+    let host_path = next.split_whitespace().next()?.trim_end_matches(|c: char| {
+        matches!(
+            c,
+            '.' | ',' | ';' | ')' | ']' | '>' | '`' | '"' | '\'' | '*' | '…'
+        )
+    });
+    if host_path.ends_with("...") {
+        return None;
+    }
+    if host_path.is_empty() || !host_path.contains('.') {
+        return None;
+    }
+    Some(format!("https://{host_path}"))
+}
+
+/// Pull `href="https://…"` / `href='https://…'` from HTML (browse residue).
+#[must_use]
+pub fn extract_https_hrefs(html: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let lower = html.to_ascii_lowercase();
+    let mut search_from = 0;
+    while let Some(rel) = lower[search_from..].find("href=") {
+        let i = search_from + rel + 5;
+        let slice = html.get(i..).unwrap_or("");
+        let raw = match slice.chars().next() {
+            Some('"') => {
+                let rest = &slice[1..];
+                let end = rest.find('"').unwrap_or(rest.len());
+                rest[..end].trim()
+            }
+            Some('\'') => {
+                let rest = &slice[1..];
+                let end = rest.find('\'').unwrap_or(rest.len());
+                rest[..end].trim()
+            }
+            _ => {
+                let end = slice
+                    .find(|c: char| c.is_whitespace() || c == '>')
+                    .unwrap_or(slice.len());
+                slice[..end].trim()
+            }
+        };
+        search_from = i + 1;
+        let normalized = raw
+            .strip_prefix("http://")
+            .map_or_else(|| raw.to_string(), |rest| format!("https://{rest}"));
+        let scrubbed = scrub_https_url(&normalized);
+        if !scrubbed.starts_with("https://")
+            || url_host(&scrubbed.to_ascii_lowercase()).is_none()
+            || !host_looks_like_dns(&scrubbed)
+        {
+            continue;
+        }
+        if out.iter().any(|x| same_publisher_url(x, &scrubbed)) {
+            continue;
+        }
+        out.push(scrubbed);
+    }
+    out
+}
+
+/// Publisher cites embedded in X status / page text (`https://`, `http://` → https, bare host/path).
+///
+/// Skips truncated tokens ending in `…` / `...` (X `display_url` chrome); prefer API `expanded_url`.
+#[must_use]
+pub fn publisher_urls_from_text(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for u in extract_https_urls(text) {
+        push_publisher_url(&mut out, &u);
+    }
+    for u in extract_https_hrefs(text) {
+        push_publisher_url(&mut out, &u);
+    }
+    for (i, _) in text.match_indices("http://") {
+        let rest = &text[i..];
+        let end = rest
+            .find(|c: char| {
+                c.is_whitespace() || matches!(c, '|' | ')' | ']' | '<' | '`' | '"' | '\'' | '*')
+            })
+            .unwrap_or(rest.len());
+        let raw = &rest[..end];
+        let Some(after) = raw.strip_prefix("http://") else {
+            continue;
+        };
+        let scrubbed = scrub_https_url(&format!("https://{after}"));
+        push_publisher_url(&mut out, &scrubbed);
+    }
+    for token in text.split_whitespace() {
+        let t = token.trim_matches(|c: char| {
+            matches!(
+                c,
+                '🔗' | '|' | '(' | ')' | '[' | ']' | '<' | '>' | '`' | '"' | '\'' | '*' | ','
+            )
+        });
+        if t.starts_with("http://") || t.starts_with("https://") {
+            continue;
+        }
+        if t.ends_with('…') || t.ends_with("...") {
+            continue;
+        }
+        if !looks_like_bare_publisher_host_path(t) {
+            continue;
+        }
+        let scrubbed = scrub_https_url(&format!("https://{t}"));
+        push_publisher_url(&mut out, &scrubbed);
+    }
+    out
+}
+
+fn push_publisher_url(out: &mut Vec<String>, scrubbed: &str) {
+    if !scrubbed.starts_with("https://") || url_host(&scrubbed.to_ascii_lowercase()).is_none() {
+        return;
+    }
+    if !is_allowed_tweet_cite(scrubbed) || is_x_status_url(scrubbed) {
+        return;
+    }
+    if out.iter().any(|x| same_publisher_url(x, scrubbed)) {
+        return;
+    }
+    out.push(scrubbed.to_string());
+}
+
+fn looks_like_bare_publisher_host_path(token: &str) -> bool {
+    let t = token.trim();
+    if t.len() < 8 || !t.contains('.') || t.contains(' ') {
+        return false;
+    }
+    let host = t.split('/').next().unwrap_or(t);
+    let host = host.strip_prefix("www.").unwrap_or(host);
+    if host.split('.').count() < 2 {
+        return false;
+    }
+    host.bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.')
+        && host.contains('.')
 }
 
 /// Dedupe key: scrubbed URL, lowercased.
@@ -461,7 +650,84 @@ mod tests {
         assert!(!is_allowed_tweet_cite("https://www.linkedin.com/posts/x"));
         assert!(!is_allowed_tweet_cite("https://www.example.com/a"));
         assert!(!is_allowed_tweet_cite("https://"));
-        assert!(extract_https_urls("https://\nPayouts.com has picked").is_empty());
+        // Soft-wrap: scheme alone on a line + host on the next → one real URL (never bare https://).
+        assert_eq!(
+            extract_https_urls("https://\nPayouts.com has picked"),
+            vec!["https://Payouts.com".to_string()]
+        );
+        assert_eq!(
+            extract_https_urls("see https://\npayouts.com/pricing now"),
+            vec!["https://payouts.com/pricing".to_string()]
+        );
+    }
+
+    #[test]
+    fn rejects_prose_token_hosts_like_subject_request_browsers() {
+        // Regression: SERP/overview chrome yielded https://SUBJECT|request|browsers and we probed them.
+        let text = "\
+do not replace the cite https://SUBJECT or industry\n\
+https://request failed\n\
+https://browsers will ship\n\
+url=https://search.brave.com/search?q=x\n\
+url=https://labs.sogeti.com/real-article\n";
+        let extracted = extract_https_urls(text);
+        assert!(
+            !extracted.iter().any(|u| {
+                let h = u.to_ascii_lowercase();
+                h.contains("://subject") || h.contains("://request") || h.contains("://browsers")
+            }),
+            "must not extract single-label prose hosts: {extracted:?}"
+        );
+        assert!(
+            extracted
+                .iter()
+                .any(|u| u == "https://labs.sogeti.com/real-article"),
+            "{extracted:?}"
+        );
+        assert!(!is_allowed_tweet_cite("https://SUBJECT"));
+        assert!(!is_allowed_tweet_cite("https://request"));
+        assert!(!is_allowed_tweet_cite("https://browsers"));
+        assert!(!is_allowed_tweet_cite("https://search.brave.com/search"));
+        assert!(is_allowed_tweet_cite(
+            "https://labs.sogeti.com/real-article"
+        ));
+        let pubs = publisher_urls_from_text(text);
+        assert_eq!(
+            pubs,
+            vec!["https://labs.sogeti.com/real-article".to_string()]
+        );
+    }
+
+    #[test]
+    fn host_looks_like_dns_requires_dot() {
+        assert!(!host_looks_like_dns("https://SUBJECT"));
+        assert!(!host_looks_like_dns("https://request/"));
+        assert!(host_looks_like_dns("https://labs.sogeti.com/a"));
+        assert!(host_looks_like_dns("https://x.com/a/status/1"));
+    }
+
+    #[test]
+    fn extract_https_hrefs_skips_empty_and_keeps_real() {
+        let html = r#"<a href="https://">bad</a><a href="https://labs.sogeti.com/post">ok</a><a href=''>empty</a>"#;
+        let urls = extract_https_hrefs(html);
+        assert_eq!(urls, vec!["https://labs.sogeti.com/post".to_string()]);
+    }
+
+    #[test]
+    fn publisher_urls_from_text_takes_bare_https_line() {
+        let text = "Ship story.\n🔗 https://labs.sogeti.com/post\n#RustLang";
+        let urls = publisher_urls_from_text(text);
+        assert!(
+            urls.iter().any(|u| u == "https://labs.sogeti.com/post"),
+            "{urls:?}"
+        );
+    }
+
+    #[test]
+    fn publisher_urls_upgrades_http_and_skips_truncated_bare_host() {
+        let text = "see http://labs.sogeti.com/post and labs.sogeti.com/post…";
+        let urls = publisher_urls_from_text(text);
+        assert_eq!(urls, vec!["https://labs.sogeti.com/post".to_string()]);
     }
 
     #[test]
