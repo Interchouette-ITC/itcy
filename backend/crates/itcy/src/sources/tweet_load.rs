@@ -14,7 +14,7 @@ use crate::tools::ItcyTools;
 use std::fmt::Write;
 use tracing::{info, warn};
 
-const PACK_CAP: usize = 3;
+const PACK_CAP: usize = crate::sources::publisher_url::LINK_OPTIONS_CAP;
 const CITE_TEXT_CHARS: usize = 2000;
 
 /// Label for SERP text in short-cite packs (secondary to the browsed cite page).
@@ -24,8 +24,8 @@ const SERP_SUPPORT_LABEL: &str =
 /// Fetch the https from the subject, optionally Brave + X search. Subject URL is always pack slot 1.
 ///
 /// When `publisher_options` is true (`LinkedIn` drafts), an X status cite still runs Brave so
-/// Link options 2/3 can be real publishers. Tweets pass false: X-only pack (avoids off-topic
-/// news URLs in the tweet body / options).
+/// Link options 2/3 can be real publishers. Tweets pass false: skip SERP (avoids off-topic
+/// news), but still pack publisher https found **inside** the status text.
 ///
 /// # Errors
 ///
@@ -81,8 +81,16 @@ pub async fn run_short_cite_load(
     };
 
     let mut urls = vec![subject_url.to_string()];
-    // Tweet + X status: pack is that URL only. LinkedIn drafts (and non-X cites) take
-    // Brave publishers into options 2/3.
+    // Publisher https already in the status/page text beat Brave SERP guesses
+    // (e.g. Mozilla Hacks link inside an X status about JPEG XL).
+    push_unique(
+        &mut urls,
+        crate::sources::url_hygiene::publisher_urls_from_text(&cite_text)
+            .into_iter()
+            .filter(|u| u != subject_url),
+    );
+    // LinkedIn drafts (and non-X cites) also take Brave publishers into options 2/3.
+    // Tweets with an X-only SERP skip still keep in-tweet publishers above.
     if !x_cite_only {
         if let Some(t) = tools {
             push_unique(
@@ -297,7 +305,7 @@ mod tests {
         let idx_lock = pack.find("https://x.com/a/status/1").expect("subject url");
         let idx_pub = pack.find("https://labs.sogeti.com/a").expect("pub");
         assert!(idx_lock < idx_pub);
-        assert_eq!(urls[..3].len(), PACK_CAP);
+        assert_eq!(PACK_CAP, crate::sources::publisher_url::LINK_OPTIONS_CAP);
     }
 
     #[test]
@@ -374,5 +382,26 @@ mod tests {
             "https://labs.sogeti.com/pgrust",
             false
         ));
+    }
+
+    #[test]
+    fn in_tweet_publisher_url_beats_empty_pack_slot() {
+        let cite = "Mozilla wouldn't ship JPEG XL.\n\
+https://hacks.mozilla.org/2026/08/intent-to-ship-jpeg-xl\n";
+        let subject = "https://x.com/ayushagarwal027/status/2092326145312395657";
+        let mut urls = vec![subject.to_string()];
+        push_unique(
+            &mut urls,
+            crate::sources::url_hygiene::publisher_urls_from_text(cite)
+                .into_iter()
+                .filter(|u| u != subject),
+        );
+        assert_eq!(
+            urls,
+            vec![
+                subject.to_string(),
+                "https://hacks.mozilla.org/2026/08/intent-to-ship-jpeg-xl".to_string(),
+            ]
+        );
     }
 }

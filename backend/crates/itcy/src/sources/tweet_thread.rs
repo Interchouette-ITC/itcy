@@ -992,7 +992,7 @@ Who needs a security audit when your AI does it for you? 🤖
 https://x.com/rustaceans_rs/status/2092134050060275910
 
 Link: 1
-0 = no link. /change_url TWEET-20260825-000080 <0|1|2|3|url>
+0 = no link. /change_url TWEET-20260825-000080 <0|1|2|3|4|5|url>
 1. https://x.com/rustaceans_rs/status/2092134050060275910
 
 Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:120";
@@ -1334,7 +1334,7 @@ MVP, not production custody. But if you're building on Casper, this is your guar
 https://alsaecas.dev/projects/cspr-agentpay-guard
 
 Link: 1
-0 = no link. /change_url TWEET-20260822-000062 <0|1|2|3|url>
+0 = no link. /change_url TWEET-20260822-000062 <0|1|2|3|4|5|url>
 1. https://alsaecas.dev/projects/cspr-agentpay-guard
 
 Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";

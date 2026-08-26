@@ -316,7 +316,7 @@ The problem with Opus is not just its quirks - it is the cost of fixing them. ðŸ
 https://www.infoworld.com/article/4211958/example.html
 
 Link: 1
-0 = no link. /change_url DRAFT-1 <0|1|2|3|url>
+0 = no link. /change_url DRAFT-1 <0|1|2|3|4|5|url>
 1. https://www.infoworld.com/article/4211958/example.html
 
 Written by AI - ITCy - model ollama/qwen3:8b - tokens in:1 out:1";

@@ -750,7 +750,7 @@ That’s the kind of smart engineering that makes embedded systems easier to bui
 https://x.com/AstraKernel/status/2088224406187413962
 
 Link: 1
-0 = no link. /change_url TWEET-1 <0|1|2|3|url>
+0 = no link. /change_url TWEET-1 <0|1|2|3|4|5|url>
 1. https://x.com/AstraKernel/status/2088224406187413962";
         let texts = tweet_texts_for_api(body);
         assert_eq!(texts.len(), 2, "tags+URL push a reply: {texts:?}");
@@ -794,7 +794,7 @@ Tweet ID: TWEET-20260820-000046
 https://x.com/acolombiadev/status/2089811385899160055
 
 Link: 1
-0 = no link. /change_url TWEET-20260820-000046 <0|1|2|3|url>
+0 = no link. /change_url TWEET-20260820-000046 <0|1|2|3|4|5|url>
 1. https://x.com/acolombiadev/status/2089811385899160055
 2. https://x.com/ashnichrist/status/2090551150214836367
 
@@ -851,7 +851,7 @@ MVP, not production custody. But if you're building on Casper, this is your guar
 https://alsaecas.dev/projects/cspr-agentpay-guard
 
 Link: 1
-0 = no link. /change_url TWEET-20260822-000062 <0|1|2|3|url>
+0 = no link. /change_url TWEET-20260822-000062 <0|1|2|3|4|5|url>
 1. https://alsaecas.dev/projects/cspr-agentpay-guard
 
 Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
@@ -902,7 +902,7 @@ MVP, not production custody. But if you're building on Casper, this is your guar
 https://alsaecas.dev/projects/cspr-agentpay-guard
 
 Link: 1
-0 = no link. /change_url TWEET-20260822-000062 <0|1|2|3|url>
+0 = no link. /change_url TWEET-20260822-000062 <0|1|2|3|4|5|url>
 1. https://alsaecas.dev/projects/cspr-agentpay-guard
 
 Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
@@ -952,7 +952,7 @@ Tweet ID: TWEET-20260821-000047
 https://x.com/milonspace/status/2089661151529574481
 
 Link: 1
-0 = no link. /change_url TWEET-20260821-000047 <0|1|2|3|url>
+0 = no link. /change_url TWEET-20260821-000047 <0|1|2|3|4|5|url>
 1. https://x.com/milonspace/status/2089661151529574481
 2. https://x.com/huacnlee/status/2090424183683797119
 
@@ -979,7 +979,7 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:98";
     #[test]
     fn tweet_text_strips_link_footer() {
         let text = tweet_text_for_api(
-            "Tweet ID: TWEET-1\n\nHello builders\n\nhttps://labs.sogeti.com/a\n\nLink: 1\n0 = no link. /change_url TWEET-1 <0|1|2|3|url>\n1. https://labs.sogeti.com/a\n",
+            "Tweet ID: TWEET-1\n\nHello builders\n\nhttps://labs.sogeti.com/a\n\nLink: 1\n0 = no link. /change_url TWEET-1 <0|1|2|3|4|5|url>\n1. https://labs.sogeti.com/a\n",
         );
         assert!(text.contains("Hello builders"));
         assert!(text.contains("https://labs.sogeti.com/a"));

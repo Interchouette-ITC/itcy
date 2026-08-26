@@ -178,7 +178,7 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:3900 out:110";
 
     #[test]
     fn ensure_stored_disclosure_restores_tokens_after_compose() {
-        let composed = "Tweet ID: TWEET-1\n\nHello.\n\nLink: 1\n0 = no link. /change_url TWEET-1 <0|1|2|3|url>\n1. https://example.com/a";
+        let composed = "Tweet ID: TWEET-1\n\nHello.\n\nLink: 1\n0 = no link. /change_url TWEET-1 <0|1|2|3|4|5|url>\n1. https://example.com/a";
         let out = ensure_stored_disclosure(
             composed,
             "load=ollama/qwen3:8b | tweet=ollama/qwen3:8b",

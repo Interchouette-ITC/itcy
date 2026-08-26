@@ -57,10 +57,14 @@ pub fn next_draft_id(db_path: &Path) -> Result<String, DraftFooterError> {
     Ok(format!("DRAFT-{day}-{seq:06}"))
 }
 
-/// Prefer unique **verified pack** URLs. A body cite wins the first slot only when it is
-/// already in the pack (writer chose a real candidate). Never promote invented body-only URLs.
+/// Prefer unique **verified pack** URLs for Link options.
+///
+/// A body cite wins the first slot only when it is already in the pack (writer chose a
+/// real candidate). Never promote invented body-only URLs. Keeps up to
+/// [`crate::sources::publisher_url::LINK_OPTIONS_CAP`] distinct domains.
 #[must_use]
 pub fn pick_link_options(pack_urls: &[String], body: &str) -> Vec<String> {
+    use crate::sources::publisher_url::LINK_OPTIONS_CAP;
     use crate::sources::url_hygiene::{
         extract_https_urls, filter_publisher_urls, is_junk_or_search_url, same_publisher_domain,
         scrub_https_url, url_in_allowlist,
@@ -77,11 +81,14 @@ pub fn pick_link_options(pack_urls: &[String], body: &str) -> Vec<String> {
         if !scrubbed.starts_with("https://") {
             continue;
         }
+        if crate::sources::url_hygiene::publisher_host(&scrubbed).is_none() {
+            continue;
+        }
         if out.iter().any(|x| same_publisher_domain(x, &scrubbed)) {
             continue;
         }
         out.push(scrubbed);
-        if out.len() == 3 {
+        if out.len() == LINK_OPTIONS_CAP {
             break;
         }
     }
@@ -136,7 +143,7 @@ pub fn compose_draft_message(body: &str, draft_id: &str, links: &[String]) -> St
             let _ = writeln!(out, "Link: 0");
         }
     }
-    let _ = writeln!(out, "0 = no link. /change_url {draft_id} <0|1|2|3|url>");
+    let _ = writeln!(out, "0 = no link. /change_url {draft_id} <0|1|2|3|4|5|url>");
     for (i, u) in links.iter().enumerate() {
         let _ = writeln!(out, "{}. {u}", i + 1);
     }
@@ -408,10 +415,27 @@ mod tests {
     }
 
     fn assert_three_unique_domains(opts: &[String]) {
-        assert_eq!(opts.len(), 3, "{opts:?}");
+        assert!(
+            opts.len() >= 3,
+            "need at least 3 Link options, got {opts:?}"
+        );
         let hosts: std::collections::HashSet<_> =
             opts.iter().filter_map(|u| publisher_host(u)).collect();
-        assert_eq!(hosts.len(), 3, "{opts:?}");
+        assert!(hosts.len() >= 3, "need at least 3 domains, got {opts:?}");
+    }
+
+    #[test]
+    fn pick_keeps_up_to_five_unique_domains() {
+        let pack = vec![
+            "https://decrypt.co/a".into(),
+            "https://pewresearch.org/b".into(),
+            "https://techcrunch.com/c".into(),
+            "https://labs.sogeti.com/d".into(),
+            "https://hacks.mozilla.org/e".into(),
+            "https://arstechnica.com/f".into(),
+        ];
+        let opts = pick_link_options(&pack, "");
+        assert_eq!(opts.len(), 5, "{opts:?}");
     }
 
     #[test]

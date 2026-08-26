@@ -251,7 +251,8 @@ impl TwitterTool {
             ));
         };
         let client = reqwest::Client::new();
-        let url = format!("{TWITTER_API_V2_BASE}/tweets/{id}?tweet.fields=created_at,text");
+        let url =
+            format!("{TWITTER_API_V2_BASE}/tweets/{id}?tweet.fields=created_at,text,entities");
         let resp = client
             .get(&url)
             .bearer_auth(bearer)
@@ -427,7 +428,7 @@ async fn search_recent(
         }
         info!(query = %crate::sources::query_for_log(&q), "twitter: API search");
         let url = format!(
-            "{TWITTER_API_V2_BASE}/tweets/search/recent?query={}&max_results=10&tweet.fields=created_at",
+            "{TWITTER_API_V2_BASE}/tweets/search/recent?query={}&max_results=10&tweet.fields=created_at,text,entities",
             urlencoding_lite(&q)
         );
         let resp = client
@@ -496,7 +497,7 @@ async fn home_timeline_pulse(bearer: &str) -> Result<Vec<TwitterHit>, TwitterToo
         .and_then(|v| v.as_str())
         .ok_or_else(|| TwitterToolError::Other("users/me missing data.id".into()))?;
     let url = format!(
-        "{TWITTER_API_V2_BASE}/users/{uid}/timelines/reverse_chronological?max_results=20&tweet.fields=created_at"
+        "{TWITTER_API_V2_BASE}/users/{uid}/timelines/reverse_chronological?max_results=20&tweet.fields=created_at,text,entities"
     );
     let resp = client
         .get(&url)
@@ -529,24 +530,21 @@ async fn home_timeline_pulse(bearer: &str) -> Result<Vec<TwitterHit>, TwitterToo
 
 fn hit_from_tweet(tw: &serde_json::Value, lane_hint: &str) -> Option<TwitterHit> {
     let id = tw.get("id")?.as_str()?;
-    let text = tw.get("text")?.as_str().unwrap_or("").trim();
-    if text.is_empty() {
-        return None;
-    }
+    let text = tweet_text_with_expanded_urls(tw)?;
     let subject: String = text
         .split_whitespace()
         .take(6)
         .collect::<Vec<_>>()
         .join(" ");
     Some(TwitterHit {
-        title: text.to_string(),
+        title: text.clone(),
         url: format!("https://x.com/i/web/status/{id}"),
         subject: if subject.is_empty() {
             lane_hint.into()
         } else {
             subject
         },
-        detail: text.to_string(),
+        detail: text,
         lane: if lane_hint == "following" {
             "following".into()
         } else {
@@ -554,6 +552,42 @@ fn hit_from_tweet(tw: &serde_json::Value, lane_hint: &str) -> Option<TwitterHit>
         },
         query: String::new(),
     })
+}
+
+/// Replace `t.co` with `expanded_url` and append any expanded publisher still missing from text.
+/// Bare display hosts (`hacks.mozilla.org/…`) alone are not enough for cite extract.
+fn tweet_text_with_expanded_urls(tw: &serde_json::Value) -> Option<String> {
+    let text = tw.get("text")?.as_str()?.trim();
+    if text.is_empty() {
+        return None;
+    }
+    let mut out = text.to_string();
+    let mut extras: Vec<String> = Vec::new();
+    if let Some(urls) = tw.pointer("/entities/urls").and_then(|v| v.as_array()) {
+        for u in urls {
+            let expanded = u
+                .get("expanded_url")
+                .or_else(|| u.get("unwound_url"))
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .trim();
+            if expanded.is_empty() {
+                continue;
+            }
+            let tco = u.get("url").and_then(|x| x.as_str()).unwrap_or("").trim();
+            if !tco.is_empty() && out.contains(tco) {
+                out = out.replace(tco, expanded);
+            }
+            if !out.contains(expanded) {
+                extras.push(expanded.to_string());
+            }
+        }
+    }
+    for e in extras {
+        out.push('\n');
+        out.push_str(&e);
+    }
+    Some(out)
 }
 
 fn urlencoding_lite(q: &str) -> String {
@@ -633,5 +667,28 @@ mod tests {
         let tw = serde_json::json!({ "id": "1", "text": "hello from the home timeline today" });
         let hit = hit_from_tweet(&tw, "following").unwrap();
         assert_eq!(hit.lane, "following");
+    }
+
+    #[test]
+    fn hit_from_tweet_expands_entities_urls_into_detail() {
+        let tw = serde_json::json!({
+            "id": "2092326145312395657",
+            "text": "Mozilla JPEG XL 🦀\n🔗 https://t.co/abc123\n#RustLang",
+            "entities": {
+                "urls": [{
+                    "url": "https://t.co/abc123",
+                    "expanded_url": "https://hacks.mozilla.org/2026/08/intent-to-ship-jpeg-xl",
+                    "display_url": "hacks.mozilla.org/2026/08/intent…"
+                }]
+            }
+        });
+        let hit = hit_from_tweet(&tw, "twitter").unwrap();
+        assert!(
+            hit.detail
+                .contains("https://hacks.mozilla.org/2026/08/intent-to-ship-jpeg-xl"),
+            "{}",
+            hit.detail
+        );
+        assert!(!hit.detail.contains("t.co/abc123"), "{}", hit.detail);
     }
 }

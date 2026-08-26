@@ -10,9 +10,21 @@
 /// Prefer Apollo paragraphs when present so we do not confuse TOC chrome with the article.
 #[must_use]
 pub fn extract_page_text(html: &str) -> String {
+    if let Some(text) = extract_articleish_text(html) {
+        return text;
+    }
+    html_to_text(html)
+}
+
+/// Article-ish body only (Apollo paragraphs, `<article>`, or `<main>`).
+///
+/// Returns `None` when the page is chrome / SPA shell with no real article region.
+/// Publisher cite probes use this so a fat Next.js 200 shell does not pass as a cite.
+#[must_use]
+pub fn extract_articleish_text(html: &str) -> Option<String> {
     if let Some(apollo) = extract_apollo_paragraphs(html) {
         if apollo.chars().count() >= 120 {
-            return apollo;
+            return Some(apollo);
         }
     }
     let lower = html.to_ascii_lowercase();
@@ -20,11 +32,11 @@ pub fn extract_page_text(html: &str) -> String {
         if let Some(slice) = first_element_inner(html, &lower, tag) {
             let text = html_to_text(slice);
             if text.chars().count() >= 120 {
-                return text;
+                return Some(text);
             }
         }
     }
-    html_to_text(html)
+    None
 }
 
 /// Pulls `Paragraph:*` `.text` fields from `window.__APOLLO_STATE__ = {...};`.
