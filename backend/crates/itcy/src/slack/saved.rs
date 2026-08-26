@@ -119,6 +119,13 @@ impl SlackRuntime {
                         "(empty body)".to_string()
                     } else if row.draft_id.starts_with("DRAFT-") {
                         crate::sources::draft_footer::slack_paste_safe_linkedin_message(&restored)
+                    } else if crate::sources::reply_comment::is_reply_id(&row.draft_id) {
+                        let prose = if row.draft_id.starts_with("XREPLY-") {
+                            crate::publish::tweet_text_for_api(&restored)
+                        } else {
+                            crate::publish::linkedin_text_for_api(&restored)
+                        };
+                        crate::sources::draft_footer::slack_paste_safe_reply_body(&prose)
                     } else {
                         crate::sources::draft_footer::slack_highlight_active_link(&restored)
                     };

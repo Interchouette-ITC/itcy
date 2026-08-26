@@ -317,9 +317,24 @@ pub fn linkedin_manual_paste_message(
     )
 }
 
-fn fence_slack_plaintext(inner: &str) -> String {
+/// Fence plain text for Slack copy (Unicode emoji survive clipboard paste).
+#[must_use]
+pub fn fence_slack_plaintext(inner: &str) -> String {
     let ticks = if inner.contains("```") { "````" } else { "```" };
     format!("{ticks}\n{}\n{ticks}", inner.trim_end())
+}
+
+/// Slack display for CREPLY/XREPLY bodies: expand shortcodes, then fence for copy.
+#[must_use]
+pub fn slack_paste_safe_reply_body(reply: &str) -> String {
+    let prose = crate::llm::sanitize_itcy_text(reply.trim());
+    if prose.is_empty() {
+        return String::new();
+    }
+    if prose.starts_with("```") {
+        return prose;
+    }
+    fence_slack_plaintext(&prose)
 }
 
 /// Simplified draft message for self-introduction commands: Draft ID + body only, no link picker.
@@ -654,6 +669,18 @@ mod tests {
         assert!(!prose.contains("Link:"));
         assert!(!prose.contains("0 = no link"));
         assert!(!prose.contains("change_url"));
+    }
+
+    #[test]
+    fn slack_paste_safe_reply_fences_and_expands_owl() {
+        let shown = slack_paste_safe_reply_body("Hello :owl: world.");
+        assert!(shown.starts_with("```\n"), "{shown}");
+        assert!(shown.contains("🦉"), "{shown}");
+        assert!(!shown.contains(":owl:"), "{shown}");
+        assert!(
+            shown.ends_with("\n```") || shown.ends_with("```"),
+            "{shown}"
+        );
     }
 
     #[test]
