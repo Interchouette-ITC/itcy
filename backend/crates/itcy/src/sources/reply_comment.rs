@@ -285,6 +285,7 @@ fn save_open_reply(db_path: &Path, req: &SaveOpenReply<'_>) -> Result<(), String
 }
 
 fn format_create_slack(id: &str, surface: &str, author: &str, parent: &str, reply: &str) -> String {
+    let reply = crate::sources::draft_footer::slack_paste_safe_reply_body(reply);
     format!(
         "Reply draft `{id}` ({surface}) saved (**open**).\n\n\
 Parent ({author}): {parent}\n\n\
@@ -293,7 +294,6 @@ Reply:\n{reply}\n\n\
 :pencil2: /rework {id} <instructions>\n\n\
 :white_check_mark: /accept {id}",
         parent = parent.trim(),
-        reply = reply.trim(),
     )
 }
 
@@ -341,14 +341,13 @@ pub async fn rework_reply_comment(
     row.fork_pr_url.clone_from(&stored.fork_pr_url);
     row.created_at.clone_from(&stored.created_at);
     store.upsert(&row).map_err(|e| e.to_string())?;
+    let reply = crate::sources::draft_footer::slack_paste_safe_reply_body(&reply);
     Ok(format!(
-        "Reworked reply `{id}` saved (**open**).\n\n\
+        "Reworked reply `{reply_id}` saved (**open**).\n\n\
 Reply:\n{reply}\n\n\
 :point_right: Next:\n\n\
-:pencil2: /rework {id} <instructions>\n\n\
-:white_check_mark: /accept {id}",
-        id = reply_id,
-        reply = reply.trim(),
+:pencil2: /rework {reply_id} <instructions>\n\n\
+:white_check_mark: /accept {reply_id}"
     ))
 }
 
@@ -481,6 +480,7 @@ async fn ship_x_reply(
     let shipped = result
         .linkedin_url
         .unwrap_or_else(|| "(no public URL)".into());
+    let reply = crate::sources::draft_footer::slack_paste_safe_reply_body(reply_text);
     Ok(format!(
         "Reply `{id}` shipped ({mode}) as X thread reply.\n\n\
 Parent ({author}): {parent}\n\
@@ -493,7 +493,6 @@ Shipped: {shipped}\n\
         author = meta.author,
         parent = meta.parent_body.trim(),
         purl = meta.url,
-        reply = reply_text,
         shipped = shipped,
         detail = result.detail.trim(),
     ))
@@ -515,6 +514,7 @@ async fn ship_linkedin_reply(
         .as_deref()
         .filter(|s| !s.is_empty())
         .ok_or_else(|| "LinkedIn reply meta missing comment_id".to_string())?;
+    let reply = crate::sources::draft_footer::slack_paste_safe_reply_body(reply_text);
     if mode == PublishMode::Playground {
         let post_urn = activity_post_urn(activity_id);
         let parent_urn = parent_comment_urn(activity_id, comment_id);
@@ -527,7 +527,6 @@ parent_comment_urn={parent_urn}",
             id = reply_id,
             author = meta.author,
             parent = meta.parent_body.trim(),
-            reply = reply_text,
         ));
     }
     let post_urn = activity_post_urn(activity_id);
@@ -547,7 +546,6 @@ parent_comment_urn={parent_urn}",
         id = reply_id,
         author = meta.author,
         parent = meta.parent_body.trim(),
-        reply = reply_text,
         mcp = mcp_detail.trim(),
     ))
 }
@@ -573,6 +571,21 @@ pub fn reply_next_hints(id: &str, row_status: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn format_create_slack_fences_reply_for_copy() {
+        let msg = format_create_slack(
+            "CREPLY-20260826-000001",
+            "linkedin",
+            "Toby",
+            "parent comment text",
+            "Visibility really does shift. :owl:",
+        );
+        assert!(msg.contains("```\n"), "{msg}");
+        assert!(msg.contains("🦉"), "{msg}");
+        assert!(!msg.contains(":owl:"), "{msg}");
+        assert!(msg.contains("Reply:\n```"), "{msg}");
+    }
 
     #[test]
     fn reply_id_helpers() {
