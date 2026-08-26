@@ -15,7 +15,11 @@ use std::fmt::Write;
 use tracing::{info, warn};
 
 const PACK_CAP: usize = 3;
-const CITE_TEXT_CHARS: usize = 800;
+const CITE_TEXT_CHARS: usize = 2000;
+
+/// Label for SERP text in short-cite packs (secondary to the browsed cite page).
+const SERP_SUPPORT_LABEL: &str =
+    "SERP support (secondary; do not replace the cite subject or industry): ";
 
 /// Fetch the https from the subject, optionally Brave + X search. Subject URL is always pack slot 1.
 ///
@@ -242,12 +246,27 @@ fn format_short_pack(
     overview: &str,
     urls: &[String],
 ) -> String {
+    // Cite browse first (primary), then labeled SERP (secondary). Writer tools are off when
+    // subject_https is locked, so this string is the only grounding.
+    let cite = cite_text.trim();
+    let serp = overview.trim();
+    let ai_overview = if serp.is_empty() {
+        String::new()
+    } else {
+        format!("{SERP_SUPPORT_LABEL}{serp}")
+    };
     let mut out = format!(
-        "## ResearchPack\nsubject: {subject}\nsubject_https: {subject_url}\nai_overview: {overview}\nsummary: {cite_text}\ncandidates:\n"
+        "## ResearchPack\nsubject: {subject}\nsubject_https: {subject_url}\nsummary: {cite}\nai_overview: {ai_overview}\ncandidates:\n"
     );
     for (i, u) in urls.iter().enumerate() {
         let kind = if i == 0 { "subject" } else { "support" };
         let _ = writeln!(out, "- final_url={u} | why={kind}");
+    }
+    if !cite.is_empty() {
+        let _ = write!(
+            out,
+            "\n## Browsed page (this is the cite; do not switch industry or topic)\nurl: {subject_url}\n{cite}\n"
+        );
     }
     out
 }
@@ -279,6 +298,53 @@ mod tests {
         let idx_pub = pack.find("https://labs.sogeti.com/a").expect("pub");
         assert!(idx_lock < idx_pub);
         assert_eq!(urls[..3].len(), PACK_CAP);
+    }
+
+    #[test]
+    fn short_pack_cite_before_serp_keeps_both() {
+        let cite_url = "https://labs.sogeti.com/pgrust";
+        let support = "https://example.org/support-article";
+        let urls = [cite_url.to_string(), support.to_string()];
+        let pack = format_short_pack(
+            "pg_rust",
+            cite_url,
+            "cite page verbs about postgres rust",
+            "serp snippet about unrelated travel",
+            &urls,
+        );
+        assert!(pack.contains("summary: cite page verbs about postgres rust"));
+        assert!(pack.contains(SERP_SUPPORT_LABEL));
+        assert!(pack.contains("serp snippet about unrelated travel"));
+        assert!(
+            pack.contains("## Browsed page (this is the cite; do not switch industry or topic)")
+        );
+        assert!(pack.contains(&format!("url: {cite_url}")));
+        let idx_summary = pack.find("summary:").expect("summary");
+        let idx_ai = pack.find("ai_overview:").expect("ai_overview");
+        let idx_browsed = pack.find("## Browsed page").expect("browsed");
+        assert!(
+            idx_summary < idx_ai,
+            "cite summary must precede SERP ai_overview"
+        );
+        assert!(
+            idx_ai < idx_browsed,
+            "candidates sit between header fields and Browsed page; browsed is after candidates"
+        );
+        assert!(pack.contains("why=subject") && pack.contains("why=support"));
+    }
+
+    #[test]
+    fn short_pack_empty_serp_leaves_ai_overview_blank() {
+        let url = "https://labs.sogeti.com/x";
+        let pack = format_short_pack("topic", url, "only cite", "", &[url.to_string()]);
+        assert!(pack.contains("ai_overview: \n") || pack.contains("ai_overview:\n"));
+        assert!(!pack.contains(SERP_SUPPORT_LABEL));
+        assert!(pack.contains("## Browsed page"));
+    }
+
+    #[test]
+    fn cite_clip_budget_is_two_thousand() {
+        assert_eq!(CITE_TEXT_CHARS, 2000);
     }
 
     #[test]
