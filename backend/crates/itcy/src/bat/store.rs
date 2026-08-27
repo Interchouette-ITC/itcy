@@ -41,6 +41,10 @@ const LIST_PREFIX_SQL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../sql/drafts_list_prefix.sql"
 ));
+const USED_PROPOSE_SUBJECTS_SQL: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../sql/drafts_used_propose_subjects.sql"
+));
 const DELETE_SQL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../sql/drafts_delete.sql"
@@ -277,6 +281,29 @@ impl DraftStore {
         let mut out = Vec::new();
         while let Some(row) = rows.next()? {
             out.push(row_to_draft(row)?);
+        }
+        Ok(out)
+    }
+
+    /// Subjects already used by in-flight or shipped `DRAFT-` / `TWEET-` rows (newest first).
+    ///
+    /// Used by bare `/propose_*` to skip corpus angles that already have a draft or tweet.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DraftStoreError`] on `SQLite` failure.
+    pub fn used_propose_subjects(&self, limit: usize) -> Result<Vec<String>, DraftStoreError> {
+        let cap = i64::try_from(limit.clamp(1, 500)).unwrap_or(200);
+        let mut stmt = self.conn.prepare(USED_PROPOSE_SUBJECTS_SQL)?;
+        let mut rows = stmt.query(params![cap])?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next()? {
+            let subject: String = row.get(0)?;
+            let t = subject.trim();
+            if t.is_empty() {
+                continue;
+            }
+            out.push(t.to_string());
         }
         Ok(out)
     }
