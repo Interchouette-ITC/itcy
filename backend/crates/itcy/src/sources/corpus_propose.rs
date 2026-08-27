@@ -168,9 +168,7 @@ fn topic_fingerprint(text: &str) -> HashSet<String> {
         .collect();
     let mut out = HashSet::new();
     for w in &words {
-        if w.len() >= 4 && !TOPIC_STOPWORDS.contains(w) {
-            out.insert((*w).to_string());
-        } else if SHORT_TOPIC_TOKENS.contains(w) {
+        if (w.len() >= 4 && !TOPIC_STOPWORDS.contains(w)) || SHORT_TOPIC_TOKENS.contains(w) {
             out.insert((*w).to_string());
         }
     }
@@ -215,7 +213,7 @@ const STRONG_TOPIC_SINGLE: &[&str] = &[
 ];
 
 fn normalize_ascii_apostrophes(s: &str) -> String {
-    s.replace('\u{2019}', "'").replace('\u{2018}', "'")
+    s.replace(['\u{2019}', '\u{2018}'], "'")
 }
 
 fn angle_subject(c: &ChunkRecord) -> Option<String> {
@@ -293,7 +291,7 @@ pub fn body_abandons_subject(body: &str, _subject: &str) -> bool {
         .any(|m| lower.contains(&m.to_ascii_lowercase()))
 }
 
-/// True when body uses banned LinkedIn slogan mush (prompt-only is not enough).
+/// True when body uses banned `LinkedIn` slogan mush (prompt-only is not enough).
 #[must_use]
 pub fn body_has_slogan_mush(body: &str) -> bool {
     let lower = normalize_ascii_apostrophes(&body.to_ascii_lowercase());
