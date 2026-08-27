@@ -3,8 +3,10 @@
 
 //! Bare `/propose_draft` / `/propose_tweet`: resolve a concrete subject from corpus.
 
+use crate::bat::store::DraftStore;
 use crate::sources::store::{ChunkRecord, SourceDb};
 use crate::sources::url_hygiene::{is_junk_or_search_url, scrub_https_url};
+use std::collections::HashSet;
 use std::path::Path;
 
 /// `LinkedIn` vs X surface for bare corpus propose instructions.
@@ -17,6 +19,7 @@ pub enum ProposeSurface {
 }
 
 const CANDIDATE_LIMIT: u32 = 80;
+const USED_SUBJECT_LIMIT: usize = 200;
 const MIN_SUBJECT_CHARS: usize = 8;
 const MAX_SUBJECT_CHARS: usize = 160;
 const MAX_GROUNDING_CHARS: usize = 900;
@@ -24,9 +27,13 @@ const MIN_CHUNK_TEXT: usize = 40;
 
 /// Resolve a concrete subject + instructions from corpus (no catalog fallback).
 ///
+/// Skips corpus angles whose subject already appears on an in-flight or shipped
+/// `DRAFT-` / `TWEET-` row so bare propose does not re-open the same story.
+///
 /// # Errors
 ///
-/// Returns an operator-facing message when the corpus has no usable chunks.
+/// Returns an operator-facing message when the corpus has no usable chunks,
+/// or every recent angle is already covered by a draft/tweet.
 pub fn resolve_corpus_propose_brief(
     db_path: &Path,
     surface: ProposeSurface,
@@ -42,9 +49,17 @@ Bare `/propose_draft` / `/propose_tweet` need corpus memory."
                 .into(),
         );
     }
-    let Some(picked) = pick_corpus_angle(&chunks) else {
+    let used = load_used_propose_subjects(db_path);
+    let Some(picked) = pick_corpus_angle(&chunks, &used) else {
+        if used.is_empty() {
+            return Err(
+                "Corpus has chunks but no usable subject angle. Try `/ingest` a publisher URL or refresh the LinkedIn export."
+                    .into(),
+            );
+        }
         return Err(
-            "Corpus has chunks but no usable subject angle. Try `/ingest` a publisher URL or refresh the LinkedIn export."
+            "Every recent corpus angle already has an open, accepted, or published draft/tweet. \
+`/ingest` something new, or `/draft_about <topic>` / `/tweet_about <topic>`."
                 .into(),
         );
     };
@@ -68,6 +83,20 @@ Corpus grounding:\n{grounding}"
     Ok((subject, instructions))
 }
 
+fn load_used_propose_subjects(db_path: &Path) -> HashSet<String> {
+    let Ok(store) = DraftStore::open(db_path) else {
+        return HashSet::new();
+    };
+    let Ok(subjects) = store.used_propose_subjects(USED_SUBJECT_LIMIT) else {
+        return HashSet::new();
+    };
+    subjects
+        .into_iter()
+        .map(|s| s.to_ascii_lowercase())
+        .filter(|s| !s.is_empty() && s != "what we know")
+        .collect()
+}
+
 /// Tighter brief for one post-write retry after off-subject drift.
 #[must_use]
 pub fn tighter_corpus_propose_instructions(subject: &str, surface: ProposeSurface) -> String {
@@ -89,11 +118,14 @@ struct PickedAngle {
     grounding: String,
 }
 
-fn pick_corpus_angle(chunks: &[ChunkRecord]) -> Option<PickedAngle> {
+fn pick_corpus_angle(chunks: &[ChunkRecord], used: &HashSet<String>) -> Option<PickedAngle> {
     let mut seen: Vec<String> = Vec::new();
     for c in chunks {
         let subject = angle_subject(c)?;
         let key = subject.to_ascii_lowercase();
+        if used.contains(&key) {
+            continue;
+        }
         if seen.iter().any(|s| s == &key) {
             continue;
         }
@@ -216,6 +248,7 @@ const OFF_ANGLE_MARKERS: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bat::store::{status, stored_from_payload, DraftPayload, DraftStore};
     use crate::sources::store::InsertSource;
     use tempfile::tempdir;
 
@@ -254,6 +287,89 @@ The shift matters for modular secure systems and independent deploy of component
         assert!(subject.to_ascii_lowercase().contains("component"));
         assert!(instructions.contains("Corpus grounding:"));
         assert!(instructions.contains("Stay on this subject"));
+    }
+
+    #[test]
+    fn resolve_skips_subject_already_published() {
+        let dir = tempdir().expect("temp");
+        let path = dir.path().join("runtime.db");
+        let db = SourceDb::open(&path).expect("open");
+        seed_chunk(
+            &db,
+            "JPEG XL Mozilla ship rewrite",
+            "Mozilla would not ship JPEG XL until someone rewrote the decoder in Rust. \
+Google Research did it and builders care about the codec landing in the browser.",
+        );
+        seed_chunk(
+            &db,
+            "ducklabs join aws projects remain open",
+            "DuckLabs joining AWS keeps DuckDB open source under the DuckDB Foundation. \
+Builders care about stewardship without swallowing the community around the stack.",
+        );
+        drop(db);
+
+        let store = DraftStore::open(&path).expect("drafts");
+        let mut shipped = stored_from_payload(DraftPayload {
+            draft_id: "DRAFT-20260827-000117".into(),
+            subject: "ducklabs join aws projects remain open".into(),
+            body: "body".into(),
+            model: "mock".into(),
+            tokens_in: 1,
+            tokens_out: 1,
+            sources: vec!["https://techzine.eu/duckdb".into()],
+            link_options: Vec::new(),
+            research_pack: String::new(),
+        });
+        shipped.status = status::PUBLISHED.into();
+        store.upsert(&shipped).expect("upsert published");
+        drop(store);
+
+        let (subject, _) =
+            resolve_corpus_propose_brief(&path, ProposeSurface::Draft).expect("resolve");
+        assert!(
+            subject.to_ascii_lowercase().contains("jpeg"),
+            "expected next unused angle, got {subject}"
+        );
+        assert!(
+            !subject.to_ascii_lowercase().contains("ducklabs"),
+            "must not re-propose published subject: {subject}"
+        );
+    }
+
+    #[test]
+    fn resolve_errors_when_all_angles_already_used() {
+        let dir = tempdir().expect("temp");
+        let path = dir.path().join("runtime.db");
+        let db = SourceDb::open(&path).expect("open");
+        seed_chunk(
+            &db,
+            "ducklabs join aws projects remain open",
+            "DuckLabs joining AWS keeps DuckDB open source under the DuckDB Foundation. \
+Builders care about stewardship without swallowing the community around the stack.",
+        );
+        drop(db);
+
+        let store = DraftStore::open(&path).expect("drafts");
+        store
+            .upsert(&stored_from_payload(DraftPayload {
+                draft_id: "DRAFT-20260827-000118".into(),
+                subject: "ducklabs join aws projects remain open".into(),
+                body: "body".into(),
+                model: "mock".into(),
+                tokens_in: 1,
+                tokens_out: 1,
+                sources: Vec::new(),
+                link_options: Vec::new(),
+                research_pack: String::new(),
+            }))
+            .expect("upsert open");
+        drop(store);
+
+        let err = resolve_corpus_propose_brief(&path, ProposeSurface::Draft).unwrap_err();
+        assert!(
+            err.to_ascii_lowercase().contains("already"),
+            "expected all-angles-used error, got {err}"
+        );
     }
 
     #[test]
