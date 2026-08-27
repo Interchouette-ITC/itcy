@@ -27,8 +27,8 @@ const MIN_CHUNK_TEXT: usize = 40;
 
 /// Resolve a concrete subject + instructions from corpus (no catalog fallback).
 ///
-/// Skips corpus angles whose subject already appears on an in-flight or shipped
-/// `DRAFT-` / `TWEET-` row so bare propose does not re-open the same story.
+/// Skips corpus angles whose subject or topic tokens already appear on an in-flight
+/// or shipped `DRAFT-` / `TWEET-` row so bare propose does not re-open the same story.
 ///
 /// # Errors
 ///
@@ -49,9 +49,10 @@ Bare `/propose_draft` / `/propose_tweet` need corpus memory."
                 .into(),
         );
     }
-    let used = load_used_propose_subjects(db_path);
-    let Some(picked) = pick_corpus_angle(&chunks, &used) else {
-        if used.is_empty() {
+    let used_subjects = load_used_propose_subjects(db_path);
+    let used_topics = load_used_propose_topic_fingerprints(db_path);
+    let Some(picked) = pick_corpus_angle(&chunks, &used_subjects, &used_topics) else {
+        if used_subjects.is_empty() && used_topics.is_empty() {
             return Err(
                 "Corpus has chunks but no usable subject angle. Try `/ingest` a publisher URL or refresh the LinkedIn export."
                     .into(),
@@ -97,13 +98,14 @@ fn load_used_propose_subjects(db_path: &Path) -> HashSet<String> {
         .collect()
 }
 
-/// Tighter brief for one post-write retry after off-subject drift.
+/// Tighter brief for one post-write retry after off-subject drift or slogan mush.
 #[must_use]
 pub fn tighter_corpus_propose_instructions(subject: &str, surface: ProposeSurface) -> String {
     let base = match surface {
         ProposeSurface::Draft => {
             "Rewrite one company-page LinkedIn post strictly on the subject below. \
-Ignore entertainment spoilers and unrelated companies. Stay on this subject only."
+Ignore entertainment spoilers and unrelated companies. Stay on this subject only. \
+No slogan mush: never write it's not about / it's not just / isn't just a shift / broader trend."
         }
         ProposeSurface::Tweet => {
             "Rewrite one company X tweet strictly on the subject below. \
@@ -113,17 +115,29 @@ Ignore entertainment spoilers and unrelated companies. Stay on this subject only
     format!("{base}\n\nSubject lock: {subject}")
 }
 
-struct PickedAngle {
-    subject: String,
-    grounding: String,
+fn load_used_propose_topic_fingerprints(db_path: &Path) -> Vec<HashSet<String>> {
+    let Ok(store) = DraftStore::open(db_path) else {
+        return Vec::new();
+    };
+    let Ok(rows) = store.used_propose_topic_texts(USED_SUBJECT_LIMIT) else {
+        return Vec::new();
+    };
+    rows.into_iter()
+        .map(|(subject, body)| topic_fingerprint(&format!("{subject}\n{body}")))
+        .filter(|fp| !fp.is_empty())
+        .collect()
 }
 
-fn pick_corpus_angle(chunks: &[ChunkRecord], used: &HashSet<String>) -> Option<PickedAngle> {
+fn pick_corpus_angle(
+    chunks: &[ChunkRecord],
+    used_subjects: &HashSet<String>,
+    used_topics: &[HashSet<String>],
+) -> Option<PickedAngle> {
     let mut seen: Vec<String> = Vec::new();
     for c in chunks {
         let subject = angle_subject(c)?;
         let key = subject.to_ascii_lowercase();
-        if used.contains(&key) {
+        if used_subjects.contains(&key) {
             continue;
         }
         if seen.iter().any(|s| s == &key) {
@@ -132,11 +146,76 @@ fn pick_corpus_angle(chunks: &[ChunkRecord], used: &HashSet<String>) -> Option<P
         if !chunk_text_usable(&c.text) {
             continue;
         }
+        let candidate_fp = topic_fingerprint(&format!("{subject}\n{}", c.text));
+        if used_topics
+            .iter()
+            .any(|used| topic_fingerprints_overlap(&candidate_fp, used))
+        {
+            continue;
+        }
         seen.push(key);
         let grounding = clip_chars(c.text.trim(), MAX_GROUNDING_CHARS);
         return Some(PickedAngle { subject, grounding });
     }
     None
+}
+
+fn topic_fingerprint(text: &str) -> HashSet<String> {
+    let normalized = normalize_ascii_apostrophes(&text.to_ascii_lowercase()).replace('-', " ");
+    let words: Vec<&str> = normalized
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let mut out = HashSet::new();
+    for w in &words {
+        if w.len() >= 4 && !TOPIC_STOPWORDS.contains(w) {
+            out.insert((*w).to_string());
+        } else if SHORT_TOPIC_TOKENS.contains(w) {
+            out.insert((*w).to_string());
+        }
+    }
+    for pair in words.windows(2) {
+        if pair[0] == "jpeg" && pair[1] == "xl" {
+            out.insert("jpeg_xl".into());
+        }
+    }
+    out
+}
+
+fn topic_fingerprints_overlap(a: &HashSet<String>, b: &HashSet<String>) -> bool {
+    let shared: Vec<&String> = a.intersection(b).collect();
+    if shared.is_empty() {
+        return false;
+    }
+    if shared.len() >= 2 {
+        return true;
+    }
+    let only = shared[0].as_str();
+    STRONG_TOPIC_SINGLE.contains(&only) || only.contains('_')
+}
+
+const TOPIC_STOPWORDS: &[&str] = &[
+    "about", "after", "also", "been", "from", "have", "into", "just", "more", "news", "that",
+    "their", "there", "these", "they", "this", "what", "when", "will", "with", "your",
+];
+
+const SHORT_TOPIC_TOKENS: &[&str] = &["aws", "avif", "mcp", "ssl", "tls", "xl"];
+
+const STRONG_TOPIC_SINGLE: &[&str] = &[
+    "avif",
+    "casper",
+    "discord",
+    "duckdb",
+    "ducklabs",
+    "jpeg",
+    "jpeg_xl",
+    "mozilla",
+    "symfony",
+    "wireguard",
+];
+
+fn normalize_ascii_apostrophes(s: &str) -> String {
+    s.replace('\u{2019}', "'").replace('\u{2018}', "'")
 }
 
 fn angle_subject(c: &ChunkRecord) -> Option<String> {
@@ -212,6 +291,37 @@ pub fn body_abandons_subject(body: &str, _subject: &str) -> bool {
     OFF_ANGLE_MARKERS
         .iter()
         .any(|m| lower.contains(&m.to_ascii_lowercase()))
+}
+
+/// True when body uses banned LinkedIn slogan mush (prompt-only is not enough).
+#[must_use]
+pub fn body_has_slogan_mush(body: &str) -> bool {
+    let lower = normalize_ascii_apostrophes(&body.to_ascii_lowercase());
+    SLOGAN_MUSH_NEEDLES.iter().any(|n| lower.contains(*n))
+}
+
+const SLOGAN_MUSH_NEEDLES: &[&str] = &[
+    "it's not about",
+    "it is not about",
+    "it's not just",
+    "it is not just",
+    "isn't just about",
+    "isn't just a",
+    "isn't just another",
+    "this isn't just",
+    "this is not just",
+    "not just another tool",
+    "it's a shift",
+    "this isn't just a shift",
+    "broader trend",
+    "not just about speed",
+    "isn't just a technical",
+    "isn't just about code",
+];
+
+struct PickedAngle {
+    subject: String,
+    grounding: String,
 }
 
 fn is_off_angle_url(url: &str) -> bool {
@@ -424,6 +534,64 @@ Builders care about stewardship without swallowing the community around the stac
         assert!(!body_abandons_subject(
             "Builders care about modular secure systems and independent deploy.",
             subject
+        ));
+    }
+
+    #[test]
+    fn resolve_skips_topic_overlap_when_subject_differs() {
+        let dir = tempdir().expect("temp");
+        let path = dir.path().join("runtime.db");
+        let db = SourceDb::open(&path).expect("open");
+        seed_chunk(
+            &db,
+            "intent ship jpeg mozilla hacks web",
+            "Mozilla Intent to Ship JPEG XL after a Rust decoder rewrite. Builders watch browser support.",
+        );
+        seed_chunk(
+            &db,
+            "agentic coding practical guide sourcegraph",
+            "Sourcegraph published a practical guide to agentic coding in 2026 for teams shipping with AI.",
+        );
+        drop(db);
+
+        let store = DraftStore::open(&path).expect("drafts");
+        let mut shipped = stored_from_payload(DraftPayload {
+            draft_id: "DRAFT-20260826-000114".into(),
+            subject: "Mozilla wouldn't ship JPEG XL until someone rewrote the decoder in Rust."
+                .into(),
+            body:
+                "JPEG XL decoder rewrite in Rust unlocks Mozilla shipping the format to browsers."
+                    .into(),
+            model: "mock".into(),
+            tokens_in: 1,
+            tokens_out: 1,
+            sources: Vec::new(),
+            link_options: Vec::new(),
+            research_pack: String::new(),
+        });
+        shipped.status = status::PUBLISHED.into();
+        store.upsert(&shipped).expect("upsert");
+        drop(store);
+
+        let (subject, _) =
+            resolve_corpus_propose_brief(&path, ProposeSurface::Draft).expect("resolve");
+        assert!(
+            subject.to_ascii_lowercase().contains("agentic")
+                || subject.to_ascii_lowercase().contains("sourcegraph"),
+            "must skip JPEG overlap, got {subject}"
+        );
+    }
+
+    #[test]
+    fn body_has_slogan_mush_catches_not_about_and_not_just() {
+        assert!(body_has_slogan_mush(
+            "I'm watching how the web debates image formats, and it's not about which is better."
+        ));
+        assert!(body_has_slogan_mush(
+            "This isn't just a shift in how open-source projects evolve."
+        ));
+        assert!(!body_has_slogan_mush(
+            "Mozilla shipped JPEG XL after a Rust decoder rewrite landed in Firefox."
         ));
     }
 

@@ -545,6 +545,12 @@ pub(crate) fn scrub_and_validate_writer_body(
         body = fallback_subject_commentary(subject, primary.as_deref());
     }
     body = ensure_draft_emoji_bar(&body);
+    if crate::sources::corpus_propose::body_has_slogan_mush(&body) {
+        return Err(RagError::Store(
+            "writer returned banned slogan mush (it's not about / it's not just / broader trend)"
+                .into(),
+        ));
+    }
     Ok(body)
 }
 

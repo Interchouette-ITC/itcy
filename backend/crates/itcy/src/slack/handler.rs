@@ -728,7 +728,7 @@ Try `/draft_about` with an explicit topic, or `/propose_draft N` from the digest
         topic: &str,
         instructions: &str,
     ) -> Result<String, String> {
-        use crate::sources::corpus_propose::body_abandons_subject;
+        use crate::sources::corpus_propose::{body_abandons_subject, body_has_slogan_mush};
         let operator_brief = compose_operator_brief(topic, instructions);
         let draft_id = crate::sources::draft_footer::next_draft_id(&self.config.state_db_path)
             .unwrap_or_else(|e| {
@@ -762,6 +762,14 @@ Try `/draft_about` with an explicit topic, or `/propose_draft N` from the digest
                         .and_then(|st| st.delete(&draft_id).ok());
                     return Err(format!(
                         "Writer abandoned corpus subject `{topic}` (draft `{draft_id}` discarded)."
+                    ));
+                }
+                if body_has_slogan_mush(&draft.body) {
+                    let _ = DraftStore::open(&self.config.state_db_path)
+                        .ok()
+                        .and_then(|st| st.delete(&draft_id).ok());
+                    return Err(format!(
+                        "Writer used slogan mush on corpus subject `{topic}` (draft `{draft_id}` discarded)."
                     ));
                 }
                 if let Err(e) = self.persist_grounded_draft(&draft) {

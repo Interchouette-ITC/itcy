@@ -608,9 +608,9 @@ mod tests {
     #[test]
     fn linkedin_craft_bans_not_just_broader_trend_mush() {
         assert!(
-            CREATIVE_LINKEDIN.contains("It's not just (another)")
+            CREATIVE_LINKEDIN.contains("it's not about")
                 || CREATIVE_LINKEDIN.contains("not just another tool"),
-            "Creative LinkedIn must ban not-just slogan class"
+            "Creative LinkedIn must ban not-just / not-about slogan class"
         );
         assert!(
             CREATIVE_LINKEDIN.contains("broader trend"),

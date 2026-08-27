@@ -45,6 +45,10 @@ const USED_PROPOSE_SUBJECTS_SQL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../sql/drafts_used_propose_subjects.sql"
 ));
+const USED_PROPOSE_TOPICS_SQL: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../sql/drafts_used_propose_topics.sql"
+));
 const DELETE_SQL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../sql/drafts_delete.sql"
@@ -304,6 +308,31 @@ impl DraftStore {
                 continue;
             }
             out.push(t.to_string());
+        }
+        Ok(out)
+    }
+
+    /// Subject + body prefix for topic overlap checks on bare `/propose_*`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DraftStoreError`] on `SQLite` failure.
+    pub fn used_propose_topic_texts(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<(String, String)>, DraftStoreError> {
+        let cap = i64::try_from(limit.clamp(1, 500)).unwrap_or(200);
+        let mut stmt = self.conn.prepare(USED_PROPOSE_TOPICS_SQL)?;
+        let mut rows = stmt.query(params![cap])?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next()? {
+            let subject: String = row.get(0)?;
+            let body: String = row.get(1)?;
+            let sub = subject.trim();
+            if sub.is_empty() || sub.eq_ignore_ascii_case("what we know") {
+                continue;
+            }
+            out.push((sub.to_string(), body));
         }
         Ok(out)
     }
