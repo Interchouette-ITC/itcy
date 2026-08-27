@@ -268,7 +268,10 @@ pub(crate) fn attach_tweet_cites(
     } else {
         body
     };
-    let mut link_options = pick_tweet_cite_options(pack_urls, &body);
+    let mut link_options = pick_tweet_cite_options(
+        &crate::sources::corpus_propose::filter_pack_urls_for_subject(pack_urls, brief),
+        &body,
+    );
     for u in &operator_urls {
         crate::sources::tweet_footer::ensure_option(&mut link_options, u);
     }

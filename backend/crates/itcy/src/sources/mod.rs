@@ -3,6 +3,7 @@
 
 //! Sources ingest, `LinkedIn` export import, subject RAG, and Slack intents.
 
+pub mod corpus_propose;
 pub mod digest;
 pub mod digest_propose_fixtures;
 pub mod draft_footer;

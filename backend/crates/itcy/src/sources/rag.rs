@@ -683,18 +683,9 @@ pub async fn build_grounded_draft_with_cite(
     )?;
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = ensure_body_handles_from_pack(tools, &body, &research_pack);
-    let mut link_options = crate::sources::draft_footer::pick_link_options(&pack_urls, &body);
-    if let Some(cite) = prefer.as_deref() {
-        // Digest / operator cite wins Link:1 (including X status URLs).
-        crate::sources::draft_url::promote_link_option(&mut link_options, cite);
-    }
-    (body, link_options) =
-        crate::sources::publisher_url::finalize_reachable_link_options_from_pool(
-            &body,
-            link_options,
-            &refill_pool,
-        )
-        .await;
+    let (body, link_options) =
+        finalize_draft_link_options(body, &pack_urls, &refill_pool, subject, prefer.as_deref())
+            .await;
     let body = crate::sources::draft_footer::compose_draft_message(&body, &draft_id, &link_options);
     info!(draft_id = %draft_id, links = link_options.len(), "load_draft: draft id + links attached");
     Ok(GroundedDraft {
@@ -716,6 +707,30 @@ pub async fn build_grounded_draft_with_cite(
         link_options,
         research_pack,
     })
+}
+
+/// Filter pack/refill by subject, pick Link options, promote cite, reachability finalize.
+async fn finalize_draft_link_options(
+    body: String,
+    pack_urls: &[String],
+    refill_pool: &[String],
+    subject: &str,
+    prefer_cite: Option<&str>,
+) -> (String, Vec<String>) {
+    let filtered_pack =
+        crate::sources::corpus_propose::filter_pack_urls_for_subject(pack_urls, subject);
+    let mut link_options = crate::sources::draft_footer::pick_link_options(&filtered_pack, &body);
+    if let Some(cite) = prefer_cite {
+        crate::sources::draft_url::promote_link_option(&mut link_options, cite);
+    }
+    let filtered_refill =
+        crate::sources::corpus_propose::filter_pack_urls_for_subject(refill_pool, subject);
+    crate::sources::publisher_url::finalize_reachable_link_options_from_pool(
+        &body,
+        link_options,
+        &filtered_refill,
+    )
+    .await
 }
 
 /// Writer-only draft with a pre-filled Interchouette `ResearchPack` (skips LOAD / SERP).
@@ -767,17 +782,9 @@ pub async fn build_grounded_draft_from_pack(
     )?;
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = ensure_body_handles_from_pack(tools, &body, &research_pack);
-    let mut link_options = crate::sources::draft_footer::pick_link_options(&urls, &body);
-    if let Some(cite) = crate::sources::tweet_footer::extract_brief_cite(subject) {
-        crate::sources::draft_url::promote_link_option(&mut link_options, &cite);
-    }
-    (body, link_options) =
-        crate::sources::publisher_url::finalize_reachable_link_options_from_pool(
-            &body,
-            link_options,
-            &refill_pool,
-        )
-        .await;
+    let prefer = crate::sources::tweet_footer::extract_brief_cite(subject);
+    let (body, link_options) =
+        finalize_draft_link_options(body, &urls, &refill_pool, subject, prefer.as_deref()).await;
     let body = crate::sources::draft_footer::compose_draft_message(&body, &draft_id, &link_options);
     Ok(GroundedDraft {
         subject: subject.to_string(),
