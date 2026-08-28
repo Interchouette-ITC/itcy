@@ -7550,3 +7550,17 @@ x_url = "https://x.com/nikomatsakis"
 name = "Alejandro Saez Castells"
 linkedin = "@alejandrosaezc"
 linkedin_url = "https://www.linkedin.com/in/alejandrosaezc/"
+
+[[handle]]
+name = "DuckDB"
+linkedin = "@duckdb"
+x = "@duckdb"
+linkedin_url = "https://www.linkedin.com/company/duckdb/"
+x_url = "https://x.com/duckdb"
+
+[[handle]]
+name = "ScyllaDB"
+linkedin = "@scylladb"
+x = "@ScyllaDB"
+linkedin_url = "https://www.linkedin.com/company/scylladb/"
+x_url = "https://x.com/ScyllaDB"
