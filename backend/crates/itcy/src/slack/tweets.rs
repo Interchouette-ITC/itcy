@@ -511,9 +511,9 @@ Status: **published**.",
                     "fork Interchouette"
                 };
                 let action = if r.updated_existing {
-                    format!("Tweet PR **updated** (**{x_mode}**, {host}, base `drafts_tweet`)")
+                    format!("Tweet PR **updated** (**{x_mode}**, {host}, base `tweets`)")
                 } else {
-                    format!("Tweet PR **opened** (**{x_mode}**, {host}, base `drafts_tweet`)")
+                    format!("Tweet PR **opened** (**{x_mode}**, {host}, base `tweets`)")
                 };
                 let next = crate::slack::saved::next_slash_hints(&r.draft_id, status::ACCEPTED);
                 format!(

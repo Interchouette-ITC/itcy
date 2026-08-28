@@ -61,7 +61,6 @@ const TWEET_REWORK_USER_TMPL: &str = prompt!("tweet_rework_user.md");
 const TWEET_REWORK_USER_TOOLS_TMPL: &str = prompt!("tweet_rework_user_tools.md");
 const TWEET_REWORK_USER_FARCE_TMPL: &str = prompt!("tweet_rework_user_farce.md");
 const REWORK_EMPTY_PACK_TMPL: &str = prompt!("rework_empty_pack.md");
-const TWEET_REWORK_PREVIOUS_OMITTED: &str = prompt!("tweet_rework_previous_omitted.md");
 const TWEET_REWORK_COMMENTARY_EXPLODED: &str = prompt!("tweet_rework_commentary_exploded.md");
 const TWEET_REWORK_COMMENTARY_EMPTY: &str = prompt!("tweet_rework_commentary_empty.md");
 const TWEET_PACK_NOTE_SUBJECT_HTTPS: &str = prompt!("tweet_pack_note_subject_https.md");
@@ -238,12 +237,6 @@ pub fn tweet_rework_user_message(args: &TweetReworkUserArgs<'_>) -> String {
         s = fill(&s, "pack", args.pack);
     }
     s
-}
-
-/// Placeholder when a long `/rework` omits the previous tweet body.
-#[must_use]
-pub fn tweet_rework_previous_omitted() -> &'static str {
-    TWEET_REWORK_PREVIOUS_OMITTED.trim()
 }
 
 /// Commentary placeholder when the stored tweet body was an essay dump.
