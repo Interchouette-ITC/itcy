@@ -191,7 +191,7 @@ pub fn tweet_emoji_ok(text: &str) -> bool {
     count_emoji(text) >= 2
 }
 
-fn char_is_emoji_like(c: char) -> bool {
+pub(crate) fn char_is_emoji_like(c: char) -> bool {
     let u = c as u32;
     matches!(
         u,

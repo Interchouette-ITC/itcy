@@ -468,8 +468,9 @@ fn slash_args_look_like_usage_chrome(cmd: &str, args: &str) -> bool {
 /// Pasted draft / `/show` chrome: do not treat as operator input (inline slash or freeform).
 #[must_use]
 pub fn looks_like_bot_draft_paste(text: &str) -> bool {
-    let t = text;
-    t.contains("0 = no link")
+    let t = text.trim_start();
+    t.starts_with("Received /")
+        || t.contains("0 = no link")
         || t.contains("Written by AI - ITCy")
         || t.contains(":point_right: Next:")
         || t.contains("Draft ID:")
@@ -1119,6 +1120,16 @@ mod tests {
             }
             other => panic!("expected ChangeUrl 1, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn bot_slash_ack_echo_is_paste_chrome() {
+        assert!(looks_like_bot_draft_paste(
+            "Received /accept DRAFT-20260828-000122"
+        ));
+        assert!(looks_like_bot_draft_paste(
+            "Received /change_url DRAFT-20260828-000122, 5"
+        ));
     }
 
     #[test]

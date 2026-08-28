@@ -27,6 +27,7 @@ pub use disclosure::{
 };
 pub use registry::build_router;
 pub use router::{ChainCandidate, FailoverRouter, TaskChains, TaskKind};
+pub(crate) use sanitize::char_is_emoji_like;
 pub use sanitize::{
     count_emoji, expand_emoji_shortcodes, instructions_ask_for_emoji,
     sanitize_body_keep_operator_chrome, sanitize_itcy_text, text_contains_emoji, tweet_emoji_ok,

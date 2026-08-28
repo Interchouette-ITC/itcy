@@ -6,7 +6,7 @@
 use crate::bat::store::{
     status, stored_building_stub, stored_from_payload, DraftPayload, DraftStore,
 };
-use crate::bat::submit::{accept_draft, ensure_open_for_edit, retry_bat};
+use crate::bat::submit::{accept_draft, ensure_open_for_edit, retry_bat, BatSubmitResult};
 use crate::config::Config;
 use crate::llm::router::TaskKind;
 use crate::llm::FailoverRouter;
@@ -442,7 +442,11 @@ impl SlackRuntime {
             Ok(None) => format!("draft_id={id}\nstatus=missing\nNo row in runtime.db."),
             Err(_) => return text.to_string(),
         };
-        format!("{text}\n\n[runtime draft_status: authoritative, do not contradict]\n{fact}")
+        format!(
+            "{text}\n\n[runtime draft_status: authoritative, do not contradict]\n{fact}\n\
+Do not restate the full subject unless the operator explicitly asked for it. \
+Never claim you ran /change_url, /accept, or /rework."
+        )
     }
 
     async fn dispatch_command(&self, cmd: OperatorCommand) -> String {
@@ -692,11 +696,9 @@ impl SlackRuntime {
         }
     }
 
-    /// Bare `/propose_draft`: resolve subject from corpus, write, refuse off-subject once.
+    /// Bare `/propose_draft`: resolve subject from corpus, one writer pass.
     async fn corpus_propose_draft_reply(&self) -> String {
-        use crate::sources::corpus_propose::{
-            resolve_corpus_propose_brief, tighter_corpus_propose_instructions, ProposeSurface,
-        };
+        use crate::sources::corpus_propose::{resolve_corpus_propose_brief, ProposeSurface};
         let (subject, instructions) =
             match resolve_corpus_propose_brief(&self.config.state_db_path, ProposeSurface::Draft) {
                 Ok(v) => v,
@@ -707,18 +709,11 @@ impl SlackRuntime {
             .await
         {
             Ok(msg) => msg,
-            Err(first_err) => {
-                let tight = tighter_corpus_propose_instructions(&subject, ProposeSurface::Draft);
-                self.corpus_propose_draft_attempt(&subject, &tight)
-                    .await
-                    .unwrap_or_else(|_| {
-                        format!(
-                            "Bare `/propose_draft` could not stay on corpus subject `{subject}`.\n\
+            Err(first_err) => format!(
+                "Bare `/propose_draft` could not stay on corpus subject `{subject}`.\n\
 {first_err}\n\
 Try `/draft_about` with an explicit topic, or `/propose_draft N` from the digest."
-                        )
-                    })
-            }
+            ),
         }
     }
 
@@ -855,19 +850,6 @@ Try `/draft_about` with an explicit topic, or `/propose_draft N` from the digest
                     "No corpus hits yet for `{s}`, and the model could not ground a draft.\n\n\
 Try /draft_about again, or paste a public article URL into freeform so ingest can save it.\n\n\
 Draft `{draft_id}` marked failed"
-                )
-            }
-            Err(RagError::SloganMush) => {
-                let _ = DraftStore::open(&self.config.state_db_path)
-                    .ok()
-                    .and_then(|st| {
-                        st.mark_status_from(&draft_id, status::BUILDING, status::FAILED)
-                            .ok()
-                    });
-                format!(
-                    "Writer kept banned LinkedIn slogans after one retry (it's not about / it's not just).\n\n\
-Try `/draft_about` with explicit instructions: no slogan framing, name the entity directly.\n\n\
-Draft `{draft_id}` marked failed."
                 )
             }
             Err(e) => {
@@ -1053,27 +1035,9 @@ Status: **published**.",
                         detail = p.detail
                     );
                 }
-                let action = if r.updated_existing {
-                    "Draft PR **updated** (same fork PR; status was already accepted: ok to re-run)"
-                } else {
-                    "Draft PR **opened** (fork)"
-                };
                 let paste = paste_block_for_draft(&self.config.state_db_path, &r.draft_id);
                 let next = crate::slack::saved::next_slash_hints(&r.draft_id, status::ACCEPTED);
-                format!(
-                    ":white_check_mark: {action}:\n\
-• draft: `{id}`\n\
-• branch: `{branch}`\n\
-• PR: {url}\n\
-:hourglass_flowing_sand: Status: **accepted**. Waiting **gRoussac** Approve = BAT → Post on Interchouette (playground soft ship).\n\n\
-{paste}\n\n\
-{next}",
-                    id = r.draft_id,
-                    branch = r.branch,
-                    url = r.pr_url,
-                    paste = paste,
-                    next = next,
-                )
+                format_linkedin_accept_slack(&r, &paste, &next)
             }
             Err(e) => format!("Could not accept Draft: {e}"),
         }
@@ -1559,6 +1523,44 @@ fn looks_like_draft_status_ask(text: &str) -> bool {
         || lower.contains("ou sommes")
 }
 
+/// Slack body after `/accept` on a `LinkedIn` draft (fork block unchanged; optional org block + footer PR links).
+#[must_use]
+fn format_linkedin_accept_slack(r: &BatSubmitResult, paste: &str, next: &str) -> String {
+    use std::fmt::Write as _;
+
+    let head = if r.updated_existing {
+        "Draft PR **updated** (fork)"
+    } else {
+        "Draft PR **opened** (fork)"
+    };
+    let mut out = format!(
+        ":white_check_mark: {head}:\n\
+• draft: `{id}`\n\
+• branch: `{branch}`\n\
+• PR: {pr_url}\n\
+:hourglass_flowing_sand: Status: **accepted**. Waiting **gRoussac** Approve = BAT → Post on Interchouette (playground soft ship).\n",
+        id = r.draft_id,
+        branch = r.branch,
+        pr_url = r.pr_url,
+    );
+    if let Some(org_url) = r.org_draft_pr_url.as_deref() {
+        let _ = write!(
+            out,
+            "\n:white_check_mark: Org Draft PR **opened** (Interchouette-ITC):\n\
+• draft: `{id}`\n\
+• PR: {org_url}\n\
+:hourglass_flowing_sand: Status: **accepted**. Waiting **gRoussac** Approve = DRAFT on production git.\n",
+            id = r.draft_id,
+        );
+    }
+    let _ = write!(out, "\n{paste}\n\n{next}");
+    let _ = write!(out, "\n:link: Fork BAT: {}", r.pr_url);
+    if let Some(org_url) = r.org_draft_pr_url.as_deref() {
+        let _ = write!(out, "\n:link: Org drafts: {org_url}");
+    }
+    out
+}
+
 /// Load draft row and build the Slack-fenced manual `LinkedIn` paste block.
 fn paste_block_for_draft(db_path: &std::path::Path, draft_id: &str) -> String {
     let Ok(store) = DraftStore::open(db_path) else {
@@ -1572,8 +1574,9 @@ fn paste_block_for_draft(db_path: &std::path::Path, draft_id: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::looks_like_draft_status_ask;
+    use super::{format_linkedin_accept_slack, looks_like_draft_status_ask};
     use crate::bat::store::{stored_from_payload, DraftPayload, DraftStore};
+    use crate::bat::submit::BatSubmitResult;
     use crate::llm::client::{LlmClient, LlmError, LlmMessage, LlmResponse, LlmRole, LlmToolDef};
     use crate::llm::router::{ChainCandidate, FailoverRouter, TaskChains, TaskKind};
     use crate::slack::commands::{
@@ -1795,5 +1798,52 @@ mod tests {
         assert!(text.contains("X replies"), "{text}");
         assert!(text.contains("CREPLY-20260825-000001"), "{text}");
         assert!(text.contains("XREPLY-20260825-000001"), "{text}");
+    }
+
+    #[test]
+    fn linkedin_accept_slack_shows_fork_and_org_pr_blocks() {
+        let fork = BatSubmitResult {
+            draft_id: "DRAFT-20260828-000122".into(),
+            branch: "draft/DRAFT-20260828-000122".into(),
+            pr_number: 58,
+            pr_url: "https://github.com/Interchouette/itcy-publications/pull/58".into(),
+            updated_existing: false,
+            promoted: None,
+            org_draft_pr_number: Some(101),
+            org_draft_pr_url: Some(
+                "https://github.com/Interchouette-ITC/itcy-publications/pull/101".into(),
+            ),
+        };
+        let body = format_linkedin_accept_slack(&fork, "PASTE", "NEXT");
+        assert!(
+            body.contains("• PR: https://github.com/Interchouette/itcy-publications/pull/58"),
+            "{body}"
+        );
+        assert!(body.contains("playground soft ship"), "{body}");
+        assert!(body.contains("Org Draft PR **opened**"), "{body}");
+        assert!(body.contains("production git"), "{body}");
+        assert!(body.contains(":link: Fork BAT:"), "{body}");
+        assert!(body.contains(":link: Org drafts:"), "{body}");
+        assert!(body.contains("pull/101"), "{body}");
+        assert!(body.contains("PASTE"), "{body}");
+        assert!(body.contains("NEXT"), "{body}");
+    }
+
+    #[test]
+    fn linkedin_accept_slack_fork_only_no_org_footer() {
+        let fork = BatSubmitResult {
+            draft_id: "DRAFT-20260828-000122".into(),
+            branch: "draft/DRAFT-20260828-000122".into(),
+            pr_number: 58,
+            pr_url: "https://github.com/Interchouette/itcy-publications/pull/58".into(),
+            updated_existing: false,
+            promoted: None,
+            org_draft_pr_number: None,
+            org_draft_pr_url: None,
+        };
+        let body = format_linkedin_accept_slack(&fork, "PASTE", "NEXT");
+        assert!(!body.contains("Org Draft PR"), "{body}");
+        assert!(!body.contains("Org drafts:"), "{body}");
+        assert!(body.contains(":link: Fork BAT:"), "{body}");
     }
 }
