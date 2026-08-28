@@ -224,6 +224,17 @@ pub struct RepoFile {
     pub content: String,
 }
 
+/// BAT webhook path after Approve on a publications PR.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BatApproveWakeRoute {
+    /// Legacy org **`drafts`** mirror: squash merge only (no ship).
+    OrgDraftsMirrorMergeOnly,
+    /// Fork **`posts`** / org **`tweets`** BAT: merge (if needed) + ship.
+    PromoteAndShip,
+    /// Not a BAT head (babysit / ignore).
+    NotBat,
+}
+
 /// Result of promoting a fork Draft PR to an org Post.
 #[derive(Debug, Clone)]
 pub struct PromoteResult {
@@ -620,11 +631,32 @@ impl GithubClient {
         })
     }
 
-    /// True when a webhook wake targets the org **`drafts`** mirror (second PR at `/accept`).
+    /// True when a webhook wake targets the org **`drafts`** mirror (legacy second PR at `/accept`).
     #[must_use]
-    pub fn is_org_drafts_mirror_wake(pr_owner: &str, cfg: &BatGithubConfig) -> bool {
+    pub fn is_org_drafts_mirror_wake(
+        pr_owner: &str,
+        head_ref: &str,
+        cfg: &BatGithubConfig,
+    ) -> bool {
         pr_owner.eq_ignore_ascii_case(&cfg.org_owner)
             && !cfg.drafts_owner.eq_ignore_ascii_case(&cfg.org_owner)
+            && head_ref.starts_with("draft/")
+    }
+
+    /// Which BAT webhook path runs after Approve (pure; unit-tested).
+    #[must_use]
+    pub fn bat_approve_wake_route(
+        pr_owner: &str,
+        head_ref: &str,
+        cfg: &BatGithubConfig,
+    ) -> BatApproveWakeRoute {
+        if Self::is_org_drafts_mirror_wake(pr_owner, head_ref, cfg) {
+            return BatApproveWakeRoute::OrgDraftsMirrorMergeOnly;
+        }
+        if crate::bat::pack::is_bat_pr_head(head_ref) {
+            return BatApproveWakeRoute::PromoteAndShip;
+        }
+        BatApproveWakeRoute::NotBat
     }
 
     /// Squash-merge an approved org **`drafts`** mirror PR only (no POST write, no ship).
@@ -1822,7 +1854,95 @@ mod tests {
 
     #[test]
     fn org_drafts_mirror_wake_only_on_org_when_fork_bat() {
-        let cfg = BatGithubConfig {
+        let cfg = fork_playground_bat_cfg();
+        assert!(GithubClient::is_org_drafts_mirror_wake(
+            "Interchouette-ITC",
+            "draft/DRAFT-20260801-000001",
+            &cfg
+        ));
+        assert!(!GithubClient::is_org_drafts_mirror_wake(
+            "Interchouette-ITC",
+            "xpost/XPOST-20260828-000093",
+            &cfg
+        ));
+        assert!(!GithubClient::is_org_drafts_mirror_wake(
+            "Interchouette",
+            "draft/DRAFT-20260801-000001",
+            &cfg
+        ));
+    }
+
+    /// Regression: org production X BAT (PR #105 / TWEET-20260828-000093) must promote+ship, not mirror merge.
+    #[test]
+    fn bat_approve_wake_route_matrix() {
+        let fork = fork_playground_bat_cfg();
+        let prod_x = production_x_bat_cfg();
+        let cases: &[(&str, &str, &BatGithubConfig, BatApproveWakeRoute, &str)] = &[
+            (
+                "Interchouette-ITC",
+                "draft/DRAFT-20260801-000001",
+                &fork,
+                BatApproveWakeRoute::OrgDraftsMirrorMergeOnly,
+                "legacy org drafts mirror",
+            ),
+            (
+                "Interchouette-ITC",
+                "xpost/XPOST-20260828-000093",
+                &prod_x,
+                BatApproveWakeRoute::PromoteAndShip,
+                "regression org production tweet BAT PR #105",
+            ),
+            (
+                "Interchouette-ITC",
+                "post/POST-20260828-000129",
+                &fork,
+                BatApproveWakeRoute::PromoteAndShip,
+                "org post head is never mirror-only",
+            ),
+            (
+                "Interchouette",
+                "post/POST-20260828-000129",
+                &fork,
+                BatApproveWakeRoute::PromoteAndShip,
+                "fork linkedin posts BAT",
+            ),
+            (
+                "Interchouette",
+                "xpost/XPOST-20260828-000065",
+                &fork,
+                BatApproveWakeRoute::PromoteAndShip,
+                "fork x playground BAT",
+            ),
+            (
+                "Interchouette",
+                "draft/DRAFT-20260801-000001",
+                &fork,
+                BatApproveWakeRoute::PromoteAndShip,
+                "fork linkedin draft branch BAT",
+            ),
+            (
+                "Interchouette",
+                "tweet/TWEET-20260828-000093",
+                &fork,
+                BatApproveWakeRoute::PromoteAndShip,
+                "legacy tweet head on fork",
+            ),
+            (
+                "Interchouette-ITC",
+                "mig-ymd/itcy-drafts",
+                &fork,
+                BatApproveWakeRoute::NotBat,
+                "migration PR babysit",
+            ),
+        ];
+        for (owner, head, cfg, want, label) in cases {
+            let got = GithubClient::bat_approve_wake_route(owner, head, cfg);
+            assert_eq!(got, *want, "{label}: owner={owner} head={head}");
+        }
+    }
+
+    fn fork_playground_bat_cfg() -> BatGithubConfig {
+        BatGithubConfig {
             token: "t".into(),
             org_owner: "Interchouette-ITC".into(),
             fork_owner: "Interchouette".into(),
@@ -1836,15 +1956,15 @@ mod tests {
             tweet_posts_owner: "Interchouette".into(),
             tweet_posts_base: "tweets".into(),
             reviewer: "gRoussac".into(),
-        };
-        assert!(GithubClient::is_org_drafts_mirror_wake(
-            "Interchouette-ITC",
-            &cfg
-        ));
-        assert!(!GithubClient::is_org_drafts_mirror_wake(
-            "Interchouette",
-            &cfg
-        ));
+        }
+    }
+
+    fn production_x_bat_cfg() -> BatGithubConfig {
+        BatGithubConfig {
+            tweet_owner: "Interchouette-ITC".into(),
+            tweet_posts_owner: "Interchouette-ITC".into(),
+            ..fork_playground_bat_cfg()
+        }
     }
 
     #[test]

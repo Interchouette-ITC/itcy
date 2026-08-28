@@ -10,7 +10,8 @@ pub mod submit;
 
 pub use github::{
     github_token_from_env_or_creds, is_playground_mode, post_pr_body, xpost_pr_body,
-    BatGithubConfig, ClosePrOutcome, GithubClient, GithubError, OpenedPr, PromoteResult,
+    BatApproveWakeRoute, BatGithubConfig, ClosePrOutcome, GithubClient, GithubError, OpenedPr,
+    PromoteResult,
 };
 pub use pack::{
     body_as_post, body_as_xpost, branch_name_for_draft, branch_name_for_post,
