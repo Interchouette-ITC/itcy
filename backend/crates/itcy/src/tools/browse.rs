@@ -184,8 +184,7 @@ Page text / snapshot (truncated):\n{trimmed}"
         ))
     }
 
-    /// Public web search via host-browser DOM SERP (default Brave Search URL). Never invents URLs.
-    /// One tool call scrapes **All** then **News**, merges EXTRACTED links (news/article-preferring rank).
+    /// Public web search: **`DuckDuckGo`** organic links + **Brave** AI overview (no Brave News).
     ///
     /// # Errors
     ///
@@ -201,38 +200,29 @@ Page text / snapshot (truncated):\n{trimmed}"
                 "web_search requires a non-empty query".into(),
             ));
         }
-        let serp_engine = serp_engine_name();
         let round = self.begin_round("web_search", step_dir);
 
-        // Stay on the configured SERP engine only (no silent Google hop when Brave is set).
-        let web_attempt = self
-            .dom_serp_once(q, &serp_engine, SerpScope::All, &round, "01-web")
+        let ddg_attempt = self
+            .dom_serp_once(q, "duckduckgo", SerpScope::All, &round, "01-ddg")
             .await?;
-        let news_attempt = self
-            .dom_serp_once(q, &serp_engine, SerpScope::News, &round, "02-news")
+        let brave_engine = serp_engine_name();
+        let brave_attempt = self
+            .dom_serp_once(q, &brave_engine, SerpScope::All, &round, "02-brave-ai")
             .await?;
 
         let merged =
-            crate::tools::serp::merge_news_and_web_links(&news_attempt.links, &web_attempt.links);
+            crate::tools::serp::merge_ddg_and_brave_links(&ddg_attempt.links, &brave_attempt.links);
         let merged_show: Vec<_> = merged.into_iter().take(10).collect();
 
-        write_web_search_artifacts(
-            &round,
-            q,
-            &serp_engine,
-            &web_attempt,
-            &news_attempt,
-            &merged_show,
-        );
+        write_web_search_artifacts(&round, q, &ddg_attempt, &brave_attempt, &merged_show);
 
         let browser = pw_browser_name();
         if let Some(err) = web_search_empty_error(
             q,
-            &serp_engine,
             &browser,
             &round,
-            &web_attempt,
-            &news_attempt,
+            &ddg_attempt,
+            &brave_attempt,
             merged_show.is_empty(),
         ) {
             return Err(err);
@@ -240,22 +230,20 @@ Page text / snapshot (truncated):\n{trimmed}"
 
         info!(
             query = %q,
-            serp_engine = %serp_engine,
             browser = %browser,
-            web_links = web_attempt.links.len(),
-            news_links = news_attempt.links.len(),
+            ddg_links = ddg_attempt.links.len(),
+            brave_links = brave_attempt.links.len(),
             merged = merged_show.len(),
-            ai_chars = web_attempt.ai_overview.len() + news_attempt.ai_overview.len(),
-            "tools: web_search ok (All+News)"
+            ai_chars = brave_attempt.ai_overview.len(),
+            "tools: web_search ok (DDG links + Brave AI overview)"
         );
 
         let tool_out = format_web_search_tool_out(
             q,
-            &serp_engine,
             &browser,
             &round,
-            &web_attempt,
-            &news_attempt,
+            &ddg_attempt,
+            &brave_attempt,
             &merged_show,
         );
         write_step_text(&round, "tool_result.txt", &tool_out);
@@ -275,7 +263,7 @@ Page text / snapshot (truncated):\n{trimmed}"
         info!(
             query = %q,
             serp_engine = %serp_engine,
-            scope = scope.as_str(),
+            scope = "web",
             label = %label,
             url = %search_url,
             "tools: web_search DOM"
@@ -287,11 +275,11 @@ Page text / snapshot (truncated):\n{trimmed}"
             )
             .await
         {
-            warn!(error = %e, scope = scope.as_str(), "tools: web_search DOM navigate failed");
+            warn!(error = %e, scope = "web", "tools: web_search DOM navigate failed");
             return Ok(DomSerpAttempt::blocked_empty(search_url));
         }
-        // All+summary and News cards often hydrate after first paint.
-        let wait_secs = if scope == SerpScope::All { 4 } else { 3 };
+        // All+summary cards often hydrate after first paint.
+        let wait_secs = 4;
         let _ = self
             .call_mcp(
                 "browser_wait_for",
@@ -362,7 +350,7 @@ Page text / snapshot (truncated):\n{trimmed}"
         if blocked {
             warn!(
                 serp_engine = %serp_engine,
-                scope = scope.as_str(),
+                scope = "web",
                 page_href = %page_href,
                 "tools: SERP interstitial/block detected"
             );
@@ -578,6 +566,11 @@ fn serp_blocked_from_signals(
             || crate::tools::serp::looks_like_google_block(href)
             || crate::tools::serp::looks_like_google_block(snap);
     }
+    if serp_engine == "duckduckgo" {
+        blocked = blocked
+            || crate::tools::serp::looks_like_ddg_block(href)
+            || crate::tools::serp::looks_like_ddg_block(snap);
+    }
     blocked
 }
 
@@ -585,6 +578,7 @@ fn apply_html_block_signals(serp_engine: &str, blocked: bool, page_html: &str) -
     blocked
         || (serp_engine == "brave" && crate::tools::serp::looks_like_brave_block(page_html))
         || (serp_engine == "google" && crate::tools::serp::looks_like_google_block(page_html))
+        || (serp_engine == "duckduckgo" && crate::tools::serp::looks_like_ddg_block(page_html))
 }
 
 fn resolve_serp_links(
@@ -617,17 +611,15 @@ fn ai_overview_or_none(raw: &str) -> String {
 fn write_web_search_artifacts(
     round: &Path,
     q: &str,
-    serp_engine: &str,
-    web_attempt: &DomSerpAttempt,
-    news_attempt: &DomSerpAttempt,
+    ddg_attempt: &DomSerpAttempt,
+    brave_attempt: &DomSerpAttempt,
     merged_show: &[crate::tools::serp::SerpLink],
 ) {
-    let formatted_web = crate::tools::serp::format_serp_links_labeled(&web_attempt.links, "web");
-    let formatted_news = crate::tools::serp::format_serp_links_labeled(&news_attempt.links, "news");
+    let formatted_ddg = crate::tools::serp::format_serp_links_labeled(&ddg_attempt.links, "ddg");
+    let formatted_brave =
+        crate::tools::serp::format_serp_links_labeled(&brave_attempt.links, "brave-fallback");
     let formatted_merged = crate::tools::serp::format_serp_links(merged_show);
-    let ai_web = ai_overview_or_none(&web_attempt.ai_overview);
-    let ai_news = ai_overview_or_none(&news_attempt.ai_overview);
-    let ai_chars = web_attempt.ai_overview.len() + news_attempt.ai_overview.len();
+    let ai_brave = ai_overview_or_none(&brave_attempt.ai_overview);
 
     write_round_meta(
         round,
@@ -635,85 +627,83 @@ fn write_web_search_artifacts(
             ("kind", "web_search"),
             ("query", q),
             ("browser", &pw_browser_name()),
-            ("serp_engine", serp_engine),
-            ("search_url_web", &web_attempt.search_url),
-            ("search_url_news", &news_attempt.search_url),
-            ("page_href_web", &web_attempt.page_href),
-            ("page_href_news", &news_attempt.page_href),
+            ("search_url_ddg", &ddg_attempt.search_url),
+            ("search_url_brave_ai", &brave_attempt.search_url),
+            ("page_href_ddg", &ddg_attempt.page_href),
+            ("page_href_brave_ai", &brave_attempt.page_href),
             (
-                "dom_blocked_web",
-                if web_attempt.blocked { "true" } else { "false" },
+                "dom_blocked_ddg",
+                if ddg_attempt.blocked { "true" } else { "false" },
             ),
             (
-                "dom_blocked_news",
-                if news_attempt.blocked {
+                "dom_blocked_brave_ai",
+                if brave_attempt.blocked {
                     "true"
                 } else {
                     "false"
                 },
             ),
-            ("ai_overview_chars", &ai_chars.to_string()),
-            ("screenshot_web", &web_attempt.shot),
-            ("screenshot_news", &news_attempt.shot),
+            (
+                "ai_overview_chars",
+                &brave_attempt.ai_overview.len().to_string(),
+            ),
+            ("screenshot_ddg", &ddg_attempt.shot),
+            ("screenshot_brave_ai", &brave_attempt.shot),
             ("extracted_merged", &formatted_merged),
         ],
     );
-    // Explicit artifacts for humans (AI overview + News/All extracts).
     write_step_text(
         round,
         "search_urls.txt",
         &format!(
-            "web (All, source=web&summary=1):\n{}\n\nnews (source=web):\n{}\n",
-            web_attempt.search_url, news_attempt.search_url
+            "ddg (organic links):\n{}\n\nbrave (AI overview, summary=1):\n{}\n",
+            ddg_attempt.search_url, brave_attempt.search_url
         ),
     );
-    write_step_text(round, "ai_overview_web.txt", &ai_web);
-    write_step_text(round, "ai_overview_news.txt", &ai_news);
-    write_step_text(round, "extracted_web.txt", &formatted_web);
-    write_step_text(round, "extracted_news.txt", &formatted_news);
+    write_step_text(round, "ai_overview_brave.txt", &ai_brave);
+    write_step_text(round, "extracted_ddg.txt", &formatted_ddg);
+    write_step_text(round, "extracted_brave_fallback.txt", &formatted_brave);
     write_step_text(round, "extracted_merged.txt", &formatted_merged);
 }
 
 fn web_search_empty_error(
     q: &str,
-    serp_engine: &str,
     browser: &str,
     round: &Path,
-    web_attempt: &DomSerpAttempt,
-    news_attempt: &DomSerpAttempt,
-    both_empty: bool,
+    ddg_attempt: &DomSerpAttempt,
+    brave_attempt: &DomSerpAttempt,
+    merged_empty: bool,
 ) -> Option<LlmError> {
-    if !both_empty {
+    if !merged_empty {
         return None;
     }
-    let any_blocked = (web_attempt.blocked && web_attempt.links.is_empty())
-        && (news_attempt.blocked && news_attempt.links.is_empty());
-    if any_blocked {
+    let ddg_dead = ddg_attempt.blocked && ddg_attempt.links.is_empty();
+    let brave_dead = brave_attempt.blocked && brave_attempt.links.is_empty();
+    if ddg_dead && brave_dead {
         error!(
             query = %q,
-            serp_engine = %serp_engine,
             browser = %browser,
-            "tools: web_search blocked by SERP (web+news empty)"
+            "tools: web_search blocked (DDG + Brave empty)"
         );
         let detail = format!(
-            "web_search: SERP blocked ({serp_engine} in {browser}). \
-web_href={} news_href={} round={}. \
+            "web_search: SERP blocked (duckduckgo+brave in {browser}). \
+ddg_href={} brave_href={} round={}. \
 Do NOT invent URLs. Leave ResearchPack candidates empty.",
-            web_attempt.page_href,
-            news_attempt.page_href,
+            ddg_attempt.page_href,
+            brave_attempt.page_href,
             round.display()
         );
         write_step_text(round, "tool_result.txt", &detail);
         return Some(LlmError::ToolProvider(format!(
-            "web_search: SERP blocked ({serp_engine}/{browser}). No publisher links."
+            "web_search: SERP blocked (duckduckgo+brave/{browser}). No publisher links."
         )));
     }
-    error!(query = %q, "tools: web_search found no links (web+news)");
+    error!(query = %q, "tools: web_search found no links (DDG+Brave)");
     let detail = format!(
-        "web_search: no publisher links from DOM (All+News). \
-web_href={} news_href={} round={}. Do NOT invent URLs.",
-        web_attempt.page_href,
-        news_attempt.page_href,
+        "web_search: no publisher links from DOM (DDG + Brave). \
+ddg_href={} brave_href={} round={}. Do NOT invent URLs.",
+        ddg_attempt.page_href,
+        brave_attempt.page_href,
         round.display()
     );
     write_step_text(round, "tool_result.txt", &detail);
@@ -724,48 +714,43 @@ web_href={} news_href={} round={}. Do NOT invent URLs.",
 
 fn format_web_search_tool_out(
     q: &str,
-    serp_engine: &str,
     browser: &str,
     round: &Path,
-    web_attempt: &DomSerpAttempt,
-    news_attempt: &DomSerpAttempt,
+    ddg_attempt: &DomSerpAttempt,
+    brave_attempt: &DomSerpAttempt,
     merged_show: &[crate::tools::serp::SerpLink],
 ) -> String {
-    let formatted_web = crate::tools::serp::format_serp_links_labeled(&web_attempt.links, "web");
-    let formatted_news = crate::tools::serp::format_serp_links_labeled(&news_attempt.links, "news");
+    let formatted_ddg = crate::tools::serp::format_serp_links_labeled(&ddg_attempt.links, "ddg");
+    let formatted_brave =
+        crate::tools::serp::format_serp_links_labeled(&brave_attempt.links, "brave-fallback");
     let formatted_merged = crate::tools::serp::format_serp_links(merged_show);
-    let ai_web = ai_overview_or_none(&web_attempt.ai_overview);
-    let ai_news = ai_overview_or_none(&news_attempt.ai_overview);
+    let ai_brave = ai_overview_or_none(&brave_attempt.ai_overview);
     format!(
         "web_search query={q}\n\
-serp_engine={serp_engine} browser={browser}\n\
-Purpose: pick 3-4 ON-TOPIC candidates from MERGED EXTRACTED (All + News), then browse_url 1-2 of them.\n\
-Prefer news/analysis articles (e.g. Sogeti Labs Token Tax) over directories (Crunchbase) or bare GitHub repos when on-topic.\n\
-AI_OVERVIEW is helper context only - still require ON-TOPIC final_url from EXTRACTED + browse_url.\n\
-Social URLs stripped from EXTRACTED: LinkedIn / Instagram / Facebook / TikTok \
-(LinkedIn is corpus/scrap only - never browse or cite).\n\
-Never invent URLs. Never browse example.com. Never cite google.com/search or search.brave.com.\n\
-Never YouTube, Reddit, LinkedIn, or Instagram.\n\
-search_page_web={}\npage_href_web={}\n\
-search_page_news={}\npage_href_news={}\n\
-dom_blocked_web={} dom_blocked_news={}\n\
-round={}\nscreenshot_web={}\nscreenshot_news={}\n\n\
-AI_OVERVIEW (web All):\n{ai_web}\n\n\
-AI_OVERVIEW (News):\n{ai_news}\n\n\
-EXTRACTED links from News ({n_news}):\n{formatted_news}\n\
-EXTRACTED links from All/web ({n_web}):\n{formatted_web}\n\
+browser={browser}\n\
+Purpose: pick 3-4 ON-TOPIC candidates from MERGED EXTRACTED (DuckDuckGo organic), then browse_url 1-2.\n\
+AI_OVERVIEW from Brave (summary=1) is helper context only - still require ON-TOPIC final_url from EXTRACTED + browse_url.\n\
+Social URLs stripped from EXTRACTED: LinkedIn / Instagram / Facebook / TikTok.\n\
+Never invent URLs. Never cite duckduckgo.com, google.com/search, or search.brave.com.\n\
+search_page_ddg={}\npage_href_ddg={}\n\
+search_page_brave_ai={}\npage_href_brave_ai={}\n\
+dom_blocked_ddg={} dom_blocked_brave_ai={}\n\
+round={}\nscreenshot_ddg={}\nscreenshot_brave_ai={}\n\n\
+AI_OVERVIEW (Brave web):\n{ai_brave}\n\n\
+EXTRACTED links from DuckDuckGo ({n_ddg}):\n{formatted_ddg}\n\
+EXTRACTED links from Brave fallback ({n_brave}):\n{formatted_brave}\n\
 MERGED ranked candidates ({n_merged}) - prefer these for ResearchPack / browse:\n{formatted_merged}",
-        web_attempt.search_url,
-        web_attempt.page_href,
-        news_attempt.search_url,
-        news_attempt.page_href,
-        web_attempt.blocked,
-        news_attempt.blocked,
+        ddg_attempt.search_url,
+        ddg_attempt.page_href,
+        brave_attempt.search_url,
+        brave_attempt.page_href,
+        ddg_attempt.blocked,
+        brave_attempt.blocked,
         round.display(),
-        web_attempt.shot,
-        news_attempt.shot,
-        n_news = news_attempt.links.len(),
-        n_web = web_attempt.links.len(),
+        ddg_attempt.shot,
+        brave_attempt.shot,
+        n_ddg = ddg_attempt.links.len(),
+        n_brave = brave_attempt.links.len(),
         n_merged = merged_show.len(),
     )
 }
@@ -932,35 +917,17 @@ pub fn serp_engine_name() -> String {
     }
 }
 
-/// All (web) vs News tab for a SERP scrape.
+/// All (web) SERP tab scrape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SerpScope {
     All,
-    News,
 }
 
-impl SerpScope {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::All => "web",
-            Self::News => "news",
-        }
-    }
-}
-
-fn serp_search_url(serp_engine: &str, scope: SerpScope, q: &str) -> String {
+fn serp_search_url(serp_engine: &str, _scope: SerpScope, q: &str) -> String {
     let enc = encode_query_component(q);
-    match (serp_engine, scope) {
-        // source=web keeps Brave in the web corpus; summary=1 is required for AI overview / Ask panel.
-        ("brave", SerpScope::News) => {
-            format!("https://search.brave.com/news?source=web&q={enc}")
-        }
-        ("brave", SerpScope::All) => {
-            format!("https://search.brave.com/search?source=web&summary=1&q={enc}")
-        }
-        (_, SerpScope::News) => {
-            format!("https://www.google.com/search?hl=en&tbm=nws&q={enc}")
-        }
+    match serp_engine {
+        "duckduckgo" => format!("https://duckduckgo.com/?q={enc}&ia=web"),
+        "brave" => format!("https://search.brave.com/search?source=web&summary=1&q={enc}"),
         _ => format!("https://www.google.com/search?hl=en&num=10&q={enc}"),
     }
 }
@@ -969,6 +936,12 @@ fn serp_search_url(serp_engine: &str, scope: SerpScope, q: &str) -> String {
 fn serp_extract_js(serp_engine: &str) -> String {
     // Shared helpers; engine-specific root / selectors / block detection.
     let (root_expr, anchor_sel, blocked_expr, ai_extra) = match serp_engine {
+        "duckduckgo" => (
+            "document.querySelector('#links') || document.querySelector('[data-testid=\"react-results\"]') || document.querySelector('main') || document.body",
+            "a[data-testid=\"result-title-a\"], a.result__a, article[data-testid=\"result\"] a[href], a[href]",
+            "!!(/bots use duckduckgo/i.test(bodyText) || /select all squares/i.test(bodyText))",
+            "",
+        ),
         "brave" => (
             "document.querySelector('#results') || document.querySelector('main') || document.body",
             "a[href]",
@@ -1007,6 +980,10 @@ const unwrap = (h) => {{\
       const q = u.searchParams.get('q') || u.searchParams.get('url');\
       if (q && q.startsWith('http')) return q;\
     }}\
+    if (u.hostname.includes('duckduckgo.com') && u.pathname.startsWith('/l')) {{\
+      const uddg = u.searchParams.get('uddg');\
+      if (uddg) {{ try {{ return decodeURIComponent(uddg); }} catch (e) {{ return uddg; }} }}\
+    }}\
     return h;\
   }} catch (e) {{ return h; }}\
 }};\
@@ -1014,7 +991,7 @@ const push = (h, t) => {{\
   h = unwrap(h || '');\
   if (!h.startsWith('http')) return;\
   const low = h.toLowerCase();\
-  if (low.includes('google.') || low.includes('gstatic.') || low.includes('search.brave.com') || low.includes('youtube.com') || low.includes('youtu.be') || low.includes('reddit.com') || low.includes('redd.it') || low.includes('example.com') || low.includes('example.org') || low.includes('raw.githubusercontent.com') || low.includes('linkedin.com') || low.includes('lnkd.in') || low.includes('instagram.com') || low.includes('facebook.com') || low.includes('tiktok.com')) return;\
+  if (low.includes('google.') || low.includes('gstatic.') || low.includes('search.brave.com') || low.includes('duckduckgo.com') || low.includes('duck.com') || low.includes('youtube.com') || low.includes('youtu.be') || low.includes('reddit.com') || low.includes('redd.it') || low.includes('example.com') || low.includes('example.org') || low.includes('raw.githubusercontent.com') || low.includes('linkedin.com') || low.includes('lnkd.in') || low.includes('instagram.com') || low.includes('facebook.com') || low.includes('tiktok.com')) return;\
   h = h.replace(/\\\\+$/g, '');\
   if (seen.has(h)) return;\
   seen.add(h);\

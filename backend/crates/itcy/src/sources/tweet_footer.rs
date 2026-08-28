@@ -630,9 +630,9 @@ Worth tracking as the stack keeps moving. 🦉\n\n\
 /// Blank line between sentence beats when the writer returned one dense line.
 #[must_use]
 pub fn aerate_tweet_commentary(text: &str) -> String {
-    let text = text.trim();
+    let text = join_soft_wrap_lines(text.trim());
     if text.is_empty() || text.contains('\n') {
-        return text.to_string();
+        return text;
     }
     let chars: Vec<char> = text.chars().collect();
     let mut out = String::new();
@@ -668,10 +668,106 @@ pub fn aerate_tweet_commentary(text: &str) -> String {
         out.push_str(rest);
     }
     if out.is_empty() {
-        text.to_string()
+        text
     } else {
         out
     }
+}
+
+/// Join writer soft wraps (comma / lowercase continuation) on one line; keep real `\n\n` beats.
+#[must_use]
+pub fn join_soft_wrap_lines(text: &str) -> String {
+    let text = text.trim();
+    if text.is_empty() || !text.contains('\n') {
+        return text.to_owned();
+    }
+    if text.contains("\n\n") {
+        return text
+            .split("\n\n")
+            .map(join_soft_wrap_single_newlines)
+            .collect::<Vec<_>>()
+            .join("\n\n");
+    }
+    join_soft_wrap_single_newlines(text)
+}
+
+fn join_soft_wrap_single_newlines(text: &str) -> String {
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    if lines.len() <= 1 {
+        return lines.first().copied().unwrap_or("").to_string();
+    }
+    let mut out = String::new();
+    for line in lines {
+        if !out.is_empty() {
+            if soft_wrap_continues_previous(&out, line) {
+                if !out.ends_with(' ') {
+                    out.push(' ');
+                }
+            } else {
+                out.push_str("\n\n");
+            }
+        }
+        out.push_str(line);
+    }
+    out
+}
+
+fn soft_wrap_continues_previous(prev: &str, next: &str) -> bool {
+    let prev_trim = prev.trim_end();
+    if prev_trim.is_empty() {
+        return false;
+    }
+    let last = prev_trim.chars().last().unwrap();
+    if matches!(last, '.' | '!' | '?') {
+        return false;
+    }
+    if matches!(last, ',' | ';' | ':') {
+        return true;
+    }
+    let next_first = next.chars().find(|c| !c.is_whitespace());
+    if !next_first.is_some_and(|c| c.is_ascii_lowercase()) {
+        return false;
+    }
+    let prev_word = prev_trim
+        .split_whitespace()
+        .next_back()
+        .unwrap_or("")
+        .trim_matches(|c: char| !c.is_alphanumeric())
+        .to_ascii_lowercase();
+    matches!(
+        prev_word.as_str(),
+        "a" | "an"
+            | "and"
+            | "as"
+            | "at"
+            | "before"
+            | "after"
+            | "between"
+            | "by"
+            | "during"
+            | "for"
+            | "from"
+            | "in"
+            | "into"
+            | "of"
+            | "on"
+            | "or"
+            | "over"
+            | "that"
+            | "the"
+            | "through"
+            | "to"
+            | "under"
+            | "when"
+            | "where"
+            | "which"
+            | "while"
+            | "with"
+    )
 }
 
 #[cfg(test)]
@@ -1068,6 +1164,18 @@ What should you do next? Read more.";
         assert!(!out.is_empty());
         assert!(!tweet_body_exploded(&out), "{out}");
         assert!(out.contains("Amp") || out.contains("Sourcegraph"), "{out}");
+    }
+
+    #[test]
+    fn join_soft_wrap_merges_comma_continuation() {
+        let raw = "It adds support for GitHub Flavored Markdown,\nsmart punctuation, and more.\n\n🦀 Built in Rust.";
+        let out = join_soft_wrap_lines(raw);
+        assert!(
+            out.contains("GitHub Flavored Markdown, smart punctuation"),
+            "{out}"
+        );
+        assert!(!out.contains("Markdown,\nsmart"), "{out}");
+        assert!(out.contains("\n\n🦀"), "{out}");
     }
 
     #[test]

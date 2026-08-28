@@ -15,6 +15,7 @@ pub use draft::{
     format_stored_draft_status, lookup_draft_status, operator_draft_status_reply,
     parse_draft_id_arg,
 };
+pub use serp::publisher_urls_from_tool_result;
 pub use session::{draft_writer_policy, ResearchSession, ToolPolicy};
 
 use crate::llm::agent::ToolProvider;
@@ -365,7 +366,7 @@ Call browse_url on an on-topic publisher link before searching again."
                         || out.contains("[news-publisher]")
                         || out.contains("[web-publisher]")
                         || out.contains("MERGED ranked"));
-                let extracted = extract_publisher_urls_from_tool_result(&out);
+                let extracted = serp::publisher_urls_from_tool_result(&out);
                 if let Some(ref s) = *self.session.lock().await {
                     s.record_web_search(had);
                     s.record_extracted_urls(&extracted);
@@ -448,33 +449,6 @@ fn truncate_for_story(s: &str, max: usize) -> String {
     }
     let cut: String = t.chars().take(max).collect();
     format!("{cut}\n…(truncated)")
-}
-
-fn extract_publisher_urls_from_tool_result(out: &str) -> Vec<String> {
-    let mut urls = Vec::new();
-    for line in out.lines() {
-        if let Some(rest) = line.trim().strip_prefix("url=") {
-            let u = rest.trim();
-            if (u.starts_with("https://") || u.starts_with("http://"))
-                && !urls.iter().any(|x| x == u)
-            {
-                urls.push(u.to_string());
-            }
-        } else if let Some(idx) = line.find("url=") {
-            let u = line[idx + 4..].trim();
-            let u = u
-                .split_whitespace()
-                .next()
-                .unwrap_or(u)
-                .trim_end_matches(['|', ',', ';']);
-            if (u.starts_with("https://") || u.starts_with("http://"))
-                && !urls.iter().any(|x| x == u)
-            {
-                urls.push(u.to_string());
-            }
-        }
-    }
-    urls
 }
 
 fn refuse_browse_off_pack(url: &str, allow: &[String]) -> Result<(), LlmError> {

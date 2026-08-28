@@ -142,16 +142,7 @@ async fn scylla_live_serp_yields_obvious_first_links() {
         "SERP missing Futurum insight; out={out}"
     );
 
-    // Parse url= lines like the product does.
-    let mut extracted: Vec<String> = Vec::new();
-    for line in out.lines() {
-        if let Some(rest) = line.trim().strip_prefix("url=") {
-            let u = rest.trim();
-            if u.starts_with("https://") && !extracted.iter().any(|x| x == u) {
-                extracted.push(u.to_string());
-            }
-        }
-    }
+    let extracted = itcy::tools::publisher_urls_from_tool_result(&out);
     assert!(
         extracted.len() >= 3,
         "expected >=3 SERP links; got {extracted:?}"

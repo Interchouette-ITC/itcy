@@ -67,15 +67,22 @@ pub fn layout_x_thread(text: &str) -> Vec<String> {
 ///
 /// Writers often emit one `\n` between beats; without this, `take_beats_fitting`
 /// treats the whole head as one beat and word-splits mid-sentence (TWEET-080).
+/// Soft wraps (comma / lowercase continuation) stay on one line.
 fn promote_line_breaks_to_beats(head: &str) -> String {
     let head = head.trim();
     if head.is_empty() {
         return String::new();
     }
     if head.contains("\n\n") {
-        return head.to_string();
+        return crate::sources::tweet_footer::join_soft_wrap_lines(head);
     }
-    head.lines()
+    let collapsed = crate::sources::tweet_footer::join_soft_wrap_lines(head);
+    if collapsed.contains("\n\n") {
+        return collapsed;
+    }
+    // Single-newline beats (no soft wraps left): promote to paragraph breaks.
+    collapsed
+        .lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
         .collect::<Vec<_>>()
@@ -1019,6 +1026,42 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:120";
         }
         if parts.len() == 2 {
             assert!(parts[1].contains('#') || parts[1].contains("rustaceans_rs"));
+        }
+    }
+
+    #[test]
+    fn satteri_comma_soft_wrap_not_paragraph_break() {
+        // https://x.com/Interchouette/status/2093300287565947020 — writer soft-wrapped after comma.
+        let body = "\
+Tweet ID: TWEET-20260828-000128
+
+It keeps the unified AST format for plugin flexibility but adds native support for GitHub Flavored Markdown,
+smart punctuation, and more.
+
+🦀 Built in Rust, it's the new default in Astro 7.0, and it's already making waves.
+
+#AI #DevTools #Markdown #Rust
+
+https://byteiota.com/astro-64-satteri-rust-markdown
+
+Link: 1
+0 = no link. /change_url TWEET-20260828-000128 <0|1|2|3|4|5|url>
+1. https://byteiota.com/astro-64-satteri-rust-markdown";
+        let api = crate::publish::tweet_text_for_api(body);
+        assert!(
+            !api.contains("Markdown,\n\nsmart") && !api.contains("Markdown,\nsmart"),
+            "comma soft wrap must not break mid-phrase: {api}"
+        );
+        assert!(
+            api.contains("GitHub Flavored Markdown, smart punctuation"),
+            "comma phrase must stay on one line: {api}"
+        );
+        let texts = crate::publish::tweet_texts_for_api(body);
+        for p in &texts {
+            assert!(
+                !p.contains("Markdown,\n\nsmart") && !p.contains("Markdown,\nsmart"),
+                "ship must not split mid-list: {p}"
+            );
         }
     }
 

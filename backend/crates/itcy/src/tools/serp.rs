@@ -240,6 +240,17 @@ fn normalize_candidate(url: &str, title: &str) -> Option<SerpLink> {
 
 fn unwrap_google_redirect(url: &str) -> String {
     let lower = url.to_ascii_lowercase();
+    if lower.contains("duckduckgo.com/l/") || lower.contains("duckduckgo.com/l?") {
+        if let Some(idx) = url.find("uddg=") {
+            let rest = &url[idx + 5..];
+            let end = rest.find('&').unwrap_or(rest.len());
+            let enc = &rest[..end];
+            let decoded = percent_decode_minimal(enc);
+            if decoded.starts_with("http://") || decoded.starts_with("https://") {
+                return decoded;
+            }
+        }
+    }
     if !(lower.contains("google.") && lower.contains("/url?")) {
         return url.to_string();
     }
@@ -300,6 +311,16 @@ pub fn looks_like_brave_block(text: &str) -> bool {
         || t.contains("status of 429")
 }
 
+/// True when `DuckDuckGo` shows bot/captcha interstitial.
+#[must_use]
+pub fn looks_like_ddg_block(text: &str) -> bool {
+    let t = text.to_ascii_lowercase();
+    t.contains("bots use duckduckgo")
+        || t.contains("anomaly-modal")
+        || t.contains("select all squares")
+        || (t.contains("captcha") && t.contains("duckduckgo"))
+}
+
 fn is_blocked_host(lower_url: &str) -> bool {
     // Shared junk / social / shortener set, plus SERP-only hosts (Google UI, Brave CDN, Tor docs).
     if crate::sources::url_hygiene::is_junk_or_search_url(lower_url) {
@@ -318,6 +339,8 @@ fn is_blocked_host(lower_url: &str) -> bool {
         "account.brave.com",
         "brave.com/",
         "cdn.brave.com",
+        "duckduckgo.com",
+        "duck.com/",
         "torproject.org",
         "tb-manual.torproject.org",
     ]
@@ -408,16 +431,13 @@ pub fn article_prefer_score(link: &SerpLink) -> i32 {
     s
 }
 
-/// Merge News then Web EXTRACTED links (dedupe by URL), re-rank for article preference.
+/// `DuckDuckGo` organic links first; Brave web links only when DDG returned none.
 #[must_use]
-pub fn merge_news_and_web_links(news: &[SerpLink], web: &[SerpLink]) -> Vec<SerpLink> {
-    let mut out: Vec<SerpLink> = Vec::new();
-    for l in news.iter().chain(web.iter()) {
-        if !out.iter().any(|x| x.url == l.url) {
-            out.push(l.clone());
-        }
+pub fn merge_ddg_and_brave_links(ddg: &[SerpLink], brave_fallback: &[SerpLink]) -> Vec<SerpLink> {
+    if ddg.is_empty() {
+        return rank_serp_links(brave_fallback.to_vec());
     }
-    rank_serp_links(out)
+    rank_serp_links(ddg.to_vec())
 }
 
 /// Formats links for the model tool result.
@@ -454,6 +474,35 @@ pub fn format_serp_links_labeled(links: &[SerpLink], label: &str) -> String {
     s
 }
 
+/// Parse `url=https://…` lines from a `web_search` tool result (MERGED / EXTRACTED sections).
+#[must_use]
+pub fn publisher_urls_from_tool_result(out: &str) -> Vec<String> {
+    let mut urls = Vec::new();
+    for line in out.lines() {
+        if let Some(rest) = line.trim().strip_prefix("url=") {
+            let u = rest.trim();
+            if (u.starts_with("https://") || u.starts_with("http://"))
+                && !urls.iter().any(|x| x == u)
+            {
+                urls.push(u.to_string());
+            }
+        } else if let Some(idx) = line.find("url=") {
+            let u = line[idx + 4..].trim();
+            let u = u
+                .split_whitespace()
+                .next()
+                .unwrap_or(u)
+                .trim_end_matches(['|', ',', ';']);
+            if (u.starts_with("https://") || u.starts_with("http://"))
+                && !urls.iter().any(|x| x == u)
+            {
+                urls.push(u.to_string());
+            }
+        }
+    }
+    urls
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -469,6 +518,70 @@ mod tests {
     }
 
     #[test]
+    fn merge_ddg_and_brave_prefers_ddg_organic() {
+        let ddg = extract_serp_links(
+            r#"[{"url":"https://www.scylladb.com/2026/08/27/new-rust-driver-for-scylladbs-dynamodb-api/","title":"ScyllaDB blog"},{"url":"https://futurumgroup.com/insights/scylladbs-rust-driver-delivers-58-throughput-gain-for-dynamodb-users/","title":"Futurum"}]"#,
+            "",
+        );
+        let brave = extract_serp_links(
+            r#"[{"url":"https://hosseinnejati.medium.com/exploring-scylladb-a-high-performance-database-for-data-intensive-workloads-a0a27dd76ad0","title":"Medium"}]"#,
+            "",
+        );
+        let merged = merge_ddg_and_brave_links(&ddg, &brave);
+        assert!(merged[0].url.contains("scylladb.com/2026/08/27"));
+        assert!(!merged.iter().any(|l| l.url.contains("medium.com")));
+    }
+
+    #[test]
+    fn merge_ddg_and_brave_falls_back_when_ddg_empty() {
+        let brave = extract_serp_links(
+            r#"[{"url":"https://labs.sogeti.com/the-hidden-cost-of-ai-coding/","title":"Sogeti"}]"#,
+            "",
+        );
+        let merged = merge_ddg_and_brave_links(&[], &brave);
+        assert_eq!(merged.len(), 1);
+        assert!(merged[0].url.contains("labs.sogeti.com"));
+    }
+
+    #[test]
+    fn unwrap_ddg_l_redirect() {
+        let enc = "https%3A%2F%2Fwww.scylladb.com%2F2026%2F08%2F27%2Fnew-rust-driver";
+        let raw = format!("https://duckduckgo.com/l/?uddg={enc}");
+        let link = normalize_candidate(&raw, "").expect("ddg redirect");
+        assert!(link.url.contains("scylladb.com/2026/08/27"));
+    }
+
+    #[test]
+    fn detects_ddg_bot_wall() {
+        assert!(looks_like_ddg_block(
+            "Unfortunately, bots use DuckDuckGo too."
+        ));
+    }
+
+    #[test]
+    fn publisher_urls_from_labeled_serp_lines() {
+        let out = "MERGED ranked candidates (2):\n\
+1. [ddg-publisher] url=https://www.scylladb.com/2026/08/27/new-rust-driver-for-scylladbs-dynamodb-api/\n\
+   title=ScyllaDB blog\n\
+2. [ddg-publisher] url=https://futurumgroup.com/insights/scylladbs-rust-driver-delivers-58-throughput-gain-for-dynamodb-users/\n\
+   title=Futurum\n";
+        let urls = publisher_urls_from_tool_result(out);
+        assert_eq!(urls.len(), 2);
+        assert!(urls[0].contains("scylladb.com/2026/08/27"));
+        assert!(urls[1].contains("futurumgroup.com"));
+    }
+
+    #[test]
+    fn drops_ddg_page_chrome_from_extract() {
+        let links = extract_serp_links(
+            r#"[{"url":"https://duck.ai/","title":"Duck.ai"},{"url":"https://apps.apple.com/app/duckduckgo-private-browser/id663592361","title":"iOS"},{"url":"https://www.scylladb.com/2026/08/27/new-rust-driver-for-scylladbs-dynamodb-api/","title":"Blog"}]"#,
+            "",
+        );
+        assert_eq!(links.len(), 1);
+        assert!(links[0].url.contains("scylladb.com/2026/08/27"));
+    }
+
+    #[test]
     fn merge_prefers_sogeti_article_over_crunchbase() {
         let news = extract_serp_links(
             r#"[{"url":"https://labs.sogeti.com/the-hidden-cost-of-ai-coding-how-rtk-helps-developers-defeat-the-token-tax-part-2/","title":"Token Tax Part 2"}]"#,
@@ -478,7 +591,13 @@ mod tests {
             r#"[{"url":"https://www.crunchbase.com/organization/rtk-ai-labs-ltd","title":"HQ"},{"url":"https://www.rtk-ai.app/team/","title":"Team"},{"url":"https://github.com/rtk-ai/rtk","title":"GitHub"}]"#,
             "",
         );
-        let merged = merge_news_and_web_links(&news, &web);
+        let mut merged: Vec<SerpLink> = Vec::new();
+        for l in news.iter().chain(web.iter()) {
+            if !merged.iter().any(|x| x.url == l.url) {
+                merged.push(l.clone());
+            }
+        }
+        let merged = rank_serp_links(merged);
         assert!(
             merged[0].url.contains("labs.sogeti.com"),
             "first should be Sogeti article, got {}",

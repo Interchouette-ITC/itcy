@@ -471,6 +471,7 @@ pub fn tweet_text_for_api(body: &str) -> String {
         lines.pop();
     }
     let joined = lines.join("\n").trim().to_string();
+    let joined = crate::sources::tweet_footer::join_soft_wrap_lines(&joined);
     let joined = crate::sources::tweet_footer::strip_own_x_handle(&joined);
     crate::llm::sanitize_itcy_text(&joined)
 }
