@@ -109,7 +109,7 @@ pub async fn draft_tweet_reply_for_slack(
     llm: &Arc<FailoverRouter>,
     url: &str,
 ) -> Result<String, String> {
-    let (_target, ctx, reply) = draft_tweet_reply_parts(llm, url).await?;
+    let (_target, ctx, reply, _trace) = draft_tweet_reply_parts(llm, url).await?;
     Ok(format_slack_draft(&ctx, &reply))
 }
 
@@ -123,7 +123,7 @@ pub async fn ship_tweet_reply(
     state_db_path: impl AsRef<Path>,
     url: &str,
 ) -> Result<String, String> {
-    let (target, ctx, reply) = draft_tweet_reply_parts(llm, url).await?;
+    let (target, ctx, reply, _trace) = draft_tweet_reply_parts(llm, url).await?;
     if !fits_x_limit(&reply) {
         return Err(format!(
             "reply is {} weighted chars (X limit {X_CHAR_LIMIT}); shorten with instructions in chat",
@@ -168,7 +168,15 @@ Shipped: {shipped}\n\
 pub async fn draft_tweet_reply_parts(
     llm: &Arc<FailoverRouter>,
     url: &str,
-) -> Result<(XReplyTarget, XReplyContext, String), String> {
+) -> Result<
+    (
+        XReplyTarget,
+        XReplyContext,
+        String,
+        crate::llm::client::CompletionTrace,
+    ),
+    String,
+> {
     let target = parse_x_reply_url(url)?;
     info!(
         status_id = %target.status_id,
@@ -176,8 +184,8 @@ pub async fn draft_tweet_reply_parts(
         "x_reply: fetch start"
     );
     let ctx = fetch_x_reply_context(&target).await?;
-    let reply = generate_reply(llm, &ctx).await?;
-    Ok((target, ctx, reply))
+    let (reply, trace) = generate_reply(llm, &ctx).await?;
+    Ok((target, ctx, reply, trace))
 }
 
 async fn fetch_x_reply_context(target: &XReplyTarget) -> Result<XReplyContext, String> {
@@ -266,13 +274,16 @@ struct StatusFetchJson {
     detail: Option<String>,
 }
 
-async fn generate_reply(llm: &Arc<FailoverRouter>, ctx: &XReplyContext) -> Result<String, String> {
+async fn generate_reply(
+    llm: &Arc<FailoverRouter>,
+    ctx: &XReplyContext,
+) -> Result<(String, crate::llm::client::CompletionTrace), String> {
     let user = tweet_reply_user_message(&ctx.author, &ctx.tweet_body);
     let messages = [
         LlmMessage::system(TWEET_REPLY_SYSTEM_CORE),
         LlmMessage::user(user),
     ];
-    let (resp, _trace) = llm
+    let (resp, trace) = llm
         .complete(TaskKind::Freeform, &messages)
         .await
         .map_err(|e| format!("LLM failed: {e}"))?;
@@ -287,7 +298,7 @@ async fn generate_reply(llm: &Arc<FailoverRouter>, ctx: &XReplyContext) -> Resul
             x_weighted_len(&reply)
         ));
     }
-    Ok(reply)
+    Ok((reply, trace))
 }
 
 fn format_slack_draft(ctx: &XReplyContext, reply: &str) -> String {

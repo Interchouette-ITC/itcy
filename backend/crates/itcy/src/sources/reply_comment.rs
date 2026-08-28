@@ -179,7 +179,7 @@ async fn create_linkedin_reply(
         "LinkedIn URL must include dashCommentUrn (threaded reply needs a parent comment id)"
             .to_string()
     })?;
-    let (_t, ctx, reply) = draft_comment_reply_parts(llm, url).await?;
+    let (_t, ctx, reply, trace) = draft_comment_reply_parts(llm, url).await?;
     let id = next_reply_id(db_path, "CREPLY")?;
     let meta = ReplyMeta {
         surface: "linkedin".into(),
@@ -191,6 +191,7 @@ async fn create_linkedin_reply(
         comment_id: Some(comment_id),
         status_id: None,
     };
+    let model = format!("reply-comment/linkedin | {}", trace.model_label());
     save_open_reply(
         db_path,
         &SaveOpenReply {
@@ -198,18 +199,21 @@ async fn create_linkedin_reply(
             subject: &format!("LI comment by {}", ctx.comment_author),
             reply: &reply,
             meta: &meta,
-            model: "reply-comment/linkedin",
-            tokens_in: 0,
-            tokens_out: 0,
+            model: &model,
+            tokens_in: trace.prompt_tokens,
+            tokens_out: trace.completion_tokens,
         },
     )?;
-    Ok(format_create_slack(
-        &id,
-        "linkedin",
-        &ctx.comment_author,
-        &ctx.comment_body,
-        &reply,
-    ))
+    Ok(format_create_slack(&CreateSlackArgs {
+        id: &id,
+        surface: "linkedin",
+        author: &ctx.comment_author,
+        parent: &ctx.comment_body,
+        reply: &reply,
+        model: &model,
+        tokens_in: trace.prompt_tokens,
+        tokens_out: trace.completion_tokens,
+    }))
 }
 
 async fn create_x_reply(
@@ -217,7 +221,7 @@ async fn create_x_reply(
     db_path: &Path,
     url: &str,
 ) -> Result<String, String> {
-    let (target, ctx, reply) = draft_tweet_reply_parts(llm, url).await?;
+    let (target, ctx, reply, trace) = draft_tweet_reply_parts(llm, url).await?;
     let id = next_reply_id(db_path, "XREPLY")?;
     let meta = ReplyMeta {
         surface: "x".into(),
@@ -229,6 +233,7 @@ async fn create_x_reply(
         comment_id: None,
         status_id: Some(target.status_id),
     };
+    let model = format!("reply-comment/x | {}", trace.model_label());
     save_open_reply(
         db_path,
         &SaveOpenReply {
@@ -236,18 +241,21 @@ async fn create_x_reply(
             subject: &format!("X status by {}", ctx.author),
             reply: &reply,
             meta: &meta,
-            model: "reply-comment/x",
-            tokens_in: 0,
-            tokens_out: 0,
+            model: &model,
+            tokens_in: trace.prompt_tokens,
+            tokens_out: trace.completion_tokens,
         },
     )?;
-    Ok(format_create_slack(
-        &id,
-        "x",
-        &ctx.author,
-        &ctx.tweet_body,
-        &reply,
-    ))
+    Ok(format_create_slack(&CreateSlackArgs {
+        id: &id,
+        surface: "x",
+        author: &ctx.author,
+        parent: &ctx.tweet_body,
+        reply: &reply,
+        model: &model,
+        tokens_in: trace.prompt_tokens,
+        tokens_out: trace.completion_tokens,
+    }))
 }
 
 struct SaveOpenReply<'a> {
@@ -284,16 +292,36 @@ fn save_open_reply(db_path: &Path, req: &SaveOpenReply<'_>) -> Result<(), String
     Ok(())
 }
 
-fn format_create_slack(id: &str, surface: &str, author: &str, parent: &str, reply: &str) -> String {
-    let reply = crate::sources::draft_footer::slack_paste_safe_reply_body(reply);
+struct CreateSlackArgs<'a> {
+    id: &'a str,
+    surface: &'a str,
+    author: &'a str,
+    parent: &'a str,
+    reply: &'a str,
+    model: &'a str,
+    tokens_in: u32,
+    tokens_out: u32,
+}
+
+fn format_create_slack(args: &CreateSlackArgs<'_>) -> String {
+    let reply = crate::sources::draft_footer::slack_paste_safe_reply_body(args.reply);
+    let disclosure = crate::llm::disclosure::format_disclosure_parts(
+        args.model,
+        args.tokens_in,
+        args.tokens_out,
+    );
     format!(
         "Reply draft `{id}` ({surface}) saved (**open**).\n\n\
 Parent ({author}): {parent}\n\n\
 Reply:\n{reply}\n\n\
+{disclosure}\n\n\
 :point_right: Next:\n\n\
 :pencil2: /rework {id} <instructions>\n\n\
 :white_check_mark: /accept {id}",
-        parent = parent.trim(),
+        id = args.id,
+        surface = args.surface,
+        author = args.author,
+        parent = args.parent.trim(),
     )
 }
 
@@ -319,20 +347,21 @@ pub async fn rework_reply_comment(
     } else {
         prior
     };
-    let reply = rewrite_reply(llm, &meta, prior.trim(), instructions.trim()).await?;
+    let (reply, trace) = rewrite_reply(llm, &meta, prior.trim(), instructions.trim()).await?;
     let store = DraftStore::open(db_path).map_err(|e| e.to_string())?;
+    let model = format!("reply-comment/rework | {}", trace.model_label());
     let mut row = stored_from_payload(DraftPayload {
         draft_id: stored.draft_id.clone(),
         subject: stored.subject.clone(),
         body: crate::llm::disclosure::ensure_stored_disclosure(
             reply.trim(),
-            "reply-comment/rework",
-            0,
-            0,
+            &model,
+            trace.prompt_tokens,
+            trace.completion_tokens,
         ),
-        model: "reply-comment/rework".into(),
-        tokens_in: 0,
-        tokens_out: 0,
+        model,
+        tokens_in: trace.prompt_tokens,
+        tokens_out: trace.completion_tokens,
         sources: stored.sources.clone(),
         link_options: Vec::new(),
         research_pack: meta.encode(),
@@ -342,9 +371,12 @@ pub async fn rework_reply_comment(
     row.created_at.clone_from(&stored.created_at);
     store.upsert(&row).map_err(|e| e.to_string())?;
     let reply = crate::sources::draft_footer::slack_paste_safe_reply_body(&reply);
+    let disclosure =
+        crate::llm::disclosure::format_disclosure_parts(&row.model, row.tokens_in, row.tokens_out);
     Ok(format!(
         "Reworked reply `{reply_id}` saved (**open**).\n\n\
 Reply:\n{reply}\n\n\
+{disclosure}\n\n\
 :point_right: Next:\n\n\
 :pencil2: /rework {reply_id} <instructions>\n\n\
 :white_check_mark: /accept {reply_id}"
@@ -356,7 +388,7 @@ async fn rewrite_reply(
     meta: &ReplyMeta,
     prior: &str,
     instructions: &str,
-) -> Result<String, String> {
+) -> Result<(String, crate::llm::client::CompletionTrace), String> {
     let (system, base_user) = if meta.is_x() {
         (
             TWEET_REPLY_SYSTEM_CORE,
@@ -377,7 +409,7 @@ async fn rewrite_reply(
         "{base_user}\n\nPrevious reply:\n{prior}\n\nOperator instructions (must follow):\n{instructions}\n\nWrite the reply only."
     );
     let messages = [LlmMessage::system(system), LlmMessage::user(user)];
-    let (resp, _trace) = llm
+    let (resp, trace) = llm
         .complete(TaskKind::Freeform, &messages)
         .await
         .map_err(|e| format!("LLM failed: {e}"))?;
@@ -392,7 +424,7 @@ async fn rewrite_reply(
             x_weighted_len(&reply)
         ));
     }
-    Ok(reply)
+    Ok((reply, trace))
 }
 
 /// `/accept` on `CREPLY-` / `XREPLY-`: ship direct (no BAT PR).
@@ -426,7 +458,12 @@ pub async fn accept_reply_comment(db_path: &Path, reply_id: &str) -> Result<Stri
     let reply_text = if meta.is_x() {
         crate::publish::tweet_text_for_api(&stored.body)
     } else {
-        crate::publish::linkedin_text_for_api(&stored.body)
+        // Comment body only - never ship the AI disclosure footer to LinkedIn.
+        crate::llm::disclosure::strip_trailing_disclosures(&crate::publish::linkedin_text_for_api(
+            &stored.body,
+        ))
+        .trim()
+        .to_string()
     };
     let reply_text = reply_text.trim().to_string();
     if reply_text.is_empty() {
@@ -574,17 +611,84 @@ mod tests {
 
     #[test]
     fn format_create_slack_fences_reply_for_copy() {
-        let msg = format_create_slack(
-            "CREPLY-20260826-000001",
-            "linkedin",
-            "Toby",
-            "parent comment text",
-            "Visibility really does shift. :owl:",
-        );
+        let msg = format_create_slack(&CreateSlackArgs {
+            id: "CREPLY-20260826-000001",
+            surface: "linkedin",
+            author: "Toby",
+            parent: "parent comment text",
+            reply: "Visibility really does shift. :owl:",
+            model: "reply-comment/linkedin | ollama/qwen3:8b",
+            tokens_in: 1200,
+            tokens_out: 48,
+        });
         assert!(msg.contains("```\n"), "{msg}");
         assert!(msg.contains("🦉"), "{msg}");
         assert!(!msg.contains(":owl:"), "{msg}");
         assert!(msg.contains("Reply:\n```"), "{msg}");
+        assert!(
+            msg.contains("tokens in:1200 out:48"),
+            "Slack create must show real token footer: {msg}"
+        );
+        assert!(
+            msg.contains("Written by AI - ITCy"),
+            "Slack create must show disclosure: {msg}"
+        );
+    }
+
+    #[test]
+    fn save_open_reply_stores_real_token_counts() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("runtime.db");
+        let meta = ReplyMeta {
+            surface: "linkedin".into(),
+            url: "https://www.linkedin.com/feed/update/urn:li:activity:1/".into(),
+            author: "DuckDB".into(),
+            parent_body: "parent".into(),
+            target_body: "comment".into(),
+            activity_id: Some("1".into()),
+            comment_id: Some("2".into()),
+            status_id: None,
+        };
+        save_open_reply(
+            &db,
+            &SaveOpenReply {
+                id: "CREPLY-20260828-000099",
+                subject: "LI comment by DuckDB",
+                reply: "You're welcome. 🦆",
+                meta: &meta,
+                model: "reply-comment/linkedin | ollama/qwen3:8b",
+                tokens_in: 1842,
+                tokens_out: 37,
+            },
+        )
+        .expect("save");
+        let store = DraftStore::open(&db).expect("open");
+        let row = store
+            .get("CREPLY-20260828-000099")
+            .expect("get")
+            .expect("row");
+        assert_eq!(row.tokens_in, 1842);
+        assert_eq!(row.tokens_out, 37);
+        assert!(
+            row.body.contains("tokens in:1842 out:37"),
+            "stored body disclosure must carry tokens: {}",
+            row.body
+        );
+        assert!(!row.body.contains("tokens in:0 out:0"));
+    }
+
+    #[test]
+    fn linkedin_accept_ship_text_strips_disclosure() {
+        let body = "You're welcome, DuckDB. 🦆\n\n\
+Written by AI - ITCy - model reply-comment/linkedin | ollama/qwen3:8b - tokens in:1842 out:37";
+        let shipped = crate::llm::disclosure::strip_trailing_disclosures(
+            &crate::publish::linkedin_text_for_api(body),
+        )
+        .trim()
+        .to_string();
+        assert!(shipped.contains("You're welcome"));
+        assert!(!shipped.contains("Written by AI"));
+        assert!(!shipped.contains("tokens in:"));
     }
 
     #[test]
