@@ -92,6 +92,10 @@ pub fn is_junk_or_search_url(url: &str) -> bool {
         || l.contains("google.com/search")
         || l.contains("google.com/sorry")
         || l.contains("search.brave.com")
+        || l.contains("duckduckgo.com")
+        || l.contains("duck.ai")
+        || l.contains("apps.apple.com")
+        || l.contains("insideduckduckgo.substack.com")
         || l.contains("youtube.com")
         || l.contains("youtu.be")
         || l.contains("reddit.com")
@@ -631,6 +635,17 @@ mod tests {
             publisher_host("https://university.scylladb.com/courses/scylla-alternator/"),
             Some("university.scylladb.com".into())
         );
+    }
+
+    #[test]
+    fn rejects_ddg_promo_chrome() {
+        assert!(is_junk_or_search_url("https://duck.ai/"));
+        assert!(is_junk_or_search_url(
+            "https://apps.apple.com/app/duckduckgo-private-browser/id663592361"
+        ));
+        assert!(is_junk_or_search_url(
+            "https://insideduckduckgo.substack.com/?showWelcome=true"
+        ));
     }
 
     #[test]
