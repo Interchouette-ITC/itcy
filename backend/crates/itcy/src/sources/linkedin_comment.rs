@@ -434,7 +434,7 @@ pub async fn draft_comment_reply_for_slack(
     llm: &Arc<FailoverRouter>,
     url: &str,
 ) -> Result<String, String> {
-    let (_target, ctx, reply) = draft_comment_reply_parts(llm, url).await?;
+    let (_target, ctx, reply, _trace) = draft_comment_reply_parts(llm, url).await?;
     Ok(format_slack_draft(&ctx, &reply))
 }
 
@@ -447,7 +447,7 @@ pub async fn ship_comment_reply_via_mcp(
     llm: &Arc<FailoverRouter>,
     url: &str,
 ) -> Result<String, String> {
-    let (target, ctx, reply) = draft_comment_reply_parts(llm, url).await?;
+    let (target, ctx, reply, _trace) = draft_comment_reply_parts(llm, url).await?;
     let comment_id = target.comment_id.as_deref().ok_or_else(|| {
         "URL must include dashCommentUrn (threaded reply needs a parent comment id)".to_string()
     })?;
@@ -484,7 +484,15 @@ parent_comment_urn={parent_urn}",
 pub async fn draft_comment_reply_parts(
     llm: &Arc<FailoverRouter>,
     url: &str,
-) -> Result<(LinkedInCommentTarget, LinkedInCommentContext, String), String> {
+) -> Result<
+    (
+        LinkedInCommentTarget,
+        LinkedInCommentContext,
+        String,
+        crate::llm::client::CompletionTrace,
+    ),
+    String,
+> {
     let target = parse_linkedin_comment_url(url)?;
     info!(
         activity = %target.activity_id,
@@ -504,20 +512,20 @@ Paste the comment text in chat if you still want a draft."
                 .into(),
         );
     };
-    let reply = generate_reply(llm, &ctx).await?;
-    Ok((target, ctx, reply))
+    let (reply, trace) = generate_reply(llm, &ctx).await?;
+    Ok((target, ctx, reply, trace))
 }
 
 async fn generate_reply(
     llm: &Arc<FailoverRouter>,
     ctx: &LinkedInCommentContext,
-) -> Result<String, String> {
+) -> Result<(String, crate::llm::client::CompletionTrace), String> {
     let user = comment_reply_user_message(&ctx.parent_post, &ctx.comment_author, &ctx.comment_body);
     let messages = [
         LlmMessage::system(COMMENT_REPLY_SYSTEM_CORE),
         LlmMessage::user(user),
     ];
-    let (resp, _trace) = llm
+    let (resp, trace) = llm
         .complete(TaskKind::Freeform, &messages)
         .await
         .map_err(|e| format!("LLM failed: {e}"))?;
@@ -525,7 +533,7 @@ async fn generate_reply(
     if raw.is_empty() {
         return Err("LLM returned an empty reply".into());
     }
-    Ok(ensure_one_emoji(&sanitize_itcy_text(raw)))
+    Ok((ensure_one_emoji(&sanitize_itcy_text(raw)), trace))
 }
 
 /// Keep exactly one emoji glyph (inject owl if none; drop extras after the first).

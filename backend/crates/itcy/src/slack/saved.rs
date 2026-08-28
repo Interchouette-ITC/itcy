@@ -121,12 +121,19 @@ impl SlackRuntime {
                     } else if row.draft_id.starts_with("DRAFT-") {
                         crate::sources::draft_footer::slack_paste_safe_linkedin_message(&restored)
                     } else if crate::sources::reply_comment::is_reply_id(&row.draft_id) {
-                        let prose = if row.draft_id.starts_with("XREPLY-") {
-                            crate::publish::tweet_text_for_api(&restored)
+                        let prose = crate::llm::disclosure::strip_trailing_disclosures(&restored);
+                        let fenced =
+                            crate::sources::draft_footer::slack_paste_safe_reply_body(prose);
+                        let disclosure = crate::llm::disclosure::format_disclosure_parts(
+                            &row.model,
+                            row.tokens_in,
+                            row.tokens_out,
+                        );
+                        if fenced.is_empty() {
+                            disclosure
                         } else {
-                            crate::publish::linkedin_text_for_api(&restored)
-                        };
-                        crate::sources::draft_footer::slack_paste_safe_reply_body(&prose)
+                            format!("{fenced}\n\n{disclosure}")
+                        }
                     } else {
                         crate::sources::draft_footer::slack_highlight_active_link(&restored)
                     };
