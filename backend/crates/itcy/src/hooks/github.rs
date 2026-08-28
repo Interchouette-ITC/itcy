@@ -836,6 +836,13 @@ async fn try_promote_if_bat_green(
         return Err(WakeSkip::Error("missing pr number".into()));
     }
     let cfg = BatGithubConfig::from_env().map_err(|e| WakeSkip::Error(e.to_string()))?;
+    if GithubClient::is_org_drafts_mirror_wake(pr_owner, &cfg) {
+        return GithubClient::new(cfg)
+            .map_err(|e| WakeSkip::Error(e.to_string()))?
+            .merge_org_drafts_mirror_pr(pr_number)
+            .await
+            .map_err(|e| WakeSkip::Error(e.to_string()));
+    }
     let posts_base = cfg.posts_base.clone();
     let tweet_posts_base = cfg.tweet_posts_base.clone();
     let client = GithubClient::new(cfg).map_err(|e| WakeSkip::Error(e.to_string()))?;
@@ -855,7 +862,7 @@ async fn try_promote_if_bat_green(
         .map_err(|e| WakeSkip::Error(e.to_string()))?;
     if !crate::bat::pack::is_bat_pr_head(&head) {
         return Err(WakeSkip::NotReady(format!(
-            "babysit non-BAT PR head `{head}` (expected draft/DRAFT-… or tweet/TWEET-…)"
+            "babysit non-BAT PR head `{head}` (expected post/POST-…, xpost/XPOST-…, draft/DRAFT-…, or tweet/TWEET-…)"
         )));
     }
     let promoted = client

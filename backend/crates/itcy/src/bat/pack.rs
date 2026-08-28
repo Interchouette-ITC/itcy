@@ -18,10 +18,22 @@ pub struct DraftFiles {
     pub meta_toml: String,
 }
 
-/// Feature branch for a Draft PR (head); base is the `drafts` branch.
+/// Feature branch for a Draft PR (head); base is the `drafts` branch (legacy BAT).
 #[must_use]
 pub fn branch_name_for_draft(draft_id: &str) -> String {
     format!("draft/{draft_id}")
+}
+
+/// Feature branch for a Post BAT PR (head); base is **`posts`**.
+#[must_use]
+pub fn branch_name_for_post(post_id: &str) -> String {
+    format!("post/{post_id}")
+}
+
+/// Feature branch for an XPOST BAT PR (head); base is **`tweets`**.
+#[must_use]
+pub fn branch_name_for_xpost(xpost_id: &str) -> String {
+    format!("xpost/{xpost_id}")
 }
 
 /// `DRAFT-YYYYMMDD-NNNNNN` → `POST-YYYYMMDD-NNNNNN`.
@@ -60,7 +72,10 @@ pub fn branch_name_for_tweet(tweet_id: &str) -> String {
 /// True when a publications PR head is an operator BAT branch (not migration/chore).
 #[must_use]
 pub fn is_bat_pr_head(head_ref: &str) -> bool {
-    head_ref.starts_with("draft/DRAFT-") || head_ref.starts_with("tweet/TWEET-")
+    head_ref.starts_with("post/POST-")
+        || head_ref.starts_with("xpost/XPOST-")
+        || head_ref.starts_with("draft/DRAFT-")
+        || head_ref.starts_with("tweet/TWEET-")
 }
 
 /// `TWEET-YYYYMMDD-NNNNNN` → `XPOST-YYYYMMDD-NNNNNN`.
@@ -187,6 +202,81 @@ sources = {sources_toml}\n",
         body_md: crate::llm::sanitize::sanitize_body_keep_operator_chrome(&draft.body),
         meta_toml,
         draft_id,
+    }
+}
+
+/// Builds `body.md` + `meta.toml` for `YYYY/MM/DD/<POST-id>/` on the **`posts`** branch (BAT PR).
+#[must_use]
+pub fn pack_post_files(draft: &PendingDraft) -> DraftFiles {
+    let draft_id = draft.draft_id.clone();
+    let post_id = draft_id_to_post_id(&draft_id).unwrap_or_else(|| draft_id.clone());
+    let created = if draft.created_at.is_empty() {
+        Local::now().to_rfc3339()
+    } else {
+        draft.created_at.clone()
+    };
+    let body_md = body_as_post(
+        &crate::llm::sanitize::sanitize_body_keep_operator_chrome(&draft.body),
+        &post_id,
+    );
+    let meta_toml = pack_post_meta(&PostMetaInput {
+        draft_id: &draft_id,
+        post_id: &post_id,
+        subject: &draft.subject,
+        model: &draft.model,
+        tokens_in: draft.tokens_in,
+        tokens_out: draft.tokens_out,
+        sources: &draft.sources,
+        created_at: &created,
+    });
+    let (body_path, meta_path) = post_paths(&post_id);
+    DraftFiles {
+        draft_id,
+        body_path,
+        meta_path,
+        body_md,
+        meta_toml,
+    }
+}
+
+/// Builds `body.md` + `meta.toml` for `YYYY/MM/DD/<XPOST-id>/` on the **`tweets`** branch (BAT PR).
+#[must_use]
+pub fn pack_xpost_files(draft: &PendingDraft) -> DraftFiles {
+    let tweet_id = draft.draft_id.clone();
+    let xpost_id = tweet_id_to_xpost_id(&tweet_id).unwrap_or_else(|| tweet_id.clone());
+    let created = if draft.created_at.is_empty() {
+        Local::now().to_rfc3339()
+    } else {
+        draft.created_at.clone()
+    };
+    let cite = crate::sources::tweet_footer::primary_cite(&draft.link_options)
+        .unwrap_or("")
+        .to_string();
+    let quote = crate::sources::tweet_footer::quote_tweet_id_from_cites(&draft.link_options)
+        .unwrap_or_default();
+    let body_md = body_as_xpost(
+        &crate::llm::sanitize::sanitize_body_keep_operator_chrome(&draft.body),
+        &xpost_id,
+    );
+    let meta_toml = pack_xpost_meta(&XpostMetaInput {
+        tweet_id: &tweet_id,
+        xpost_id: &xpost_id,
+        subject: &draft.subject,
+        model: &draft.model,
+        tokens_in: draft.tokens_in,
+        tokens_out: draft.tokens_out,
+        sources: &draft.sources,
+        created_at: &created,
+        cite: &cite,
+        quote_tweet_id: &quote,
+    });
+    let (body_path, meta_path) = xpost_paths(&xpost_id);
+    DraftFiles {
+        body_path,
+        meta_path,
+        body_md,
+        meta_toml,
+        draft_id: tweet_id,
     }
 }
 
@@ -419,6 +509,38 @@ pub fn draft_id_from_drafts_path(path: &str) -> Option<String> {
     draft_id_from_path(path)
 }
 
+/// Post id from any segment in a post `body.md` path.
+#[must_use]
+pub fn post_id_from_path(path: &str) -> Option<String> {
+    let name = path.replace('\\', "/");
+    name.split('/')
+        .find(|seg| seg.starts_with("POST-"))
+        .map(std::string::ToString::to_string)
+}
+
+/// XPOST id from any segment in an xpost `body.md` path.
+#[must_use]
+pub fn xpost_id_from_path(path: &str) -> Option<String> {
+    let name = path.replace('\\', "/");
+    name.split('/')
+        .find(|seg| seg.starts_with("XPOST-"))
+        .map(std::string::ToString::to_string)
+}
+
+/// True when `path` is a Post `body.md`.
+#[must_use]
+pub fn is_post_body_path(path: &str) -> bool {
+    let name = path.replace('\\', "/");
+    name.ends_with("/body.md") && post_id_from_path(&name).is_some()
+}
+
+/// True when `path` is an XPOST `body.md`.
+#[must_use]
+pub fn is_xpost_body_path(path: &str) -> bool {
+    let name = path.replace('\\', "/");
+    name.ends_with("/body.md") && xpost_id_from_path(&name).is_some()
+}
+
 /// True when `path` is a Draft `body.md` (root id tree or legacy `drafts/` prefix).
 #[must_use]
 pub fn is_draft_body_path(path: &str) -> bool {
@@ -511,6 +633,71 @@ mod tests {
     }
 
     #[test]
+    fn pack_post_files_for_posts_branch_bat() {
+        let draft = PendingDraft {
+            draft_id: "DRAFT-20260722-000001".into(),
+            subject: "AI mascot intro".into(),
+            body: "Draft ID: DRAFT-20260722-000001\n\nHello".into(),
+            model: "ollama/llama3.2".into(),
+            tokens_in: 1,
+            tokens_out: 2,
+            sources: vec!["https://example.com/a".into()],
+            link_options: Vec::new(),
+            research_pack: String::new(),
+            status: "open".into(),
+            created_at: "2026-07-22T18:00:00Z".into(),
+            updated_at: "2026-07-22T18:00:00Z".into(),
+            fork_pr_number: None,
+            fork_pr_url: String::new(),
+        };
+        let files = pack_post_files(&draft);
+        assert_eq!(files.draft_id, "DRAFT-20260722-000001");
+        assert_eq!(files.body_path, "2026/07/22/POST-20260722-000001/body.md");
+        assert_eq!(files.meta_path, "2026/07/22/POST-20260722-000001/meta.toml");
+        assert!(files.body_md.starts_with("Post ID: POST-20260722-000001"));
+        assert!(files.meta_toml.contains("kind = \"post\""));
+        assert_eq!(
+            branch_name_for_post("POST-20260722-000001"),
+            "post/POST-20260722-000001"
+        );
+        assert!(is_post_body_path(&files.body_path));
+        assert_eq!(
+            post_id_from_path(&files.body_path).as_deref(),
+            Some("POST-20260722-000001")
+        );
+    }
+
+    #[test]
+    fn pack_xpost_files_for_tweets_branch_bat() {
+        let draft = PendingDraft {
+            draft_id: "TWEET-20260813-000001".into(),
+            subject: "owl merge".into(),
+            body: "Tweet ID: TWEET-20260813-000001\n\nBuilders.".into(),
+            model: "ollama/llama3.2".into(),
+            tokens_in: 1,
+            tokens_out: 2,
+            sources: vec!["https://x.com/foo/status/99".into()],
+            link_options: vec!["https://x.com/foo/status/99".into()],
+            research_pack: String::new(),
+            status: "open".into(),
+            created_at: "2026-08-13T12:00:00Z".into(),
+            updated_at: "2026-08-13T12:00:00Z".into(),
+            fork_pr_number: None,
+            fork_pr_url: String::new(),
+        };
+        let files = pack_xpost_files(&draft);
+        assert_eq!(files.draft_id, "TWEET-20260813-000001");
+        assert_eq!(files.body_path, "2026/08/13/XPOST-20260813-000001/body.md");
+        assert!(files.body_md.starts_with("XPOST ID: XPOST-20260813-000001"));
+        assert!(files.meta_toml.contains("kind = \"xpost\""));
+        assert_eq!(
+            branch_name_for_xpost("XPOST-20260813-000001"),
+            "xpost/XPOST-20260813-000001"
+        );
+        assert!(is_xpost_body_path(&files.body_path));
+    }
+
+    #[test]
     fn body_as_post_rewrites_header() {
         let body = "Draft ID: DRAFT-20260801-000025\n\nHello";
         let out = body_as_post(body, "POST-20260801-000025");
@@ -521,6 +708,8 @@ mod tests {
 
     #[test]
     fn bat_pr_head_filter() {
+        assert!(is_bat_pr_head("post/POST-20260822-000089"));
+        assert!(is_bat_pr_head("xpost/XPOST-20260822-000065"));
         assert!(is_bat_pr_head("draft/DRAFT-20260822-000089"));
         assert!(is_bat_pr_head("tweet/TWEET-20260822-000065"));
         assert!(!is_bat_pr_head("mig-ymd/itcy-drafts"));

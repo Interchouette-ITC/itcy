@@ -316,6 +316,8 @@ impl GithubClient {
 
     /// Creates branch from drafts base, writes `<DRAFT-id>/…` files, opens PR into **`drafts`**, requests reviewer.
     ///
+    /// Legacy BAT; new `LinkedIn` BAT uses [`Self::open_post_pr`].
+    ///
     /// # Errors
     ///
     /// Returns a [`GithubError`] variant for HTTP, auth, or GitHub API failure.
@@ -332,7 +334,25 @@ impl GithubClient {
             .await
     }
 
-    /// Same as [`Self::open_draft_pr`] into **`drafts_tweet`**.
+    /// Opens BAT PR into **`posts`** with `<POST-id>/…` files (merge on Approve; no direct branch PUT).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`GithubError`] variant for HTTP, auth, or GitHub API failure.
+    pub async fn open_post_pr(
+        &self,
+        branch: &str,
+        title: &str,
+        body: &str,
+        files: &[RepoFile],
+    ) -> Result<OpenedPr, GithubError> {
+        let owner = self.cfg.posts_owner.clone();
+        let base = self.cfg.posts_base.clone();
+        self.open_pr_into(&owner, &base, branch, title, body, files)
+            .await
+    }
+
+    /// Same as [`Self::open_draft_pr`] into **`drafts_tweet`** (legacy). New X BAT uses [`Self::open_xpost_pr`].
     ///
     /// # Errors
     ///
@@ -346,6 +366,24 @@ impl GithubClient {
     ) -> Result<OpenedPr, GithubError> {
         let owner = self.cfg.tweet_owner.clone();
         let base = self.cfg.tweet_drafts_base.clone();
+        self.open_pr_into(&owner, &base, branch, title, body, files)
+            .await
+    }
+
+    /// Opens BAT PR into **`tweets`** with `<XPOST-id>/…` files (merge on Approve).
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`GithubError`] variant for HTTP, auth, or GitHub API failure.
+    pub async fn open_xpost_pr(
+        &self,
+        branch: &str,
+        title: &str,
+        body: &str,
+        files: &[RepoFile],
+    ) -> Result<OpenedPr, GithubError> {
+        let owner = self.cfg.tweet_posts_owner.clone();
+        let base = self.cfg.tweet_posts_base.clone();
         self.open_pr_into(&owner, &base, branch, title, body, files)
             .await
     }
@@ -432,7 +470,7 @@ impl GithubClient {
         Ok(None)
     }
 
-    /// After BAT Approve: write Post on `posts` or XPOST on `tweets`, then merge the PR.
+    /// After BAT Approve: squash-merge the Post/XPOST PR, then ship.
     ///
     /// # Errors
     ///
@@ -442,24 +480,83 @@ impl GithubClient {
         pr_owner: &str,
         fork_pr_number: u64,
     ) -> Result<PromoteResult, GithubError> {
-        let (body_path, draft_body) = self
+        let (body_path, body) = self
             .first_artefact_body_md(pr_owner, fork_pr_number)
             .await?
             .ok_or_else(|| {
                 GithubError::Api(format!(
-                    "PR #{fork_pr_number}: no DRAFT-*/body.md or TWEET-*/body.md on PR"
+                    "PR #{fork_pr_number}: no POST-/DRAFT-/XPOST-/TWEET- body.md on PR"
                 ))
             })?;
-        if crate::bat::pack::is_tweet_body_path(&body_path) {
-            self.promote_tweet_pr(pr_owner, fork_pr_number, &body_path, &draft_body)
+        if crate::bat::pack::is_xpost_body_path(&body_path) {
+            self.promote_xpost_pr(pr_owner, fork_pr_number, &body_path, &body)
+                .await
+        } else if crate::bat::pack::is_tweet_body_path(&body_path) {
+            self.promote_tweet_pr_legacy(pr_owner, fork_pr_number, &body_path, &body)
+                .await
+        } else if crate::bat::pack::is_post_body_path(&body_path) {
+            self.promote_post_pr(pr_owner, fork_pr_number, &body_path, &body)
                 .await
         } else {
-            self.promote_linkedin_pr(pr_owner, fork_pr_number, &body_path, &draft_body)
+            self.promote_linkedin_pr_legacy(pr_owner, fork_pr_number, &body_path, &body)
                 .await
         }
     }
 
-    async fn promote_linkedin_pr(
+    async fn promote_post_pr(
+        &self,
+        pr_owner: &str,
+        pr_number: u64,
+        post_body_path: &str,
+        post_body: &str,
+    ) -> Result<PromoteResult, GithubError> {
+        let post_id = crate::bat::pack::post_id_from_path(post_body_path).ok_or_else(|| {
+            GithubError::Api(format!("cannot parse post id from path {post_body_path}"))
+        })?;
+        let draft_id = crate::bat::pack::post_id_to_draft_id(&post_id)
+            .ok_or_else(|| GithubError::Api(format!("bad post id for promote: {post_id}")))?;
+        self.merge_pull_squash_on(pr_owner, pr_number).await?;
+        Ok(PromoteResult {
+            draft_id,
+            post_id,
+            body: post_body.to_string(),
+            fork_pr_number: pr_number,
+            quote_tweet_id: String::new(),
+            cite: String::new(),
+        })
+    }
+
+    async fn promote_xpost_pr(
+        &self,
+        pr_owner: &str,
+        pr_number: u64,
+        xpost_body_path: &str,
+        xpost_body: &str,
+    ) -> Result<PromoteResult, GithubError> {
+        let xpost_id = crate::bat::pack::xpost_id_from_path(xpost_body_path).ok_or_else(|| {
+            GithubError::Api(format!("cannot parse xpost id from path {xpost_body_path}"))
+        })?;
+        let tweet_id = crate::bat::pack::xpost_id_to_tweet_id(&xpost_id)
+            .ok_or_else(|| GithubError::Api(format!("bad xpost id for promote: {xpost_id}")))?;
+        let meta_path = xpost_body_path.replace("/body.md", "/meta.toml");
+        let meta_raw = self
+            .file_text_on_pr(pr_owner, pr_number, &meta_path)
+            .await?
+            .unwrap_or_default();
+        let parsed = parse_pack_meta_loose(&meta_raw);
+        self.merge_pull_squash_on(pr_owner, pr_number).await?;
+        Ok(PromoteResult {
+            draft_id: tweet_id,
+            post_id: xpost_id,
+            body: xpost_body.to_string(),
+            fork_pr_number: pr_number,
+            quote_tweet_id: parsed.quote_tweet_id,
+            cite: parsed.cite,
+        })
+    }
+
+    /// Legacy drafts-branch BAT: PUT onto `posts` then merge (pre posts-PR flow).
+    async fn promote_linkedin_pr_legacy(
         &self,
         drafts_owner: &str,
         fork_pr_number: u64,
@@ -521,6 +618,42 @@ impl GithubClient {
         })
     }
 
+    /// True when a webhook wake targets the org **`drafts`** mirror (second PR at `/accept`).
+    #[must_use]
+    pub fn is_org_drafts_mirror_wake(pr_owner: &str, cfg: &BatGithubConfig) -> bool {
+        pr_owner.eq_ignore_ascii_case(&cfg.org_owner)
+            && !cfg.drafts_owner.eq_ignore_ascii_case(&cfg.org_owner)
+    }
+
+    /// Squash-merge an approved org **`drafts`** mirror PR only (no POST write, no ship).
+    ///
+    /// Fork BAT (promote + ship) must already have run on the worker fork.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`GithubError`] variant when not BAT-ready or GitHub API fails.
+    pub async fn merge_org_drafts_mirror_pr(&self, pr_number: u64) -> Result<String, GithubError> {
+        let owner = self.cfg.org_owner.clone();
+        let readiness = self.bat_readiness_on(&owner, pr_number).await?;
+        if !readiness.approved {
+            return Err(GithubError::Api(format!(
+                "waiting Approve from {}",
+                readiness.expected_reviewer
+            )));
+        }
+        let head = self.pull_head_ref_on(&owner, pr_number).await?;
+        if !crate::bat::pack::is_bat_pr_head(&head) {
+            return Err(GithubError::Api(format!(
+                "babysit non-BAT PR head `{head}` (expected post/POST-…, xpost/XPOST-…, draft/DRAFT-…, or tweet/TWEET-…)"
+            )));
+        }
+        self.merge_pull_squash_on(&owner, pr_number).await?;
+        Ok(format!(
+            "org drafts mirror PR #{pr_number} merged on `{owner}/{}`",
+            self.cfg.repo
+        ))
+    }
+
     /// Opens (or refreshes) the org **`drafts`** PR for a `LinkedIn` draft (second repo, same branch name).
     ///
     /// Called at `/accept` with the fork Draft PR so the operator gets both links.
@@ -575,7 +708,7 @@ impl GithubClient {
         Ok(Some(pr))
     }
 
-    async fn promote_tweet_pr(
+    async fn promote_tweet_pr_legacy(
         &self,
         drafts_owner: &str,
         fork_pr_number: u64,
@@ -1095,7 +1228,10 @@ impl GithubClient {
         number: u64,
     ) -> Result<Option<(String, String)>, GithubError> {
         self.first_body_md_matching(owner, number, |name| {
-            crate::bat::pack::is_draft_body_path(name) || crate::bat::pack::is_tweet_body_path(name)
+            crate::bat::pack::is_post_body_path(name)
+                || crate::bat::pack::is_draft_body_path(name)
+                || crate::bat::pack::is_xpost_body_path(name)
+                || crate::bat::pack::is_tweet_body_path(name)
         })
         .await
     }
@@ -1263,7 +1399,32 @@ struct ReviewUser {
     login: String,
 }
 
-/// PR body for a Draft (Approve = BAT → Post on `posts` of the active remote).
+/// PR body for a Post BAT PR (Approve = merge into **`posts`** + ship).
+#[must_use]
+pub fn post_pr_body(subject: &str, draft_id: &str, post_id: &str) -> String {
+    let (body_path, _) = crate::bat::pack::post_paths(post_id);
+    let post_dir = body_path.trim_end_matches("/body.md");
+    format!(
+        "## Post checklist\n\
+\n\
+- [x] Disclosure line present (`Written by AI - ITCy - model … - tokens in:… out:…`)\n\
+- [x] Content English (or reply language matched if this is a comment reply)\n\
+- [x] **gRoussac** requested as reviewer\n\
+- [ ] **gRoussac Approve** = BAT = merge into **`posts`** + ship\n\
+- [ ] PR comments are babysit / rework only (not BAT)\n\
+\n\
+## Summary\n\
+\n\
+Post `{post_id}` (draft `{draft_id}`) for subject `{subject}` as `{post_dir}/` on **`posts`**.\n\
+\n\
+## Notes\n\
+\n\
+Opened by ITCy. Approve merges this PR into fork **`posts`** and ships (playground = manual paste; production = MCP when set). \
+At `/accept`, ITCy also opens the org **`drafts`** mirror PR on **Interchouette-ITC** (second Approve).\n"
+    )
+}
+
+/// PR body for a Draft (legacy drafts-branch BAT).
 #[must_use]
 pub fn draft_pr_body(subject: &str, draft_id: &str) -> String {
     let (body_path, _) = crate::bat::pack::draft_paths(draft_id);
@@ -1310,7 +1471,36 @@ Opened with the fork Draft PR at `/accept`. Fork `posts` is separate.\n"
     )
 }
 
-/// PR body for a Tweet (Approve = BAT → XPOST on `tweets`).
+/// PR body for an XPOST BAT PR (Approve = merge into **`tweets`** + ship).
+#[must_use]
+pub fn xpost_pr_body(subject: &str, tweet_id: &str, xpost_id: &str) -> String {
+    let (mode, host) = if is_x_playground_mode() {
+        ("playground", "fork Interchouette")
+    } else {
+        ("production", "org Interchouette-ITC")
+    };
+    let (body_path, _) = crate::bat::pack::xpost_paths(xpost_id);
+    let xpost_dir = body_path.trim_end_matches("/body.md");
+    format!(
+        "## XPOST checklist\n\
+\n\
+- [x] Disclosure line present (`Written by AI - ITCy - model … - tokens in:… out:…`)\n\
+- [x] Content English\n\
+- [x] **gRoussac** requested as reviewer\n\
+- [ ] **gRoussac Approve** = BAT = merge into **`tweets`** + ship\n\
+- [ ] PR comments are babysit / rework only (not BAT)\n\
+\n\
+## Summary\n\
+\n\
+XPOST `{xpost_id}` (tweet `{tweet_id}`) for subject `{subject}` as `{xpost_dir}/` on **`tweets`**.\n\
+\n\
+## Notes\n\
+\n\
+Opened by ITCy. X **{mode}** → {host}. Approve merges this PR into **`tweets`** and ships to X.\n"
+    )
+}
+
+/// PR body for a Tweet (legacy drafts_tweet-branch BAT).
 #[must_use]
 pub fn tweet_pr_body(subject: &str, tweet_id: &str) -> String {
     let (mode, host) = if is_x_playground_mode() {
@@ -1507,6 +1697,33 @@ mod tests {
             ),
             Some("Interchouette-ITC")
         );
+    }
+
+    #[test]
+    fn org_drafts_mirror_wake_only_on_org_when_fork_bat() {
+        let cfg = BatGithubConfig {
+            token: "t".into(),
+            org_owner: "Interchouette-ITC".into(),
+            fork_owner: "Interchouette".into(),
+            repo: "itcy-publications".into(),
+            drafts_owner: "Interchouette".into(),
+            posts_owner: "Interchouette".into(),
+            drafts_base: "drafts".into(),
+            posts_base: "posts".into(),
+            tweet_drafts_base: "drafts_tweet".into(),
+            tweet_owner: "Interchouette".into(),
+            tweet_posts_owner: "Interchouette".into(),
+            tweet_posts_base: "tweets".into(),
+            reviewer: "gRoussac".into(),
+        };
+        assert!(GithubClient::is_org_drafts_mirror_wake(
+            "Interchouette-ITC",
+            &cfg
+        ));
+        assert!(!GithubClient::is_org_drafts_mirror_wake(
+            "Interchouette",
+            &cfg
+        ));
     }
 
     #[test]

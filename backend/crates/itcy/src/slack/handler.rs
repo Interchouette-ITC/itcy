@@ -1049,13 +1049,22 @@ Status: **published**.",
         match retry_bat(&self.config.state_db_path, draft_id).await {
             Ok(r) => {
                 let is_tweet = r.draft_id.starts_with("TWEET-") || r.post_id.starts_with("XPOST-");
+                let published = DraftStore::open(&self.config.state_db_path)
+                    .ok()
+                    .and_then(|s| s.get(&r.draft_id).ok().flatten())
+                    .is_some_and(|d| d.status == status::PUBLISHED);
+                let status_line = if published {
+                    "Status: **published** (do not rework this id)."
+                } else {
+                    "Status: ship ran; SQLite not yet published (check /status or retry)."
+                };
                 if is_tweet {
                     format!(
                         "Re-shipped after BAT:\n\
 • tweet: `{draft}`\n\
 • xpost: `{post}`\n\
 • {detail}\n\
-Status: **published** (do not rework this id).",
+{status_line}",
                         draft = r.draft_id,
                         post = r.post_id,
                         detail = r.detail
@@ -1066,7 +1075,7 @@ Status: **published** (do not rework this id).",
 • draft: `{draft}`\n\
 • post: `{post}`\n\
 • {detail}\n\
-Status: **published** (do not rework this id).",
+{status_line}",
                         draft = r.draft_id,
                         post = r.post_id,
                         detail = r.detail
