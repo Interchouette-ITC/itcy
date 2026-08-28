@@ -7,7 +7,6 @@
 //! (display ids `POST-…` / `XPOST-…`). `/show` accepts DRAFT/TWEET/POST/XPOST.
 
 use crate::bat::github::{github_owner_from_pr_url, BatGithubConfig, ClosePrOutcome, GithubClient};
-use crate::bat::pack::branch_name_for_draft;
 use crate::bat::store::{status, DraftStore, StoredDraft};
 use crate::slack::api::post_digest_channel;
 use crate::slack::handler::SlackRuntime;
@@ -411,22 +410,6 @@ async fn pending_pr_links_for_row(row: &StoredDraft) -> Vec<PendingPrLink> {
                 links.push(PendingPrLink {
                     label: "Fork BAT",
                     url: url.to_string(),
-                });
-            }
-        }
-    }
-    if row.draft_id.starts_with("DRAFT-") && !cfg.drafts_owner.eq_ignore_ascii_case(&cfg.org_owner)
-    {
-        let branch = branch_name_for_draft(&row.draft_id);
-        if let Ok(Some(org_pr)) = client.find_open_pr_by_head(&cfg.org_owner, &branch).await {
-            let approved = client
-                .bat_readiness_on(&cfg.org_owner, org_pr.number)
-                .await
-                .is_ok_and(|r| r.approved);
-            if !approved {
-                links.push(PendingPrLink {
-                    label: "Org drafts",
-                    url: org_pr.html_url,
                 });
             }
         }

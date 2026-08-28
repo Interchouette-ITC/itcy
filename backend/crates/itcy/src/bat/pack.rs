@@ -63,6 +63,12 @@ pub fn body_as_post(body: &str, post_id: &str) -> String {
     rewrite_id_header(body, "Draft ID:", "Post ID:", post_id, "DRAFT-")
 }
 
+/// Rewrite Post body header back to Draft ID for org `drafts` mirror sync.
+#[must_use]
+pub fn body_as_draft_from_post(body: &str, draft_id: &str) -> String {
+    rewrite_id_header(body, "Post ID:", "Draft ID:", draft_id, "POST-")
+}
+
 /// Feature branch for a Tweet PR (head); base is `drafts_tweet`.
 #[must_use]
 pub fn branch_name_for_tweet(tweet_id: &str) -> String {
@@ -165,6 +171,49 @@ fn rewrite_id_header(
     out.trim_end().to_string()
 }
 
+/// Inputs for Draft `meta.toml` on the `drafts` branch.
+#[derive(Debug, Clone)]
+pub struct DraftMetaInput<'a> {
+    pub draft_id: &'a str,
+    pub subject: &'a str,
+    pub model: &'a str,
+    pub tokens_in: u32,
+    pub tokens_out: u32,
+    pub sources: &'a [String],
+    pub created_at: &'a str,
+}
+
+/// Draft `meta.toml` (`kind = draft`).
+#[must_use]
+pub fn pack_draft_meta(input: &DraftMetaInput<'_>) -> String {
+    let created = if input.created_at.is_empty() {
+        Local::now().to_rfc3339()
+    } else {
+        input.created_at.to_string()
+    };
+    let mut sources_toml = String::from("[\n");
+    for s in input.sources {
+        let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
+        let _ = writeln!(sources_toml, "  \"{escaped}\",");
+    }
+    sources_toml.push(']');
+    format!(
+        "kind = \"draft\"\n\
+draft_id = {draft_id}\n\
+subject = {subject}\n\
+created_at = \"{created}\"\n\
+model = \"{model}\"\n\
+tokens_in = {tin}\n\
+tokens_out = {tout}\n\
+sources = {sources_toml}\n",
+        draft_id = toml_string(input.draft_id),
+        subject = toml_string(input.subject),
+        model = input.model.replace('"', ""),
+        tin = input.tokens_in,
+        tout = input.tokens_out,
+    )
+}
+
 /// Builds `body.md` + `meta.toml` for `YYYY/MM/DD/<DRAFT-id>/` on the drafts branch.
 #[must_use]
 pub fn pack_draft_files(draft: &PendingDraft) -> DraftFiles {
@@ -174,27 +223,15 @@ pub fn pack_draft_files(draft: &PendingDraft) -> DraftFiles {
     } else {
         draft.created_at.clone()
     };
-    let mut sources_toml = String::from("[\n");
-    for s in &draft.sources {
-        let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
-        let _ = writeln!(sources_toml, "  \"{escaped}\",");
-    }
-    sources_toml.push(']');
-    let meta_toml = format!(
-        "kind = \"draft\"\n\
-draft_id = {draft_id}\n\
-subject = {subject}\n\
-created_at = \"{created}\"\n\
-model = \"{model}\"\n\
-tokens_in = {tin}\n\
-tokens_out = {tout}\n\
-sources = {sources_toml}\n",
-        draft_id = toml_string(&draft_id),
-        subject = toml_string(&draft.subject),
-        model = draft.model.replace('"', ""),
-        tin = draft.tokens_in,
-        tout = draft.tokens_out,
-    );
+    let meta_toml = pack_draft_meta(&DraftMetaInput {
+        draft_id: &draft_id,
+        subject: &draft.subject,
+        model: &draft.model,
+        tokens_in: draft.tokens_in,
+        tokens_out: draft.tokens_out,
+        sources: &draft.sources,
+        created_at: &created,
+    });
     let (body_path, meta_path) = draft_paths(&draft_id);
     DraftFiles {
         body_path,
@@ -695,6 +732,15 @@ mod tests {
             "xpost/XPOST-20260813-000001"
         );
         assert!(is_xpost_body_path(&files.body_path));
+    }
+
+    #[test]
+    fn body_as_draft_from_post_rewrites_header() {
+        let body = "Post ID: POST-20260801-000025\n\nHello";
+        let out = body_as_draft_from_post(body, "DRAFT-20260801-000025");
+        assert!(out.starts_with("Draft ID: DRAFT-20260801-000025\n"));
+        assert!(out.contains("Hello"));
+        assert!(!out.contains("Post ID:"));
     }
 
     #[test]

@@ -7,8 +7,8 @@ use crate::bat::github::{
     post_pr_body, xpost_pr_body, BatGithubConfig, GithubClient, GithubError, OpenedPr, RepoFile,
 };
 use crate::bat::pack::{
-    branch_name_for_post, branch_name_for_xpost, draft_id_to_post_id, pack_draft_files,
-    pack_post_files, pack_xpost_files, tweet_id_to_xpost_id,
+    branch_name_for_post, branch_name_for_xpost, draft_id_to_post_id, pack_post_files,
+    pack_xpost_files, tweet_id_to_xpost_id,
 };
 use crate::bat::store::{status, DraftStore, DraftStoreError, StoredDraft};
 use std::path::Path;
@@ -216,20 +216,6 @@ async fn accept_surface(
         Err(e) => return Err(e),
     };
 
-    let org_draft = if matches!(surface, BatSurface::LinkedIn) {
-        let draft_files = pack_draft_files(&draft);
-        client
-            .open_org_draft_pr(
-                &draft_files.draft_id,
-                &draft_files.body_md,
-                &draft_files.meta_toml,
-                &draft.subject,
-            )
-            .await?
-    } else {
-        None
-    };
-
     Ok(BatSubmitResult {
         pr_url: opened.html_url,
         pr_number: opened.number,
@@ -237,8 +223,8 @@ async fn accept_surface(
         draft_id: draft_id.to_string(),
         updated_existing,
         promoted,
-        org_draft_pr_number: org_draft.as_ref().map(|p| p.number),
-        org_draft_pr_url: org_draft.map(|p| p.html_url),
+        org_draft_pr_number: None,
+        org_draft_pr_url: None,
     })
 }
 
@@ -394,6 +380,11 @@ async fn ship_promoted_linkedin(
     db_path: &Path,
     promoted: &crate::bat::github::PromoteResult,
 ) -> Result<String, BatSubmitError> {
+    if let Ok(client) = GithubClient::new(BatGithubConfig::from_env()?) {
+        let _ = client
+            .sync_org_drafts_from_posts_branch(&promoted.draft_id)
+            .await;
+    }
     let request = crate::publish::PublishRequest {
         draft_id: Some(promoted.post_id.clone()),
         pubs_pr_number: Some(promoted.fork_pr_number).filter(|n| *n > 0),

@@ -319,7 +319,7 @@ mod tests {
         assert!(TWEET_SYSTEM_CORE.to_ascii_lowercase().contains("x account"));
         assert!(TWEET_SYSTEM_CORE.contains("X SURFACE"));
         assert!(TWEET_SYSTEM_CORE.to_ascii_lowercase().contains("override"));
-        assert!(TWEET_REWORK_USER_TMPL
+        assert!(TWEET_REWORK_SYSTEM_CORE
             .to_ascii_lowercase()
             .contains("copy-edit"));
         assert!(TWEET_SYSTEM_CORE.contains("280"));
