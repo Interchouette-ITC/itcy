@@ -11,7 +11,7 @@
 //! `pull_request_review_comment`, `pull_request_review_thread`, `issue_comment`,
 //! `push`. Conversation-tab PR comments arrive as `issue_comment` (GitHub models PRs as issues).
 
-use crate::bat::github::{BatGithubConfig, GithubClient};
+use crate::bat::github::{BatApproveWakeRoute, BatGithubConfig, GithubClient};
 use axum::body::Bytes;
 use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -844,16 +844,21 @@ async fn try_promote_if_bat_green(
         return Err(WakeSkip::Error("missing pr number".into()));
     }
     let cfg = BatGithubConfig::from_env().map_err(|e| WakeSkip::Error(e.to_string()))?;
-    if GithubClient::is_org_drafts_mirror_wake(pr_owner, &cfg) {
-        return GithubClient::new(cfg)
-            .map_err(|e| WakeSkip::Error(e.to_string()))?
+    let posts_base = cfg.posts_base.clone();
+    let tweet_posts_base = cfg.tweet_posts_base.clone();
+    let client = GithubClient::new(cfg.clone()).map_err(|e| WakeSkip::Error(e.to_string()))?;
+    let head = client
+        .pull_head_ref_on(pr_owner, pr_number)
+        .await
+        .map_err(|e| WakeSkip::Error(e.to_string()))?;
+    if GithubClient::bat_approve_wake_route(pr_owner, &head, &cfg)
+        == BatApproveWakeRoute::OrgDraftsMirrorMergeOnly
+    {
+        return client
             .merge_org_drafts_mirror_pr(pr_number)
             .await
             .map_err(|e| WakeSkip::Error(e.to_string()));
     }
-    let posts_base = cfg.posts_base.clone();
-    let tweet_posts_base = cfg.tweet_posts_base.clone();
-    let client = GithubClient::new(cfg).map_err(|e| WakeSkip::Error(e.to_string()))?;
     let status = client
         .bat_readiness_on(pr_owner, pr_number)
         .await
@@ -864,11 +869,9 @@ async fn try_promote_if_bat_green(
             status.expected_reviewer
         )));
     }
-    let head = client
-        .pull_head_ref_on(pr_owner, pr_number)
-        .await
-        .map_err(|e| WakeSkip::Error(e.to_string()))?;
-    if !crate::bat::pack::is_bat_pr_head(&head) {
+    if GithubClient::bat_approve_wake_route(pr_owner, &head, &cfg)
+        != BatApproveWakeRoute::PromoteAndShip
+    {
         return Err(WakeSkip::NotReady(format!(
             "babysit non-BAT PR head `{head}` (expected post/POST-…, xpost/XPOST-…, draft/DRAFT-…, or tweet/TWEET-…)"
         )));
@@ -901,6 +904,13 @@ async fn try_promote_if_bat_green(
     ))
 }
 
+/// X publish mode for webhook ship (re-resolves env each wake).
+#[must_use]
+fn hook_x_publish_mode(fallback: &str) -> &'static str {
+    crate::publish::resolve_x_publish_mode(fallback)
+        .map_or("playground", crate::publish::PublishMode::as_str)
+}
+
 /// Ships the promoted XPOST body (mock/live). Never fails the promote outcome.
 async fn ship_promoted_xpost(
     state: &GithubHookState,
@@ -918,8 +928,13 @@ async fn ship_promoted_xpost(
         },
         in_reply_to_tweet_id: None,
     };
-    match crate::publish::ship_x_post(state.state_db_path.as_str(), "playground", request, None)
-        .await
+    match crate::publish::ship_x_post(
+        state.state_db_path.as_str(),
+        hook_x_publish_mode(state.publish_mode_fallback.as_str()),
+        request,
+        None,
+    )
+    .await
     {
         Ok(r) => {
             let notice = r.ship_notice_text().to_string();
@@ -1102,6 +1117,32 @@ struct RepoBody {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bat::github::{BatApproveWakeRoute, BatGithubConfig, GithubClient};
+
+    #[test]
+    fn webhook_org_production_xpost_routes_promote_not_mirror() {
+        let cfg = BatGithubConfig {
+            token: "t".into(),
+            org_owner: "Interchouette-ITC".into(),
+            fork_owner: "Interchouette".into(),
+            repo: "itcy-publications".into(),
+            drafts_owner: "Interchouette".into(),
+            posts_owner: "Interchouette".into(),
+            drafts_base: "drafts".into(),
+            posts_base: "posts".into(),
+            tweet_drafts_base: "drafts_tweet".into(),
+            tweet_owner: "Interchouette-ITC".into(),
+            tweet_posts_owner: "Interchouette-ITC".into(),
+            tweet_posts_base: "tweets".into(),
+            reviewer: "gRoussac".into(),
+        };
+        let head = "xpost/XPOST-20260828-000093";
+        assert_eq!(
+            GithubClient::bat_approve_wake_route("Interchouette-ITC", head, &cfg),
+            BatApproveWakeRoute::PromoteAndShip,
+            "org production tweet BAT must merge+ship, not org drafts mirror"
+        );
+    }
 
     #[test]
     fn record_delivery_ok_clears_warn() {
