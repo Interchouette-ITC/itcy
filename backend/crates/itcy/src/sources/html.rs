@@ -16,7 +16,7 @@ pub fn extract_page_text(html: &str) -> String {
     html_to_text(html)
 }
 
-/// Article-ish body only (Apollo paragraphs, `<article>`, or `<main>`).
+/// Article-ish body only (Apollo paragraphs, JSON-LD, `<article>` / `<main>`, WP content).
 ///
 /// Returns `None` when the page is chrome / SPA shell with no real article region.
 /// Publisher cite probes use this so a fat Next.js 200 shell does not pass as a cite.
@@ -27,16 +27,213 @@ pub fn extract_articleish_text(html: &str) -> Option<String> {
             return Some(apollo);
         }
     }
+    if let Some(ld) = extract_json_ld_article_text(html) {
+        if ld.chars().count() >= 120 {
+            return Some(ld);
+        }
+    }
     let lower = html.to_ascii_lowercase();
     for tag in ["article", "main"] {
-        if let Some(slice) = first_element_inner(html, &lower, tag) {
+        for slice in all_element_inners(html, &lower, tag) {
             let text = html_to_text(slice);
             if text.chars().count() >= 120 {
                 return Some(text);
             }
         }
     }
+    for class in [
+        "entry-content",
+        "post-content",
+        "theme-post-content",
+        "blog-post-content",
+        "article-body",
+    ] {
+        if let Some(slice) = element_inner_by_class_token(html, &lower, class) {
+            let text = html_to_text(slice);
+            if text.chars().count() >= 120 {
+                return Some(text);
+            }
+        }
+    }
+    if page_marked_as_article(&lower) {
+        if let Some(blurb) = article_blurb(html) {
+            if blurb.chars().count() >= 120 {
+                return Some(blurb);
+            }
+        }
+    }
     None
+}
+
+fn page_marked_as_article(lower: &str) -> bool {
+    lower.contains("property=\"og:type\" content=\"article\"")
+        || lower.contains("property='og:type' content='article'")
+}
+
+fn all_element_inners<'a>(html: &'a str, lower: &str, tag: &str) -> Vec<&'a str> {
+    let open = format!("<{tag}");
+    let close = format!("</{tag}>");
+    let mut out = Vec::new();
+    let mut search = 0;
+    while let Some(rel) = lower[search..].find(&open) {
+        let start_tag = search + rel;
+        let after_lt = start_tag + open.len();
+        if let Some(gt_rel) = lower[after_lt..].find('>') {
+            let gt = after_lt + gt_rel;
+            let body_start = gt + 1;
+            if let Some(end_rel) = lower[body_start..].find(&close) {
+                let end = body_start + end_rel;
+                out.push(&html[body_start..end]);
+                search = end + close.len();
+                continue;
+            }
+        }
+        search = start_tag + 1;
+    }
+    out
+}
+
+fn element_inner_by_class_token<'a>(html: &'a str, lower: &str, class: &str) -> Option<&'a str> {
+    let mut search = 0;
+    while let Some(rel) = lower[search..].find(class) {
+        let pos = search + rel;
+        if !is_html_class_token_at(lower, pos, class) {
+            search = pos + class.len();
+            continue;
+        }
+        let open = html.get(..pos)?.rfind('<')?;
+        if let Some(inner) = element_inner_from_open_tag(html, lower, open) {
+            return Some(inner);
+        }
+        search = pos + class.len();
+    }
+    None
+}
+
+fn is_html_class_token_at(lower: &str, pos: usize, token: &str) -> bool {
+    let before = lower.get(pos.saturating_sub(1)..pos).unwrap_or("");
+    let after = lower
+        .get(pos + token.len()..=pos + token.len())
+        .unwrap_or("");
+    let ok_before = pos == 0
+        || before
+            .chars()
+            .next()
+            .is_none_or(|c| c.is_whitespace() || c == '"' || c == '\'');
+    let ok_after = after.is_empty()
+        || after
+            .chars()
+            .next()
+            .is_none_or(|c| c.is_whitespace() || c == '"' || c == '\'');
+    ok_before && ok_after
+}
+
+fn element_inner_from_open_tag<'a>(html: &'a str, lower: &str, open: usize) -> Option<&'a str> {
+    let after_open = &lower[open..];
+    let tag_end = after_open.find('>')? + open;
+    let tag_head = &lower[open + 1..tag_end];
+    let tag = tag_head.split_whitespace().next()?;
+    if tag.starts_with('/') {
+        return None;
+    }
+    let close = format!("</{tag}>");
+    let body_start = tag_end + 1;
+    let end = lower[body_start..].find(&close)? + body_start;
+    Some(&html[body_start..end])
+}
+
+fn extract_json_ld_article_text(html: &str) -> Option<String> {
+    let lower = html.to_ascii_lowercase();
+    let marker = "application/ld+json";
+    let mut search = 0;
+    let mut best: Option<String> = None;
+    while let Some(rel) = lower[search..].find(marker) {
+        let pos = search + rel;
+        let Some(script_start) = html.get(..pos).and_then(|h| h.rfind("<script")) else {
+            search = pos + marker.len();
+            continue;
+        };
+        let Some(gt_rel) = html.get(pos..).and_then(|h| h.find('>')) else {
+            search = pos + marker.len();
+            continue;
+        };
+        let gt = pos + gt_rel + 1;
+        let Some(end_rel) = html.get(gt..).and_then(|h| h.find("</script>")) else {
+            search = pos + marker.len();
+            continue;
+        };
+        let json_str = html.get(gt..gt + end_rel)?.trim();
+        if let Some(text) = json_ld_article_plain(json_str) {
+            let n = text.chars().count();
+            if best.as_ref().is_none_or(|b| b.chars().count() < n) {
+                best = Some(text);
+            }
+        }
+        search = gt + end_rel + 9;
+        let _ = script_start;
+    }
+    best.filter(|t| t.chars().count() >= 120)
+}
+
+fn json_ld_article_plain(json_str: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(json_str).ok()?;
+    let mut parts = Vec::new();
+    collect_json_ld_article_parts(&v, &mut parts);
+    if parts.is_empty() {
+        return None;
+    }
+    Some(parts.join("\n\n"))
+}
+
+fn collect_json_ld_article_parts(v: &serde_json::Value, out: &mut Vec<String>) {
+    match v {
+        serde_json::Value::Object(map) => {
+            if json_ld_type_is(map.get("@type"), "Article")
+                || json_ld_type_is(map.get("@type"), "BlogPosting")
+                || json_ld_type_is(map.get("@type"), "NewsArticle")
+            {
+                push_json_ld_field(map, "headline", out);
+                push_json_ld_field(map, "description", out);
+                push_json_ld_field(map, "articleBody", out);
+            } else if json_ld_type_is(map.get("@type"), "WebPage") {
+                push_json_ld_field(map, "name", out);
+                push_json_ld_field(map, "description", out);
+            }
+            for val in map.values() {
+                collect_json_ld_article_parts(val, out);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                collect_json_ld_article_parts(item, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn json_ld_type_is(v: Option<&serde_json::Value>, want: &str) -> bool {
+    match v {
+        Some(serde_json::Value::String(s)) => s == want,
+        Some(serde_json::Value::Array(arr)) => {
+            arr.iter().filter_map(|x| x.as_str()).any(|s| s == want)
+        }
+        _ => false,
+    }
+}
+
+fn push_json_ld_field(
+    map: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    out: &mut Vec<String>,
+) {
+    let Some(raw) = map.get(key).and_then(|v| v.as_str()) else {
+        return;
+    };
+    let t = html_entities_basic(raw.trim());
+    if t.chars().count() >= 40 && !out.iter().any(|x| x == &t) {
+        out.push(t);
+    }
 }
 
 /// Pulls `Paragraph:*` `.text` fields from `window.__APOLLO_STATE__ = {...};`.
@@ -77,17 +274,6 @@ fn extract_apollo_paragraphs(html: &str) -> Option<String> {
             .collect::<Vec<_>>()
             .join("\n\n"),
     )
-}
-
-fn first_element_inner<'a>(html: &'a str, lower: &str, tag: &str) -> Option<&'a str> {
-    let open = format!("<{tag}");
-    let close = format!("</{tag}>");
-    let start_tag = lower.find(&open)?;
-    let after_lt = start_tag + open.len();
-    let gt = lower[after_lt..].find('>')? + after_lt;
-    let body_start = gt + 1;
-    let end = lower[body_start..].find(&close)? + body_start;
-    Some(&html[body_start..end])
 }
 
 /// Strips tags and collapses whitespace. Not a full readability engine.
@@ -432,5 +618,43 @@ mod tests {
     fn article_blurb_rejects_nav_chrome() {
         let html = r"<html><body><nav>Search View more Go to content Generic or unspecific search aria-label skip</nav></body></html>";
         assert!(article_blurb(html).is_none());
+    }
+
+    #[test]
+    fn extract_json_ld_article_from_scylladb_style_page() {
+        use crate::sources::publisher_url::evaluate_publisher_probe;
+        let html = r#"<html><head>
+<meta property="og:type" content="article" />
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Building a New Rust Driver for ScyllaDB DynamoDB API with 58% More Throughput","description":"How our new Rust driver load-balances DynamoDB-style requests across a ScyllaDB cluster, and how we extended Latte to measure its performance on Alternator workloads with cluster-aware routing."}</script>
+</head><body>
+<article><div>{{{ item.image }}}</div></article>
+</body></html>"#;
+        let text = extract_articleish_text(html).expect("json-ld article");
+        assert!(text.contains("58%"));
+        assert!(text.contains("Rust driver"));
+        evaluate_publisher_probe(200, html).expect("probe accepts json-ld article page");
+    }
+
+    #[test]
+    fn extract_json_ld_webpage_from_futurum_style_page() {
+        use crate::sources::publisher_url::evaluate_publisher_probe;
+        let html = r#"<html><head>
+<meta property="og:type" content="article" />
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebPage","name":"ScyllaDB Rust Driver Boosts DynamoDB Throughput 58%","description":"ScyllaDB released an open-source Rust driver for its DynamoDB-compatible Alternator API, achieving 58% higher throughput than AWS SDK on 3-node clusters while maintaining full API compatibility and cluster-aware load balancing."}]}</script>
+</head><body><div class="elementor-widget-theme-post-content">Publication Date</div></body></html>"#;
+        let text = extract_articleish_text(html).expect("json-ld webpage");
+        assert!(text.contains("58%"));
+        evaluate_publisher_probe(200, html).expect("probe accepts futurum-style webpage");
+    }
+
+    #[test]
+    fn scylladb_live_html_fixture_has_articleish_body() {
+        let html = std::fs::read_to_string("/tmp/scylla-probe.html").unwrap_or_default();
+        if html.is_empty() {
+            return;
+        }
+        let text = extract_articleish_text(&html).expect("live scylladb fixture");
+        assert!(text.chars().count() >= 120);
+        assert!(text.to_ascii_lowercase().contains("rust"));
     }
 }

@@ -743,7 +743,8 @@ Try `/draft_about` with an explicit topic, or `/propose_draft N` from the digest
             &self.llm,
             &self.config.state_db_path,
             self.embed.as_ref(),
-            &operator_brief,
+            topic,
+            instructions,
             Some(self.tools.as_ref()),
             None,
         )
@@ -819,7 +820,8 @@ Try `/draft_about` with an explicit topic, or `/propose_draft N` from the digest
             &self.llm,
             &self.config.state_db_path,
             self.embed.as_ref(),
-            &operator_brief,
+            topic,
+            instructions,
             Some(self.tools.as_ref()),
             cite_url,
         )

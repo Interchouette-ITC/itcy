@@ -6,7 +6,6 @@
 use crate::sources::draft_footer::ensure_primary_link_line;
 use crate::sources::draft_url::{extract_in_post_url, set_single_in_post_url};
 use crate::sources::html::extract_articleish_text;
-use crate::sources::ingest::MIN_STORE_CHARS;
 use crate::sources::url_hygiene::{
     is_allowed_tweet_cite, is_junk_or_search_url, is_x_status_url, same_publisher_domain,
     scrub_https_url,
@@ -16,6 +15,8 @@ use std::time::Duration;
 use tracing::{info, warn};
 
 const PROBE_BODY_CAP: usize = 256_000;
+/// Publisher cite probe floor (browse/ingest may still require [`MIN_STORE_CHARS`]).
+const PROBE_MIN_ARTICLE_CHARS: usize = 120;
 
 /// Floor: refill until at least this many reachable Link options (when the pool allows).
 pub const LINK_OPTIONS_MIN: usize = 3;
@@ -80,7 +81,7 @@ pub fn evaluate_publisher_probe(status: u16, body: &str) -> Result<(), String> {
         return Err("page has no article body".into());
     };
     let chars = text.chars().count();
-    if chars < MIN_STORE_CHARS {
+    if chars < PROBE_MIN_ARTICLE_CHARS {
         return Err(format!("page too thin ({chars} chars)"));
     }
     Ok(())
