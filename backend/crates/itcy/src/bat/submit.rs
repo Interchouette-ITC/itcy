@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Interchouette-ITC
 // SPDX-License-Identifier: BUSL-1.1
 
-//! Submit / retry BAT for Draft PRs (`<DRAFT-id>/` on the drafts branch).
+//! Submit / retry BAT for Post PRs (`<POST-id>/` on the posts branch) and org drafts mirror.
 
 use crate::bat::github::{
-    draft_pr_body, tweet_pr_body, BatGithubConfig, GithubClient, GithubError, OpenedPr, RepoFile,
+    post_pr_body, xpost_pr_body, BatGithubConfig, GithubClient, GithubError, OpenedPr, RepoFile,
 };
 use crate::bat::pack::{
-    branch_name_for_draft, branch_name_for_tweet, pack_draft_files, pack_tweet_files,
+    branch_name_for_post, branch_name_for_xpost, draft_id_to_post_id, pack_draft_files,
+    pack_post_files, pack_xpost_files, tweet_id_to_xpost_id,
 };
 use crate::bat::store::{status, DraftStore, DraftStoreError, StoredDraft};
 use std::path::Path;
@@ -148,25 +149,25 @@ async fn accept_surface(
         return Err(BatSubmitError::Gate(reason));
     }
     let cfg = BatGithubConfig::from_env()?;
-    let owner = match surface {
-        BatSurface::LinkedIn => cfg.drafts_owner.clone(),
-        BatSurface::Tweet => cfg.tweet_owner.clone(),
-    };
-    let client = GithubClient::new(cfg)?;
-    let (files, branch, title, pr_body) = match surface {
+    let client = GithubClient::new(cfg.clone())?;
+    let (files, branch, title, pr_body, bat_owner) = match surface {
         BatSurface::LinkedIn => {
-            let files = pack_draft_files(&draft);
-            let branch = branch_name_for_draft(&files.draft_id);
-            let title = format!("Draft: {} ({})", draft.subject, files.draft_id);
-            let pr_body = draft_pr_body(&draft.subject, &files.draft_id);
-            (files, branch, title, pr_body)
+            let files = pack_post_files(&draft);
+            let post_id =
+                draft_id_to_post_id(&files.draft_id).unwrap_or_else(|| files.draft_id.clone());
+            let branch = branch_name_for_post(&post_id);
+            let title = format!("Post: {} ({})", draft.subject, post_id);
+            let pr_body = post_pr_body(&draft.subject, &files.draft_id, &post_id);
+            (files, branch, title, pr_body, cfg.posts_owner.clone())
         }
         BatSurface::Tweet => {
-            let files = pack_tweet_files(&draft);
-            let branch = branch_name_for_tweet(&files.draft_id);
-            let title = format!("Tweet: {} ({})", draft.subject, files.draft_id);
-            let pr_body = tweet_pr_body(&draft.subject, &files.draft_id);
-            (files, branch, title, pr_body)
+            let files = pack_xpost_files(&draft);
+            let xpost_id =
+                tweet_id_to_xpost_id(&files.draft_id).unwrap_or_else(|| files.draft_id.clone());
+            let branch = branch_name_for_xpost(&xpost_id);
+            let title = format!("XPOST: {} ({})", draft.subject, xpost_id);
+            let pr_body = xpost_pr_body(&draft.subject, &files.draft_id, &xpost_id);
+            (files, branch, title, pr_body, cfg.tweet_posts_owner.clone())
         }
     };
     let repo_files = [
@@ -180,22 +181,22 @@ async fn accept_surface(
         },
     ];
 
-    let existing = resolve_existing_pr(&client, &draft, &branch, &owner).await?;
+    let existing = resolve_existing_pr(&client, &draft, &branch, &bat_owner).await?;
     let (opened, updated_existing) = if let Some(pr) = existing {
         client
-            .update_draft_pr_files(&owner, &branch, &repo_files)
+            .update_draft_pr_files(&bat_owner, &branch, &repo_files)
             .await?;
         (pr, true)
     } else {
         let opened = match surface {
             BatSurface::LinkedIn => {
                 client
-                    .open_draft_pr(&branch, &title, &pr_body, &repo_files)
+                    .open_post_pr(&branch, &title, &pr_body, &repo_files)
                     .await?
             }
             BatSurface::Tweet => {
                 client
-                    .open_tweet_pr(&branch, &title, &pr_body, &repo_files)
+                    .open_xpost_pr(&branch, &title, &pr_body, &repo_files)
                     .await?
             }
         };
@@ -209,18 +210,19 @@ async fn accept_surface(
         store.set_fork_pr(draft_id, opened.number, &opened.html_url)?;
     }
 
-    let promoted = match promote_if_approved(&client, &owner, &opened).await {
+    let promoted = match promote_if_approved(db_path, &client, &bat_owner, &opened).await {
         Ok(p) => Some(p),
         Err(BatSubmitError::Gate(_)) => None,
         Err(e) => return Err(e),
     };
 
     let org_draft = if matches!(surface, BatSurface::LinkedIn) {
+        let draft_files = pack_draft_files(&draft);
         client
             .open_org_draft_pr(
-                &files.draft_id,
-                &files.body_md,
-                &files.meta_toml,
+                &draft_files.draft_id,
+                &draft_files.body_md,
+                &draft_files.meta_toml,
                 &draft.subject,
             )
             .await?
@@ -280,9 +282,9 @@ pub async fn retry_bat(
     let cfg = BatGithubConfig::from_env()?;
     let draft_id = sqlite_id_for(artefact_id);
     let owner = if draft_id.starts_with("TWEET-") {
-        cfg.tweet_owner.clone()
+        cfg.tweet_posts_owner.clone()
     } else {
-        cfg.drafts_owner.clone()
+        cfg.posts_owner.clone()
     };
     let client = GithubClient::new(cfg)?;
     if let Some(promoted) = client.load_promoted(artefact_id).await? {
@@ -304,9 +306,13 @@ pub async fn retry_bat(
         )));
     }
     let branch = if draft_id.starts_with("TWEET-") {
-        branch_name_for_tweet(&draft_id)
+        let xpost_id =
+            crate::bat::pack::tweet_id_to_xpost_id(&draft_id).unwrap_or_else(|| draft_id.clone());
+        crate::bat::pack::branch_name_for_xpost(&xpost_id)
     } else {
-        branch_name_for_draft(&draft_id)
+        let post_id =
+            crate::bat::pack::draft_id_to_post_id(&draft_id).unwrap_or_else(|| draft_id.clone());
+        crate::bat::pack::branch_name_for_post(&post_id)
     };
     let pr = resolve_existing_pr(&client, &draft, &branch, &owner)
         .await?
@@ -319,7 +325,7 @@ pub async fn retry_bat(
         let store = DraftStore::open(db_path)?;
         store.set_fork_pr(&draft_id, pr.number, &pr.html_url)?;
     }
-    promote_if_approved(&client, &owner, &pr).await
+    promote_if_approved(db_path, &client, &owner, &pr).await
 }
 
 fn sqlite_id_for(artefact_id: &str) -> String {
@@ -415,6 +421,7 @@ async fn ship_promoted_linkedin(
 }
 
 async fn promote_if_approved(
+    db_path: &Path,
     client: &GithubClient,
     drafts_owner: &str,
     pr: &OpenedPr,
@@ -429,15 +436,7 @@ async fn promote_if_approved(
     let promoted = client
         .promote_draft_pr_to_org(drafts_owner, pr.number)
         .await?;
-    Ok(RetryBatResult {
-        draft_id: promoted.draft_id,
-        post_id: promoted.post_id,
-        pr_number: pr.number,
-        detail: format!(
-            "promoted on GitHub (Draft PR #{} merged); ship runs from the webhook",
-            promoted.fork_pr_number
-        ),
-    })
+    ship_promoted_artefact(db_path, promoted).await
 }
 
 fn load_draft(db_path: &Path, draft_id: &str) -> Result<StoredDraft, BatSubmitError> {
