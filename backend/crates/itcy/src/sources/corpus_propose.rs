@@ -18,7 +18,7 @@ pub enum ProposeSurface {
     Tweet,
 }
 
-const CANDIDATE_LIMIT: u32 = 80;
+const CANDIDATE_LIMIT: u32 = 250;
 const USED_SUBJECT_LIMIT: usize = 200;
 const MIN_SUBJECT_CHARS: usize = 8;
 const MAX_SUBJECT_CHARS: usize = 160;
@@ -50,7 +50,7 @@ Bare `/propose_draft` / `/propose_tweet` need corpus memory."
         );
     }
     let used_subjects = load_used_propose_subjects(db_path);
-    let used_topics = load_used_propose_topic_fingerprints(db_path);
+    let used_topics = load_used_propose_topic_fingerprints(db_path, surface);
     let Some(picked) = pick_corpus_angle(&chunks, &used_subjects, &used_topics) else {
         if used_subjects.is_empty() && used_topics.is_empty() {
             return Err(
@@ -98,17 +98,28 @@ fn load_used_propose_subjects(db_path: &Path) -> HashSet<String> {
         .collect()
 }
 
-fn load_used_propose_topic_fingerprints(db_path: &Path) -> Vec<HashSet<String>> {
+fn load_used_propose_topic_fingerprints(
+    db_path: &Path,
+    surface: ProposeSurface,
+) -> Vec<HashSet<String>> {
     let Ok(store) = DraftStore::open(db_path) else {
         return Vec::new();
     };
-    let Ok(rows) = store.used_propose_topic_texts(USED_SUBJECT_LIMIT) else {
+    let Ok(rows) = store.used_propose_topic_subjects(USED_SUBJECT_LIMIT) else {
         return Vec::new();
     };
     rows.into_iter()
-        .map(|(subject, body)| topic_fingerprint(&format!("{subject}\n{body}")))
+        .filter(|(draft_id, _)| propose_row_matches_surface(draft_id, surface))
+        .map(|(_draft_id, subject)| topic_fingerprint(&subject))
         .filter(|fp| !fp.is_empty())
         .collect()
+}
+
+fn propose_row_matches_surface(draft_id: &str, surface: ProposeSurface) -> bool {
+    match surface {
+        ProposeSurface::Draft => draft_id.starts_with("DRAFT-"),
+        ProposeSurface::Tweet => draft_id.starts_with("TWEET-"),
+    }
 }
 
 fn pick_corpus_angle(
@@ -129,7 +140,7 @@ fn pick_corpus_angle(
         if !chunk_text_usable(&c.text) {
             continue;
         }
-        let candidate_fp = topic_fingerprint(&format!("{subject}\n{}", c.text));
+        let candidate_fp = topic_fingerprint(&subject);
         if used_topics
             .iter()
             .any(|used| topic_fingerprints_overlap(&candidate_fp, used))
@@ -168,8 +179,13 @@ fn topic_fingerprints_overlap(a: &HashSet<String>, b: &HashSet<String>) -> bool 
     if shared.is_empty() {
         return false;
     }
-    if shared.len() >= 2 {
+    if shared.len() >= 3 {
         return true;
+    }
+    if shared.len() == 2 {
+        return shared
+            .iter()
+            .any(|t| STRONG_TOPIC_SINGLE.contains(&t.as_str()));
     }
     let only = shared[0].as_str();
     STRONG_TOPIC_SINGLE.contains(&only) || only.contains('_')
@@ -539,6 +555,43 @@ Builders care about stewardship without swallowing the community around the stac
             "Builders care about modular secure systems and independent deploy.",
             subject
         ));
+    }
+
+    #[test]
+    fn published_tweet_does_not_block_bare_propose_draft() {
+        let dir = tempdir().expect("temp");
+        let path = dir.path().join("runtime.db");
+        let db = SourceDb::open(&path).expect("open");
+        seed_chunk(
+            &db,
+            "ScyllaDB Rustlang driver for ScyllaDB Alternator throughput",
+            "ScyllaDB ships a Rustlang driver for Alternator with higher throughput than the AWS SDK baseline.",
+        );
+        drop(db);
+
+        let store = DraftStore::open(&path).expect("drafts");
+        let mut shipped = stored_from_payload(DraftPayload {
+            draft_id: "TWEET-20260828-000093".into(),
+            subject: "NAPI-RS now supports the same Rust API for native Node and WebAssembly WASI"
+                .into(),
+            body: "Rust and WASM on Node via NAPI-RS for builders shipping native addons.".into(),
+            model: "mock".into(),
+            tokens_in: 1,
+            tokens_out: 1,
+            sources: Vec::new(),
+            link_options: Vec::new(),
+            research_pack: String::new(),
+        });
+        shipped.status = status::PUBLISHED.into();
+        store.upsert(&shipped).expect("upsert tweet");
+        drop(store);
+
+        let (subject, _) =
+            resolve_corpus_propose_brief(&path, ProposeSurface::Draft).expect("resolve draft");
+        assert!(
+            subject.to_ascii_lowercase().contains("scylla"),
+            "published tweet must not exhaust bare /propose_draft, got {subject}"
+        );
     }
 
     #[test]

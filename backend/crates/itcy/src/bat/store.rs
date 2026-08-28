@@ -312,12 +312,12 @@ impl DraftStore {
         Ok(out)
     }
 
-    /// Subject + body prefix for topic overlap checks on bare `/propose_*`.
+    /// Subject lines for bare `/propose_*` dedupe (same surface family as draft/tweet ids).
     ///
     /// # Errors
     ///
     /// Returns [`DraftStoreError`] on `SQLite` failure.
-    pub fn used_propose_topic_texts(
+    pub fn used_propose_topic_subjects(
         &self,
         limit: usize,
     ) -> Result<Vec<(String, String)>, DraftStoreError> {
@@ -326,13 +326,13 @@ impl DraftStore {
         let mut rows = stmt.query(params![cap])?;
         let mut out = Vec::new();
         while let Some(row) = rows.next()? {
-            let subject: String = row.get(0)?;
-            let body: String = row.get(1)?;
+            let draft_id: String = row.get(0)?;
+            let subject: String = row.get(1)?;
             let sub = subject.trim();
             if sub.is_empty() || sub.eq_ignore_ascii_case("what we know") {
                 continue;
             }
-            out.push((sub.to_string(), body));
+            out.push((draft_id, sub.to_string()));
         }
         Ok(out)
     }
