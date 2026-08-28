@@ -67,7 +67,7 @@ pub fn pick_link_options(pack_urls: &[String], body: &str) -> Vec<String> {
     use crate::sources::publisher_url::LINK_OPTIONS_CAP;
     use crate::sources::url_hygiene::{
         extract_https_urls, filter_publisher_urls, is_junk_or_search_url, same_publisher_domain,
-        scrub_https_url, url_in_allowlist,
+        scrub_https_url, should_replace_same_host_url, url_in_allowlist,
     };
 
     let pack = filter_publisher_urls(pack_urls);
@@ -84,7 +84,10 @@ pub fn pick_link_options(pack_urls: &[String], body: &str) -> Vec<String> {
         if crate::sources::url_hygiene::publisher_host(&scrubbed).is_none() {
             continue;
         }
-        if out.iter().any(|x| same_publisher_domain(x, &scrubbed)) {
+        if let Some(idx) = out.iter().position(|x| same_publisher_domain(x, &scrubbed)) {
+            if should_replace_same_host_url(&out[idx], &scrubbed) {
+                out[idx] = scrubbed;
+            }
             continue;
         }
         out.push(scrubbed);
@@ -421,7 +424,10 @@ mod tests {
         );
         let hosts: std::collections::HashSet<_> =
             opts.iter().filter_map(|u| publisher_host(u)).collect();
-        assert!(hosts.len() >= 3, "need at least 3 domains, got {opts:?}");
+        assert!(
+            hosts.len() >= 3,
+            "need at least 3 distinct site hosts, got {opts:?}"
+        );
     }
 
     #[test]
@@ -463,6 +469,19 @@ mod tests {
         assert!(a.ends_with("-000001"));
         assert!(b.ends_with("-000002"));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn pick_same_host_prefers_newer_dated_path() {
+        let pack = vec![
+            "https://www.scylladb.com/2025/03/26/scylladb-rust-driver-1-0/".into(),
+            "https://www.scylladb.com/2026/08/27/new-rust-driver-for-scylladbs-dynamodb-api/".into(),
+            "https://futurumgroup.com/insights/scylladbs-rust-driver-delivers-58-throughput-gain-for-dynamodb-users/".into(),
+        ];
+        let opts = pick_link_options(&pack, "");
+        assert_eq!(opts.len(), 2, "{opts:?}");
+        assert!(opts[0].contains("2026/08/27"), "{opts:?}");
+        assert!(opts[1].contains("futurumgroup.com"), "{opts:?}");
     }
 
     #[test]

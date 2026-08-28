@@ -255,18 +255,59 @@ pub fn same_publisher_url(a: &str, b: &str) -> bool {
 }
 
 /// Hostname for link-option dedup (`www.` stripped, lowercased).
+///
+/// One slot per **site host**: `www.scylladb.com` and `university.scylladb.com` stay
+/// distinct; only duplicate paths on the same host collapse.
 #[must_use]
 pub fn publisher_host(url: &str) -> Option<String> {
     let key = normalize_url_key(url);
     url_host(&key).map(|host| host.strip_prefix("www.").unwrap_or(host).to_string())
 }
 
-/// True when two https URLs share a publisher host (one slot per domain in link options).
+/// True when two https URLs share the same site host (one Link slot per host).
 #[must_use]
 pub fn same_publisher_domain(a: &str, b: &str) -> bool {
     match (publisher_host(a), publisher_host(b)) {
         (Some(a), Some(b)) => a == b,
         _ => false,
+    }
+}
+
+/// Date from `/YYYY/MM/DD/` in the URL path, when present.
+#[must_use]
+pub fn url_path_date_key(url: &str) -> Option<(u32, u32, u32)> {
+    let path = url
+        .split("//")
+        .nth(1)?
+        .split('?')
+        .next()?
+        .split('#')
+        .next()?;
+    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    for w in segments.windows(3) {
+        let Ok(y) = w[0].parse::<u32>() else {
+            continue;
+        };
+        let Ok(m) = w[1].parse::<u32>() else {
+            continue;
+        };
+        let Ok(d) = w[2].parse::<u32>() else {
+            continue;
+        };
+        if (1900..=2100).contains(&y) && (1..=12).contains(&m) && (1..=31).contains(&d) {
+            return Some((y, m, d));
+        }
+    }
+    None
+}
+
+/// True when `candidate` should replace `existing` for the same host (newer dated path wins).
+#[must_use]
+pub fn should_replace_same_host_url(existing: &str, candidate: &str) -> bool {
+    match (url_path_date_key(candidate), url_path_date_key(existing)) {
+        (Some(c), Some(e)) => c > e,
+        (Some(_), None) => true,
+        (None, Some(_) | None) => false,
     }
 }
 
@@ -555,6 +596,16 @@ mod tests {
     }
 
     #[test]
+    fn should_replace_same_host_url_prefers_newer_dated_path() {
+        let old = "https://www.scylladb.com/2025/03/26/scylladb-rust-driver-1-0/";
+        let new = "https://www.scylladb.com/2026/08/27/new-rust-driver-for-scylladbs-dynamodb-api/";
+        assert_eq!(url_path_date_key(old), Some((2025, 3, 26)));
+        assert_eq!(url_path_date_key(new), Some((2026, 8, 27)));
+        assert!(should_replace_same_host_url(old, new));
+        assert!(!should_replace_same_host_url(new, old));
+    }
+
+    #[test]
     fn same_publisher_domain_matches_host_not_path() {
         assert!(same_publisher_domain(
             "https://www.pewresearch.org/data-labs/2026/08/20/how-much-of-the-internet-is-written-with-ai/",
@@ -564,6 +615,22 @@ mod tests {
             "https://decrypt.co/376271/chatgpt-web-ai-written-pew",
             "https://www.pewresearch.org/data-labs/2026/08/20/how-much-of-the-internet-is-written-with-ai/"
         ));
+    }
+
+    #[test]
+    fn same_publisher_domain_keeps_distinct_subdomains_as_separate_sites() {
+        assert!(!same_publisher_domain(
+            "https://www.scylladb.com/2025/03/26/scylladb-rust-driver-1-0/",
+            "https://university.scylladb.com/courses/scylla-alternator/"
+        ));
+        assert_eq!(
+            publisher_host("https://www.scylladb.com/blog/"),
+            Some("scylladb.com".into())
+        );
+        assert_eq!(
+            publisher_host("https://university.scylladb.com/courses/scylla-alternator/"),
+            Some("university.scylladb.com".into())
+        );
     }
 
     #[test]

@@ -143,6 +143,21 @@ impl ItcyTools {
         }
     }
 
+    /// After deterministic SERP pre-search: refuse a second `web_search` during LOAD.
+    pub async fn set_load_serp_policy(&self) {
+        *self.policy.lock().await = ToolPolicy {
+            allow_web_search: false,
+            require_browse_before_research: false,
+            pack_url_allowlist: Vec::new(),
+        };
+        if let Some(ref s) = *self.session.lock().await {
+            s.clear_extracted_gate();
+            s.append_story(
+                "phase: LOAD\nallow_web_search: false\n(deterministic SERP pre-search had EXTRACTED links)\n",
+            );
+        }
+    }
+
     /// Draft writer: when LOAD already has publisher URLs, refuse a second `web_search`
     /// (stops homonym topic drift) and allow `browse_url` only on those pack URLs.
     pub async fn set_draft_policy(&self, pack_urls: &[String]) {

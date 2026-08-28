@@ -274,7 +274,7 @@ async fn enrich_research_pack_urls(
     if let Some(t) = tools {
         let already = t.session_browsed_urls().await;
         if already.is_empty() {
-            if let Some(u) = prefer_support_url(&pack_urls).map(str::to_string) {
+            if let Some(u) = pack_urls.first().cloned() {
                 info!(url = %u, "load_draft: auto-browse top pack URL (model skipped browse)");
                 match t.research_browse(&u).await {
                     Ok(_) => {
@@ -299,17 +299,25 @@ async fn enrich_research_pack_urls(
     crate::sources::publisher_url::filter_reachable_publisher_urls(pack_urls).await
 }
 
-/// Pack cites: LOAD text + browsed pages. SERP leftovers only if both are empty.
+/// Pack cites: deterministic SERP EXTRACTED first (MERGED order), then browsed, then LLM text.
 fn pack_urls_from_load(
     from_pack: &[String],
     browsed: &[String],
     extracted: &[String],
 ) -> Vec<String> {
-    let mut pack_urls = filter_publisher_urls(from_pack);
-    merge_urls_cap(&mut pack_urls, browsed.iter().cloned(), 3);
-    if pack_urls.is_empty() {
-        merge_urls_cap(&mut pack_urls, extracted.iter().cloned(), 3);
-    }
+    use crate::sources::publisher_url::LINK_OPTIONS_CAP;
+    let mut pack_urls: Vec<String> = Vec::new();
+    merge_urls_cap(
+        &mut pack_urls,
+        filter_publisher_urls(extracted),
+        LINK_OPTIONS_CAP,
+    );
+    merge_urls_cap(&mut pack_urls, browsed.iter().cloned(), LINK_OPTIONS_CAP);
+    merge_urls_cap(
+        &mut pack_urls,
+        filter_publisher_urls(from_pack),
+        LINK_OPTIONS_CAP,
+    );
     pack_urls
 }
 
@@ -330,21 +338,80 @@ fn append_browsed_page_to_pack(pack: &mut String, url: &str, tool_out: &str) {
     pack.push('\n');
 }
 
+fn format_serp_seed_block(query: &str, extracted: &[String]) -> String {
+    let mut block = format!(
+        "## SERP (deterministic)\nquery: {query}\nUse these MERGED EXTRACTED links (SERP order). browse_url 1-2 of them.\n"
+    );
+    for u in extracted
+        .iter()
+        .take(crate::sources::publisher_url::LINK_OPTIONS_CAP)
+    {
+        let _ = writeln!(
+            block,
+            "- final_url={u} | title=(from SERP) | why=serp-merged | browsed=no"
+        );
+    }
+    block
+}
+
+async fn run_deterministic_serp_search(
+    tools: Option<&ItcyTools>,
+    subject: &str,
+    instructions: &str,
+) -> String {
+    let Some(t) = tools else {
+        return String::new();
+    };
+    let query = crate::sources::tweet_footer::web_search_query(subject, instructions);
+    log_pipeline_step("LOAD serp");
+    info!(query = %query, "load_draft: deterministic web_search");
+    match t.research_web_search(&query).await {
+        Ok(_) => {
+            let extracted = filter_publisher_urls(&t.session_extracted_urls().await);
+            if extracted.is_empty() {
+                warn!(query = %query, "load_draft: deterministic SERP returned no EXTRACTED links");
+                String::new()
+            } else {
+                info!(
+                    n = extracted.len(),
+                    urls = %extracted.join(" | "),
+                    "load_draft: deterministic SERP EXTRACTED"
+                );
+                t.set_load_serp_policy().await;
+                format_serp_seed_block(&query, &extracted)
+            }
+        }
+        Err(e) => {
+            warn!(error = %e, query = %query, "load_draft: deterministic web_search failed");
+            String::new()
+        }
+    }
+}
+
 pub(crate) async fn run_load_phase(
     router: &FailoverRouter,
     subject: &str,
+    instructions: &str,
     tools: Option<&ItcyTools>,
     tools_dyn: Option<&dyn ToolProvider>,
     session_dir: Option<&PathBuf>,
 ) -> Result<(String, Vec<String>, CompletionTrace), RagError> {
+    let operator_brief = crate::sources::tweet_footer::operator_brief(subject, instructions);
     log_pipeline_banner("LOAD (research pack)");
+    let serp_seed = run_deterministic_serp_search(tools, subject, instructions).await;
     log_pipeline_step("LOAD llm");
-    info!(subject = %subject, "load_draft: start");
+    info!(subject = %operator_brief, "load_draft: start");
     info!("load_draft: calling LLM (tool loop; may take a while with no further logs)");
 
+    let user_body = load_user_message(&operator_brief);
+    let user = if serp_seed.is_empty() {
+        user_body
+    } else {
+        format!("{serp_seed}\n\n{user_body}")
+    };
     let load_messages = vec![
         LlmMessage::system(load_system_prompt()),
-        LlmMessage::user(load_user_message(subject)),
+        LlmMessage::user(user),
     ];
     let (load_response, load_trace) = match router
         .complete_with_tools(TaskKind::Load, &load_messages, tools_dyn, MAX_TOOL_ROUNDS)
@@ -368,9 +435,15 @@ pub(crate) async fn run_load_phase(
     let mut research_pack = {
         let raw = load_response.message.content.trim().to_string();
         if raw.is_empty() {
-            empty_research_pack(subject)
-        } else {
+            if serp_seed.is_empty() {
+                empty_research_pack(&operator_brief)
+            } else {
+                format!("{serp_seed}\nnotes: LLM returned empty pack; SERP seed kept\n")
+            }
+        } else if serp_seed.is_empty() {
             raw
+        } else {
+            format!("{serp_seed}\n\n{raw}")
         }
     };
     let pack_urls = enrich_research_pack_urls(tools, &mut research_pack).await;
@@ -654,7 +727,54 @@ pub async fn build_grounded_draft(
     subject: &str,
     tools: Option<&ItcyTools>,
 ) -> Result<GroundedDraft, RagError> {
-    build_grounded_draft_with_cite(router, db_path, embed, subject, tools, None).await
+    build_grounded_draft_with_cite(router, db_path, embed, subject, "", tools, None).await
+}
+
+struct DraftLoadCtx<'a> {
+    router: &'a FailoverRouter,
+    topic: &'a str,
+    instructions: &'a str,
+    operator_brief: &'a str,
+    tools: Option<&'a ItcyTools>,
+    tools_dyn: Option<&'a dyn ToolProvider>,
+    session_dir: Option<&'a PathBuf>,
+    prefer: Option<&'a str>,
+    brief_has_cite: bool,
+}
+
+async fn run_draft_load_with_cite(
+    ctx: DraftLoadCtx<'_>,
+) -> Result<(String, Vec<String>, CompletionTrace), RagError> {
+    if let Some(url) = ctx.prefer {
+        if let Err(reason) = crate::sources::publisher_url::probe_publisher_url(url).await {
+            return Err(RagError::Store(format!(
+                "cite URL not reachable: {url} ({reason})"
+            )));
+        }
+    }
+    let (research_pack, mut pack_urls, load_trace) = if let Some(url) = ctx.prefer {
+        crate::sources::tweet_load::run_short_cite_load(ctx.operator_brief, url, ctx.tools, true)
+            .await?
+    } else {
+        run_load_phase(
+            ctx.router,
+            ctx.topic,
+            ctx.instructions,
+            ctx.tools,
+            ctx.tools_dyn,
+            ctx.session_dir,
+        )
+        .await?
+    };
+    pack_urls = crate::sources::publisher_url::filter_reachable_publisher_urls(pack_urls).await;
+    if ctx.brief_has_cite {
+        if let Some(url) = ctx.prefer {
+            if !pack_urls.iter().any(|u| u == url) {
+                pack_urls.insert(0, url.to_string());
+            }
+        }
+    }
+    Ok((research_pack, pack_urls, load_trace))
 }
 
 /// Like [`build_grounded_draft`] but pins a digest / operator URL as cite slot 1 when set.
@@ -666,46 +786,37 @@ pub async fn build_grounded_draft_with_cite(
     router: &FailoverRouter,
     db_path: &Path,
     _embed: &dyn EmbedClient,
-    subject: &str,
+    topic: &str,
+    instructions: &str,
     tools: Option<&ItcyTools>,
     forced_cite_url: Option<&str>,
 ) -> Result<GroundedDraft, RagError> {
+    let operator_brief = crate::sources::tweet_footer::operator_brief(topic, instructions);
     // Prefer Draft ID already allocated by Slack; otherwise allocate here (E2E / tests).
-    let session_dir = begin_load_session_dir(tools, db_path, subject).await;
+    let session_dir = begin_load_session_dir(tools, db_path, &operator_brief).await;
     let tools_dyn: Option<&dyn ToolProvider> = tools.map(|t| t as &dyn ToolProvider);
 
-    // Same rule as tweets: https already in the operator brief is the cite.
-    // Free LOAD web_search on a short stub (e.g. truncated digest subject) attaches
-    // off-topic SERP rows and the writer follows them.
-    let prefer = resolve_draft_cite_url(forced_cite_url, subject);
+    let prefer = resolve_draft_cite_url(forced_cite_url, &operator_brief);
     let brief_has_cite = prefer.is_some();
-    if let Some(url) = prefer.as_deref() {
-        if let Err(reason) = crate::sources::publisher_url::probe_publisher_url(url).await {
-            return Err(RagError::Store(format!(
-                "cite URL not reachable: {url} ({reason})"
-            )));
-        }
-    }
-    let (mut research_pack, mut pack_urls, load_trace) = if let Some(url) = prefer.as_deref() {
-        crate::sources::tweet_load::run_short_cite_load(subject, url, tools, true).await?
-    } else {
-        run_load_phase(router, subject, tools, tools_dyn, session_dir.as_ref()).await?
-    };
-    pack_urls = crate::sources::publisher_url::filter_reachable_publisher_urls(pack_urls).await;
-    if brief_has_cite {
-        if let Some(url) = prefer.as_deref() {
-            if !pack_urls.iter().any(|u| u == url) {
-                pack_urls.insert(0, url.to_string());
-            }
-        }
-    }
-    apply_pack_handles(tools, subject, &mut research_pack);
+    let (mut research_pack, pack_urls, load_trace) = run_draft_load_with_cite(DraftLoadCtx {
+        router,
+        topic,
+        instructions,
+        operator_brief: &operator_brief,
+        tools,
+        tools_dyn,
+        session_dir: session_dir.as_ref(),
+        prefer: prefer.as_deref(),
+        brief_has_cite,
+    })
+    .await?;
+    apply_pack_handles(tools, &operator_brief, &mut research_pack);
 
-    checkpoint_building_pack(db_path, tools, subject, &research_pack, &pack_urls).await;
+    checkpoint_building_pack(db_path, tools, &operator_brief, &research_pack, &pack_urls).await;
 
     let (draft_response, draft_trace) = run_draft_phase(&DraftPhaseCtx {
         router,
-        subject,
+        subject: &operator_brief,
         research_pack: &research_pack,
         pack_urls: &pack_urls,
         tools,
@@ -740,18 +851,23 @@ pub async fn build_grounded_draft_with_cite(
     let mut body = scrub_and_validate_writer_body(
         &draft_response.message.content,
         &pack_urls,
-        subject,
+        &operator_brief,
         brief_has_cite,
     )?;
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = ensure_body_handles_from_pack(tools, &body, &research_pack);
-    let (body, link_options) =
-        finalize_draft_link_options(body, &pack_urls, &refill_pool, subject, prefer.as_deref())
-            .await;
+    let (body, link_options) = finalize_draft_link_options(
+        body,
+        &pack_urls,
+        &refill_pool,
+        &operator_brief,
+        prefer.as_deref(),
+    )
+    .await;
     let body = crate::sources::draft_footer::compose_draft_message(&body, &draft_id, &link_options);
     info!(draft_id = %draft_id, links = link_options.len(), "load_draft: draft id + links attached");
     Ok(GroundedDraft {
-        subject: subject.to_string(),
+        subject: topic.to_string(),
         body: with_disclosure(&body, &draft_trace),
         draft_id,
         model,
@@ -1002,46 +1118,6 @@ fn fallback_subject_commentary(subject: &str, primary: Option<&str>) -> String {
         out.push_str(u);
     }
     out
-}
-
-/// Prefer a news/blog-like support URL over /team or GitHub for auto-browse + cite.
-/// Among strong scores, keep pack/SERP order (first strong URL wins).
-fn prefer_support_url(urls: &[String]) -> Option<&str> {
-    let scored = |u: &str| -> i32 {
-        let l = u.to_ascii_lowercase();
-        if l.contains("github.com") || l.contains("/issues/") {
-            return 0;
-        }
-        if l.contains("/team") || l.ends_with("/team/") {
-            return 1;
-        }
-        if l.contains("crunchbase.com") {
-            return 2;
-        }
-        // On-topic RTK / Sogeti analysis beats generic CEO listicles.
-        if l.contains("token-tax")
-            || l.contains("token_tax")
-            || l.contains("/rtk")
-            || (l.contains("sogeti") && (l.contains("rtk") || l.contains("token")))
-        {
-            return 8;
-        }
-        if l.contains("/blog")
-            || l.contains("article")
-            || l.contains("labs.")
-            || l.contains("news")
-            || l.contains("token")
-        {
-            return 5;
-        }
-        3
-    };
-    for u in urls {
-        if scored(u) >= 5 {
-            return Some(u.as_str());
-        }
-    }
-    urls.iter().max_by_key(|u| scored(u)).map(String::as_str)
 }
 
 /// End research session if one was opened (always detach product.log tee).
@@ -1319,20 +1395,6 @@ model={model} ctx_len={}",
     }
 
     #[test]
-    fn prefer_support_url_keeps_serp_order_among_strong() {
-        let urls = vec![
-            "https://labs.sogeti.com/the-hidden-cost-of-ai-coding-how-rtk-helps-developers-defeat-the-token-tax-part-2/"
-                .into(),
-            "https://blog.mean.ceo/ai-industry-trends-july-2026".into(),
-        ];
-        assert_eq!(
-            prefer_support_url(&urls),
-            Some(urls[0].as_str()),
-            "first strong on-topic URL should win over later blog listicle"
-        );
-    }
-
-    #[test]
     fn looks_like_writer_scratchpad_detects_planning() {
         assert!(looks_like_writer_scratchpad(
             "The corpus search returned hits. I will write a warm LinkedIn-style commentary."
@@ -1474,23 +1536,56 @@ https://example.com/policy";
     }
 
     #[test]
-    fn pack_urls_keep_load_cite_not_serp_homonyms() {
+    fn pack_urls_prefers_serp_extracted_first() {
         let rust = "https://epage.github.io/blog/2026/08/cargo-vision".to_string();
         let fleet =
             "https://gomotive.com/blog/vision-26-ai-automation-future-fleet-operations".to_string();
-        let pack = pack_urls_from_load(
+        let llm_first = pack_urls_from_load(
             std::slice::from_ref(&rust),
             &[],
             std::slice::from_ref(&fleet),
         );
-        assert_eq!(pack, vec![rust.clone()]);
-        assert!(!pack.iter().any(|u| u.contains("gomotive")));
-        let recovered = pack_urls_from_load(
+        assert_eq!(llm_first, vec![fleet.clone(), rust.clone()]);
+        assert_eq!(llm_first.first().map(String::as_str), Some(fleet.as_str()));
+        let serp_only = pack_urls_from_load(
             &[],
             std::slice::from_ref(&rust),
             std::slice::from_ref(&fleet),
         );
-        assert_eq!(recovered, vec![rust]);
+        assert_eq!(serp_only, vec![fleet, rust]);
+    }
+
+    #[test]
+    fn scylla_serp_pack_yields_three_links_with_obvious_news() {
+        use crate::sources::draft_footer::pick_link_options;
+        let blog2026 =
+            "https://www.scylladb.com/2026/08/27/new-rust-driver-for-scylladbs-dynamodb-api/";
+        let blog2025 = "https://www.scylladb.com/2025/03/26/scylladb-rust-driver-1-0/";
+        let futurum = "https://futurumgroup.com/insights/scylladbs-rust-driver-delivers-58-throughput-gain-for-dynamodb-users/";
+        let university = "https://university.scylladb.com/courses/scylla-alternator/";
+        let extracted = [blog2026, futurum, university, blog2025]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let pack = pack_urls_from_load(&[], &[], &extracted);
+        assert!(pack.len() >= 3, "{pack:?}");
+        let opts = pick_link_options(&pack, "");
+        assert!(opts.len() >= 3, "{opts:?}");
+        assert!(
+            opts.iter()
+                .any(|u| u.contains("2026/08/27/new-rust-driver")),
+            "{opts:?}"
+        );
+        assert!(
+            opts.iter()
+                .any(|u| u.contains("futurumgroup.com/insights/scylladbs-rust-driver")),
+            "{opts:?}"
+        );
+        assert!(
+            opts.iter().any(|u| u.contains("university.scylladb.com")),
+            "{opts:?}"
+        );
+        assert!(!opts.iter().any(|u| u.contains("2025/03/26")), "{opts:?}");
     }
 
     #[test]

@@ -430,14 +430,36 @@ const SEARCH_STOP: &[&str] = &[
     "that", "quote", "comment", "please", "keep", "short", "about", "find", "news", "article",
 ];
 
-/// Brave query: subject keywords, space = AND. No instruction filler.
+/// Writer / LOAD brief: `subject` plus optional `instructions` (Slack comma in prose only).
 #[must_use]
-pub fn web_search_query(brief: &str) -> String {
-    let k = search_keywords(brief);
-    if k.is_empty() {
+pub fn operator_brief(subject: &str, instructions: &str) -> String {
+    let s = subject.trim();
+    let i = instructions.trim();
+    if i.is_empty() {
+        s.to_string()
+    } else {
+        format!("{s}, {i}")
+    }
+}
+
+/// SERP query: full searchable text (space-join subject + instructions; not Slack comma).
+#[must_use]
+pub fn web_search_query(subject: &str, instructions: &str) -> String {
+    let s = subject.trim();
+    let i = instructions.trim();
+    let mut q = if i.is_empty() {
+        s.to_string()
+    } else {
+        format!("{s} {i}")
+    };
+    for u in extract_https_urls(&q) {
+        q = q.replace(&u, " ");
+    }
+    let q = q.split_whitespace().collect::<Vec<_>>().join(" ");
+    if q.is_empty() {
         "technology".into()
     } else {
-        k.join(" ")
+        q
     }
 }
 
@@ -969,10 +991,19 @@ Link: 2
         );
         assert_eq!(
             web_search_query(
-                "Casper vs RWA and x402 payments, quote this and comment https://x.com/a/status/1"
+                "Casper vs RWA and x402 payments, quote this and comment",
+                "https://x.com/a/status/1"
             ),
-            "Casper RWA x402 payments"
+            "Casper vs RWA and x402 payments, quote this and comment"
         );
+        let scylla = "ScyllaDB Rustlang driver for ScyllaDB Alternator that achieves ~58% higher throughput than the AWS SDK driver";
+        assert_eq!(web_search_query(scylla, ""), scylla);
+        assert_ne!(web_search_query(scylla, ""), "ScyllaDB");
+        let (s, i) = crate::slack::commands::parse_draft_about_args(scylla);
+        assert!(i.is_empty());
+        assert_eq!(web_search_query(&s, &i), scylla);
+        let (s2, i2) = crate::slack::commands::parse_draft_about_args("rtk-ai CEO, find news");
+        assert_eq!(web_search_query(&s2, &i2), "rtk-ai CEO find news");
         assert_eq!(
             x_search_query(
                 "Casper vs RWA and x402 payments, quote this and comment https://x.com/a/status/1"

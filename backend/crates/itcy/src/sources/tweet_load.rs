@@ -53,7 +53,7 @@ pub async fn run_short_cite_load(
         info!("load_tweet: skipped (x status cite)");
         (String::new(), 0)
     } else {
-        let web_q = web_search_query(subject);
+        let web_q = web_search_query(subject, "");
         brave_and_extra_browse(tools, &web_q, subject_url).await
     };
 
