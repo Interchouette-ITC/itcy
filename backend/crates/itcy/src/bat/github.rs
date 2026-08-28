@@ -516,6 +516,8 @@ impl GithubClient {
         let draft_id = crate::bat::pack::post_id_to_draft_id(&post_id)
             .ok_or_else(|| GithubError::Api(format!("bad post id for promote: {post_id}")))?;
         self.merge_pull_squash_on(pr_owner, pr_number).await?;
+        self.sync_org_drafts_mirror_from_post_pr(pr_owner, pr_number, &draft_id)
+            .await?;
         Ok(PromoteResult {
             draft_id,
             post_id,
@@ -654,9 +656,127 @@ impl GithubClient {
         ))
     }
 
-    /// Opens (or refreshes) the org **`drafts`** PR for a `LinkedIn` draft (second repo, same branch name).
+    /// Writes org **`drafts`** mirror files when fork BAT lands on **`posts`** (no second PR).
+    async fn sync_org_drafts_mirror_from_post_pr(
+        &self,
+        pr_owner: &str,
+        pr_number: u64,
+        draft_id: &str,
+    ) -> Result<(), GithubError> {
+        if self
+            .cfg
+            .drafts_owner
+            .eq_ignore_ascii_case(&self.cfg.org_owner)
+        {
+            return Ok(());
+        }
+        let post_id = crate::bat::pack::draft_id_to_post_id(draft_id).ok_or_else(|| {
+            GithubError::Api(format!("bad draft id for org drafts sync: {draft_id}"))
+        })?;
+        let (post_body_path, post_meta_path) = crate::bat::pack::post_paths(&post_id);
+        let post_body = self
+            .file_text_on_pr(pr_owner, pr_number, &post_body_path)
+            .await?
+            .ok_or_else(|| {
+                GithubError::Api(format!("PR #{pr_number}: missing {post_body_path}"))
+            })?;
+        let meta_raw = self
+            .file_text_on_pr(pr_owner, pr_number, &post_meta_path)
+            .await?
+            .unwrap_or_default();
+        let parsed = parse_pack_meta_loose(&meta_raw);
+        let draft_body = crate::bat::pack::body_as_draft_from_post(&post_body, draft_id);
+        let draft_meta = crate::bat::pack::pack_draft_meta(&crate::bat::pack::DraftMetaInput {
+            draft_id,
+            subject: &parsed.subject,
+            model: &parsed.model,
+            tokens_in: parsed.tokens_in,
+            tokens_out: parsed.tokens_out,
+            sources: &parsed.sources,
+            created_at: &parsed.created_at,
+        });
+        let (body_path, meta_path) = crate::bat::pack::draft_paths(draft_id);
+        let org = self.cfg.org_owner.clone();
+        let base = self.cfg.drafts_base.clone();
+        for file in [
+            RepoFile {
+                path: body_path,
+                content: draft_body,
+            },
+            RepoFile {
+                path: meta_path,
+                content: draft_meta,
+            },
+        ] {
+            self.put_file(&org, &base, &file).await?;
+        }
+        Ok(())
+    }
+
+    /// Sync org **`drafts`** from an on-branch POST tree (after merge or `/retry_bat`).
     ///
-    /// Called at `/accept` with the fork Draft PR so the operator gets both links.
+    /// # Errors
+    ///
+    /// Returns a [`GithubError`] variant when POST files are missing or PUT fails.
+    pub async fn sync_org_drafts_from_posts_branch(
+        &self,
+        draft_id: &str,
+    ) -> Result<(), GithubError> {
+        if self
+            .cfg
+            .drafts_owner
+            .eq_ignore_ascii_case(&self.cfg.org_owner)
+        {
+            return Ok(());
+        }
+        let post_id = crate::bat::pack::draft_id_to_post_id(draft_id).ok_or_else(|| {
+            GithubError::Api(format!("bad draft id for org drafts sync: {draft_id}"))
+        })?;
+        let (post_body_path, post_meta_path) = crate::bat::pack::post_paths(&post_id);
+        let posts_owner = self.cfg.posts_owner.clone();
+        let posts_base = self.cfg.posts_base.clone();
+        let post_body = self
+            .file_text_on_branch(&posts_owner, &posts_base, &post_body_path)
+            .await?
+            .ok_or_else(|| {
+                GithubError::Api(format!(
+                    "missing {post_body_path} on {posts_owner}/{posts_base}"
+                ))
+            })?;
+        let meta_raw = self
+            .file_text_on_branch(&posts_owner, &posts_base, &post_meta_path)
+            .await?
+            .unwrap_or_default();
+        let parsed = parse_pack_meta_loose(&meta_raw);
+        let draft_body = crate::bat::pack::body_as_draft_from_post(&post_body, draft_id);
+        let draft_meta = crate::bat::pack::pack_draft_meta(&crate::bat::pack::DraftMetaInput {
+            draft_id,
+            subject: &parsed.subject,
+            model: &parsed.model,
+            tokens_in: parsed.tokens_in,
+            tokens_out: parsed.tokens_out,
+            sources: &parsed.sources,
+            created_at: &parsed.created_at,
+        });
+        let (body_path, meta_path) = crate::bat::pack::draft_paths(draft_id);
+        let org = self.cfg.org_owner.clone();
+        let base = self.cfg.drafts_base.clone();
+        for file in [
+            RepoFile {
+                path: body_path,
+                content: draft_body,
+            },
+            RepoFile {
+                path: meta_path,
+                content: draft_meta,
+            },
+        ] {
+            self.put_file(&org, &base, &file).await?;
+        }
+        Ok(())
+    }
+
+    /// Opens (or refreshes) the org **`drafts`** PR for a `LinkedIn` draft (legacy; prefer [`Self::sync_org_drafts_mirror_from_post_pr`]).
     ///
     /// # Errors
     ///

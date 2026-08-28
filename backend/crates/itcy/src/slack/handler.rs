@@ -1540,35 +1540,22 @@ fn format_linkedin_accept_slack(r: &BatSubmitResult, paste: &str, next: &str) ->
     use std::fmt::Write as _;
 
     let head = if r.updated_existing {
-        "Draft PR **updated** (fork)"
+        "Post PR **updated** (fork `posts`)"
     } else {
-        "Draft PR **opened** (fork)"
+        "Post PR **opened** (fork `posts`)"
     };
     let mut out = format!(
         ":white_check_mark: {head}:\n\
 • draft: `{id}`\n\
 • branch: `{branch}`\n\
 • PR: {pr_url}\n\
-:hourglass_flowing_sand: Status: **accepted**. Waiting **gRoussac** Approve = BAT → Post on Interchouette (playground soft ship).\n",
+:hourglass_flowing_sand: Status: **accepted**. Waiting **gRoussac** Approve = BAT → merge into **`posts`** + ship.\n",
         id = r.draft_id,
         branch = r.branch,
         pr_url = r.pr_url,
     );
-    if let Some(org_url) = r.org_draft_pr_url.as_deref() {
-        let _ = write!(
-            out,
-            "\n:white_check_mark: Org Draft PR **opened** (Interchouette-ITC):\n\
-• draft: `{id}`\n\
-• PR: {org_url}\n\
-:hourglass_flowing_sand: Status: **accepted**. Waiting **gRoussac** Approve = DRAFT on production git.\n",
-            id = r.draft_id,
-        );
-    }
     let _ = write!(out, "\n{paste}\n\n{next}");
     let _ = write!(out, "\n:link: Fork BAT: {}", r.pr_url);
-    if let Some(org_url) = r.org_draft_pr_url.as_deref() {
-        let _ = write!(out, "\n:link: Org drafts: {org_url}");
-    }
     out
 }
 
@@ -1812,30 +1799,27 @@ mod tests {
     }
 
     #[test]
-    fn linkedin_accept_slack_shows_fork_and_org_pr_blocks() {
+    fn linkedin_accept_slack_shows_post_pr_only() {
         let fork = BatSubmitResult {
             draft_id: "DRAFT-20260828-000122".into(),
-            branch: "draft/DRAFT-20260828-000122".into(),
+            branch: "post/POST-20260828-000122".into(),
             pr_number: 58,
             pr_url: "https://github.com/Interchouette/itcy-publications/pull/58".into(),
             updated_existing: false,
             promoted: None,
-            org_draft_pr_number: Some(101),
-            org_draft_pr_url: Some(
-                "https://github.com/Interchouette-ITC/itcy-publications/pull/101".into(),
-            ),
+            org_draft_pr_number: None,
+            org_draft_pr_url: None,
         };
         let body = format_linkedin_accept_slack(&fork, "PASTE", "NEXT");
         assert!(
             body.contains("• PR: https://github.com/Interchouette/itcy-publications/pull/58"),
             "{body}"
         );
-        assert!(body.contains("playground soft ship"), "{body}");
-        assert!(body.contains("Org Draft PR **opened**"), "{body}");
-        assert!(body.contains("production git"), "{body}");
+        assert!(body.contains("Post PR **opened**"), "{body}");
+        assert!(body.contains("merge into **`posts`**"), "{body}");
+        assert!(!body.contains("Org Draft PR"), "{body}");
+        assert!(!body.contains("Org drafts:"), "{body}");
         assert!(body.contains(":link: Fork BAT:"), "{body}");
-        assert!(body.contains(":link: Org drafts:"), "{body}");
-        assert!(body.contains("pull/101"), "{body}");
         assert!(body.contains("PASTE"), "{body}");
         assert!(body.contains("NEXT"), "{body}");
     }

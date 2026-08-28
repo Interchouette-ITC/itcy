@@ -110,9 +110,22 @@ fn retry_after_secs(headers: &reqwest::header::HeaderMap) -> Option<u64> {
         .and_then(|s| s.parse::<u64>().ok())
 }
 
-/// Ship notice to `#daily-digest` when that channel env is set.
+/// Ship notice to `#daily-digest` when that channel env is set (skipped in playground soft-ship).
 pub async fn post_ship_notice(post_id: &str, detail: &str) {
+    if skip_playground_ship_notice(post_id) {
+        return;
+    }
     post_ship_slack(&crate::sources::format_ship_notice(post_id, detail), false).await;
+}
+
+fn skip_playground_ship_notice(post_id: &str) -> bool {
+    if post_id.starts_with("POST-") {
+        return crate::bat::github::is_playground_mode();
+    }
+    if post_id.starts_with("XPOST-") {
+        return crate::bat::github::is_x_playground_mode();
+    }
+    false
 }
 
 /// Ship failure to digest + operator channel.
