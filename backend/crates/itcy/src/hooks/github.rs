@@ -486,7 +486,15 @@ async fn handle_pull_request(
         "opened" | "reopened" | "synchronize" | "ready_for_review" | "review_request_removed"
     );
 
-    let (merged, detail) = if try_merge && pr_number > 0 {
+    let (merged, detail) = if (try_merge
+        || (action == "closed"
+            && payload
+                .pull_request
+                .as_ref()
+                .and_then(|p| p.merged)
+                .unwrap_or(false)))
+        && pr_number > 0
+    {
         let outcome = merge_outcome(state, &full_name, pr_number).await;
         info!(
             delivery = delivery.id,
@@ -506,7 +514,7 @@ async fn handle_pull_request(
         (
             merged_flag,
             if merged_flag {
-                format!("PR #{pr_number} closed (merged)")
+                format!("PR #{pr_number} closed (not BAT)")
             } else {
                 format!("PR #{pr_number} closed (not merged)")
             },

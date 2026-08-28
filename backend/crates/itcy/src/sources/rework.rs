@@ -12,9 +12,8 @@ use crate::llm::router::{FailoverRouter, TaskKind};
 use crate::llm::LlmError;
 use crate::prompts::{
     draft_rework_user_message, rework_empty_pack, tweet_rework_commentary_empty,
-    tweet_rework_commentary_exploded, tweet_rework_previous_omitted, tweet_rework_user_message,
-    TweetReworkUserArgs, DRAFT_REWORK_SYSTEM_CORE, TWEET_FARCE_SYSTEM_CORE,
-    TWEET_REWORK_SYSTEM_CORE, WHO_IS_WHO,
+    tweet_rework_commentary_exploded, tweet_rework_user_message, TweetReworkUserArgs,
+    DRAFT_REWORK_SYSTEM_CORE, TWEET_FARCE_SYSTEM_CORE, TWEET_REWORK_SYSTEM_CORE, WHO_IS_WHO,
 };
 use crate::sources::draft_footer::{
     compose_draft_message, ensure_primary_link_line, pick_link_options,
@@ -191,20 +190,13 @@ fn tweet_rework_system_prompt(farce: bool) -> String {
     }
 }
 
-/// Fold operator rework into the stored subject so the next turn does not re-freeze
-/// an outdated digest proposition as facts.
-///
-/// Substantive instructions **replace** the subject (they are the new truth). Short
-/// polish ("add emojis") keeps the prior subject.
+/// Fold operator rework into the stored subject (audit trail for the next turn).
 #[must_use]
 pub fn merge_rework_subject(prior: &str, instructions: &str) -> String {
     let prior = prior.trim();
     let inst = sanitize_rework_instructions(instructions);
     if inst.is_empty() {
         return prior.to_string();
-    }
-    if rework_is_new_brief(&inst) {
-        return inst;
     }
     if prior.is_empty() {
         return inst;
@@ -222,82 +214,9 @@ pub fn sanitize_rework_instructions(raw: &str) -> String {
     t.replace('*', "").trim().to_string()
 }
 
-/// Long operator notes that assert new facts are a new brief (`/tweet_about` style).
-///
-/// Imperative copy-edits (`remove …`, `add emojis`, `shorten`) keep the previous body
-/// even when they run past the length threshold. A bare char count of 40 wrongly treated
-/// `remove Comment "…" for the GitHub link.` as a full rewrite and omitted the tweet.
-#[must_use]
-pub fn rework_is_new_brief(instructions: &str) -> bool {
-    let inst = sanitize_rework_instructions(instructions);
-    if inst.is_empty() || rework_is_copy_edit(&inst) {
-        return false;
-    }
-    inst.chars().count() >= 40
-}
-
-/// Imperative polish / surgical edit (keep previous tweet; apply the note).
-#[must_use]
-fn rework_is_copy_edit(instructions: &str) -> bool {
-    const PREFIXES: &[&str] = &[
-        "remove ",
-        "drop ",
-        "delete ",
-        "cut ",
-        "strip ",
-        "omit ",
-        "take out ",
-        "get rid of ",
-        "no more ",
-        "without ",
-        "add ",
-        "insert ",
-        "include ",
-        "put ",
-        "shorten",
-        "trim ",
-        "tighten",
-        "compress",
-        "expand ",
-        "lengthen",
-        "fix ",
-        "change ",
-        "replace ",
-        "swap ",
-        "rewrite ",
-        "rephrase ",
-        "edit ",
-        "update ",
-        "make ",
-        "don't ",
-        "do not ",
-        "never ",
-        "keep ",
-        "preserve ",
-        "use ",
-        "tone ",
-        "less ",
-        "more ",
-        "punchier",
-        "funnier",
-        "cooler",
-        "clearer",
-    ];
-    let t = instructions.trim_start().to_ascii_lowercase();
-    PREFIXES.iter().any(|p| t.starts_with(p))
-}
-
 fn tweet_rework_needs_tools(instructions: &str) -> bool {
     let t = instructions.to_ascii_lowercase();
-    t.contains("web_search")
-        || t.contains("browse_url")
-        || t.contains("browse ")
-        || t.contains("look up")
-        || t.contains("search the")
-        || t.contains("new url")
-        || t.contains("new cite")
-        || t.contains("different url")
-        || t.contains("different cite")
+    t.contains("web_search") || t.contains("browse_url")
 }
 
 fn tweet_rework_user_prompt(
@@ -310,9 +229,7 @@ fn tweet_rework_user_prompt(
     farce: bool,
 ) -> String {
     let commentary_raw = crate::publish::tweet_text_for_api(stored_body);
-    let commentary = if !farce && rework_is_new_brief(instructions) {
-        tweet_rework_previous_omitted().to_string()
-    } else if tweet_body_exploded(&commentary_raw) {
+    let commentary = if tweet_body_exploded(&commentary_raw) {
         tweet_rework_commentary_exploded().to_string()
     } else if commentary_raw.is_empty() {
         tweet_rework_commentary_empty().to_string()
@@ -435,17 +352,11 @@ pub async fn rework_stored_tweet(
     info!(
         tweet_id = %stored.draft_id,
         instructions = %instructions,
-        omit_previous = !farce && rework_is_new_brief(instructions),
         "rework: tweet start"
     );
-    let subject_for_prompt = if !farce && rework_is_new_brief(instructions) {
-        "(outdated digest one-liner omitted - OPERATOR REWORK INSTRUCTIONS above are the facts)"
-    } else {
-        stored.subject.as_str()
-    };
     let user = tweet_rework_user_prompt(
         &stored.draft_id,
-        subject_for_prompt,
+        stored.subject.as_str(),
         &pack,
         &stored.body,
         if current.is_empty() {
@@ -542,26 +453,24 @@ mod tests {
     use crate::prompts::{AI_CMO, FORM_CRAFT_X};
 
     #[test]
-    fn substantive_rework_omits_previous_tweet_so_model_cannot_copy_it() {
+    fn rework_always_includes_previous_tweet() {
+        let prior = "🚀 No mcp:// yet, but ITC is about to drop the protocol on mcpare.com.\n\nwe're building it.\n\nhttps://aaif.io/a\n";
         let user = tweet_rework_user_prompt(
             "TWEET-1",
             "mcp:// there is no mcp:// protocol right now",
             "## ResearchPack\n",
-            "🚀 No mcp:// yet, but ITC is about to drop the protocol on mcpare.com.\n\nwe're building it.\n\nhttps://aaif.io/a\n",
+            prior,
             "https://aaif.io/a",
             "mcp:// is already being proposed as a URI scheme; ITC is only dreaming about contributing for mcpare.com",
             false,
         );
-        assert!(user.contains("previous draft omitted"));
         assert!(
-            !user.contains("No mcp:// yet"),
-            "old claims must not be in the prompt: {user}"
+            user.contains("No mcp:// yet"),
+            "previous tweet must stay in the prompt: {user}"
         );
-        assert!(
-            !user.contains("we're building"),
-            "old claims must not be in the prompt: {user}"
-        );
+        assert!(user.contains("we're building"));
         assert!(user.contains("already being proposed"));
+        assert!(!user.contains("previous draft omitted"));
         let polish = tweet_rework_user_prompt(
             "TWEET-1",
             "rust",
@@ -572,7 +481,6 @@ mod tests {
             false,
         );
         assert!(polish.contains("plain tweet about rust"));
-        assert!(!polish.contains("previous draft omitted"));
     }
 
     #[test]
@@ -594,10 +502,10 @@ Cite = option 1 (publisher URL in body).\n\
         assert!(user.contains("OPERATOR REWORK INSTRUCTIONS"));
         assert!(user.contains("company X account"));
         assert!(
-            !user.contains("I manage Interchouette ITC's LinkedIn page."),
-            "long correction omits previous draft so the model cannot copy it: {user}"
+            user.contains("I manage Interchouette ITC's LinkedIn page."),
+            "previous tweet prose must stay in the prompt: {user}"
         );
-        assert!(user.contains("previous draft omitted"));
+        assert!(!user.contains("previous draft omitted"));
         assert!(user.contains("X tweet"));
         assert!(user.contains("@Interchouette"));
         assert!(!user.contains("Cite = option"));
@@ -631,33 +539,23 @@ Cite = option 1 (publisher URL in body).\n\
     }
 
     #[test]
-    fn merge_rework_subject_replaces_outdated_digest_line() {
+    fn merge_rework_subject_appends_operator_notes() {
         let s = merge_rework_subject(
             "mcp:// there is no mcp:// protocol right now",
             "mcp:// is already proposed as a URI scheme for MCP discovery; ITC is only dreaming about contributing for mcpare.com",
         );
         assert!(s.contains("already proposed"));
         assert!(s.contains("contributing"));
-        assert!(
-            !s.contains("there is no mcp://"),
-            "must not keep the wrong digest line: {s}"
-        );
+        assert!(s.contains("there is no mcp://"));
+        assert!(s.contains("[operator rework]"));
         let short = merge_rework_subject("rust policy", "add emojis");
         assert!(short.contains("rust policy"));
         assert!(short.contains("[operator rework]"));
     }
 
     #[test]
-    fn surgical_remove_line_keeps_previous_tweet_not_new_brief() {
+    fn long_rework_note_keeps_previous_tweet_in_prompt() {
         let instructions = "remove Comment \"obscura\" for the GitHub link.";
-        assert!(
-            instructions.chars().count() >= 40,
-            "regression needs a long-enough remove note"
-        );
-        assert!(
-            !rework_is_new_brief(instructions),
-            "remove-line edits must not omit the previous tweet"
-        );
         let prior = "📜 A solo dev built a Rust browser.\n\n🦀 Obscura’s footprint crushes headless Chrome.\n\nhttps://x.com/thevibefounder/status/1\n";
         let user = tweet_rework_user_prompt(
             "TWEET-1",
@@ -668,22 +566,34 @@ Cite = option 1 (publisher URL in body).\n\
             instructions,
             false,
         );
-        assert!(
-            !user.contains("previous draft omitted"),
-            "surgical remove must keep previous body: {user}"
-        );
-        assert!(
-            user.contains("Obscura"),
-            "previous commentary must stay in the prompt: {user}"
-        );
+        assert!(user.contains("Obscura"));
+        assert!(!user.contains("previous draft omitted"));
         let merged = merge_rework_subject(
             "Obscura Rust browser | cite https://x.com/thevibefounder/status/1",
             instructions,
         );
-        assert!(
-            merged.contains("Obscura Rust browser"),
-            "subject must not be replaced by the remove note alone: {merged}"
+        assert!(merged.contains("Obscura Rust browser"));
+        assert!(merged.contains("[operator rework]"));
+    }
+
+    #[test]
+    fn tone_word_fix_keeps_previous_tweet_in_prompt() {
+        let instructions = "58% faster than AWS SDK is too agressive say 58% More Throughput";
+        let prior =
+            "🦉 Scylla's driver is 58% faster than AWS SDK.\n\nhttps://www.scylladb.com/a\n";
+        let user = tweet_rework_user_prompt(
+            "TWEET-20260828-000092",
+            "ScyllaDB Rust driver",
+            "## ResearchPack\n",
+            prior,
+            "https://www.scylladb.com/a",
+            instructions,
+            false,
         );
+        assert!(user.contains("58% faster than AWS SDK"));
+        assert!(!user.contains("previous draft omitted"));
+        let merged = merge_rework_subject("ScyllaDB Rust driver", instructions);
+        assert!(merged.contains("ScyllaDB Rust driver"));
         assert!(merged.contains("[operator rework]"));
     }
 
@@ -750,10 +660,8 @@ Cite = option 1 (publisher URL in body).\n\
             "footprints is not feet from an animal, find something different"
         ));
         assert!(!tweet_rework_needs_tools("replace :rocket: by :feet:"));
-        assert!(tweet_rework_needs_tools(
-            "browse the repo and pick a new cite"
-        ));
-        assert!(tweet_rework_needs_tools("use a different url"));
+        assert!(tweet_rework_needs_tools("call web_search for a new cite"));
+        assert!(tweet_rework_needs_tools("use browse_url on the repo"));
     }
 
     #[test]
@@ -764,7 +672,7 @@ Cite = option 1 (publisher URL in body).\n\
             "## ResearchPack\nsummary: casper sdk\n",
             "hello",
             "https://example.com/a",
-            "browse the repo and pick a new cite",
+            "browse_url the repo and pick a new cite",
             false,
         );
         assert!(user.contains("ResearchPack (operator asked"));

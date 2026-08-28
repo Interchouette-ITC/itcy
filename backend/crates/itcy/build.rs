@@ -33,7 +33,6 @@ const PROMPT_FILES: &[&str] = &[
     "tweet_rework_user_tools.md",
     "tweet_rework_user_farce.md",
     "rework_empty_pack.md",
-    "tweet_rework_previous_omitted.md",
     "tweet_rework_commentary_exploded.md",
     "tweet_rework_commentary_empty.md",
     "tweet_pack_note_subject_https.md",

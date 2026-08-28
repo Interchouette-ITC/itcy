@@ -372,7 +372,9 @@ async fn ship_promoted_x(
         },
         in_reply_to_tweet_id: None,
     };
-    match crate::publish::ship_x_post(db_path, "playground", request, None).await {
+    let x_mode = crate::publish::resolve_x_publish_mode("playground")
+        .map_or("playground", crate::publish::PublishMode::as_str);
+    match crate::publish::ship_x_post(db_path, x_mode, request, None).await {
         Ok(r) => {
             let notice = r.ship_notice_text().to_string();
             crate::slack::api::post_ship_notice(&promoted.post_id, &notice).await;
@@ -397,9 +399,11 @@ async fn ship_promoted_linkedin(
         pubs_pr_number: Some(promoted.fork_pr_number).filter(|n| *n > 0),
         body: promoted.body.clone(),
     };
+    let li_mode = crate::publish::resolve_publish_mode_agile("playground")
+        .map_or("playground", crate::publish::PublishMode::as_str);
     match crate::publish::ship_company_post(
         db_path,
-        "playground",
+        li_mode,
         request,
         crate::publish::ShipOptions::default(),
     )

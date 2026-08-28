@@ -1146,13 +1146,14 @@ impl GithubClient {
             }))
             .send()
             .await?;
-        if !resp.status().is_success() {
-            return Err(GithubError::Api(format!(
-                "merge PR #{number}: {}",
-                resp.text().await.unwrap_or_default()
-            )));
+        if resp.status().is_success() {
+            return Ok(());
         }
-        Ok(())
+        let body = resp.text().await.unwrap_or_default();
+        if body.contains("already merged") {
+            return Ok(());
+        }
+        Err(GithubError::Api(format!("merge PR #{number}: {body}")))
     }
 
     /// Close a Draft PR on the drafts owner (no-op if already closed).
