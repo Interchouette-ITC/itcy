@@ -83,6 +83,8 @@ pub enum RagError {
     Llm(#[from] LlmError),
     #[error("no grounded sources for subject `{0}`")]
     NoSources(String),
+    #[error("writer kept banned LinkedIn slogans after retry")]
+    SloganMush,
     #[error("writer dumped an essay instead of a tweet")]
     NotATweet,
     #[error("farce tweet missing @grok @cursor_ai @elonmusk")]
@@ -388,48 +390,59 @@ pub(crate) async fn run_load_phase(
     Ok((research_pack, pack_urls, load_trace))
 }
 
-async fn run_draft_phase(
-    router: &FailoverRouter,
-    subject: &str,
-    research_pack: &str,
-    pack_urls: &[String],
-    tools: Option<&ItcyTools>,
+struct DraftPhaseCtx<'a> {
+    router: &'a FailoverRouter,
+    subject: &'a str,
+    research_pack: &'a str,
+    pack_urls: &'a [String],
+    tools: Option<&'a ItcyTools>,
     brief_has_cite: bool,
-    session_dir: Option<&PathBuf>,
+    session_dir: Option<&'a PathBuf>,
+    extra_pack_note: Option<&'a str>,
+}
+
+async fn run_draft_phase(
+    ctx: &DraftPhaseCtx<'_>,
 ) -> Result<(LlmResponse, CompletionTrace), RagError> {
-    if let Some(t) = tools {
-        if brief_has_cite {
+    if let Some(t) = ctx.tools {
+        if ctx.brief_has_cite {
             t.set_draft_subject_https_writer_policy().await;
         } else {
-            t.set_draft_policy(pack_urls).await;
+            t.set_draft_policy(ctx.pack_urls).await;
         }
     }
 
-    let tools_dyn: Option<&dyn ToolProvider> = if brief_has_cite {
+    let tools_dyn: Option<&dyn ToolProvider> = if ctx.brief_has_cite {
         None
     } else {
-        tools.map(|t| t as &dyn ToolProvider)
+        ctx.tools.map(|t| t as &dyn ToolProvider)
     };
 
     log_pipeline_banner("DRAFT (writer)");
 
-    let pack_note = draft_pack_note(pack_urls.is_empty(), brief_has_cite);
-    let user = if brief_has_cite {
-        crate::prompts::draft_user_message_subject_https(research_pack, pack_note, subject)
+    let base_note = draft_pack_note(ctx.pack_urls.is_empty(), ctx.brief_has_cite);
+    let pack_note = match ctx.extra_pack_note {
+        Some(extra) if !extra.trim().is_empty() => format!("{base_note}\n\n{extra}"),
+        _ => base_note.to_string(),
+    };
+    let user = if ctx.brief_has_cite {
+        crate::prompts::draft_user_message_subject_https(ctx.research_pack, &pack_note, ctx.subject)
     } else {
-        draft_user_message(research_pack, pack_note, subject)
+        draft_user_message(ctx.research_pack, &pack_note, ctx.subject)
     };
     let draft_messages = vec![
         LlmMessage::system(draft_system_prompt()),
         LlmMessage::user(user),
     ];
-    match router
+    match ctx
+        .router
         .complete_with_tools(TaskKind::Draft, &draft_messages, tools_dyn, MAX_TOOL_ROUNDS)
         .await
     {
         Ok(v) => Ok(v),
         Err(e) => {
-            end_session_best_effort(tools, session_dir, &format!("draft failed: {e}")).await;
+            end_session_best_effort(ctx.tools, ctx.session_dir, &format!("draft failed: {e}"))
+                .await;
             Err(e.into())
         }
     }
@@ -546,12 +559,58 @@ pub(crate) fn scrub_and_validate_writer_body(
     }
     body = ensure_draft_emoji_bar(&body);
     if crate::sources::corpus_propose::body_has_slogan_mush(&body) {
-        return Err(RagError::Store(
-            "writer returned banned slogan mush (it's not about / it's not just / broader trend)"
-                .into(),
-        ));
+        return Err(RagError::SloganMush);
     }
     Ok(body)
+}
+
+const DRAFT_ANTI_MUSH_RETRY_NOTE: &str = "HARD REWRITE: No slogan mush. Forbidden: it's not about, it's not just, isn't just a shift, broader trend. \
+Name the entity from the pack and state the concrete change in plain verbs.";
+
+async fn draft_body_with_mush_retry(
+    router: &FailoverRouter,
+    subject: &str,
+    research_pack: &str,
+    pack_urls: &[String],
+    tools: Option<&ItcyTools>,
+    brief_has_cite: bool,
+    session_dir: Option<&PathBuf>,
+) -> Result<(String, CompletionTrace), RagError> {
+    let base = DraftPhaseCtx {
+        router,
+        subject,
+        research_pack,
+        pack_urls,
+        tools,
+        brief_has_cite,
+        session_dir,
+        extra_pack_note: None,
+    };
+    let (draft_response, draft_trace) = run_draft_phase(&base).await?;
+    match scrub_and_validate_writer_body(
+        &draft_response.message.content,
+        pack_urls,
+        subject,
+        brief_has_cite,
+    ) {
+        Ok(body) => Ok((body, draft_trace)),
+        Err(RagError::SloganMush) => {
+            warn!("load_draft: slogan mush on first writer pass; retrying with anti-mush note");
+            let retry_ctx = DraftPhaseCtx {
+                extra_pack_note: Some(DRAFT_ANTI_MUSH_RETRY_NOTE),
+                ..base
+            };
+            let (draft_response, retry_trace) = run_draft_phase(&retry_ctx).await?;
+            let body = scrub_and_validate_writer_body(
+                &draft_response.message.content,
+                pack_urls,
+                subject,
+                brief_has_cite,
+            )?;
+            Ok((body, draft_trace.accumulate(&retry_trace)))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// `LinkedIn` drafts: at least two unique emoji glyphs (same bar as tweets).
@@ -647,7 +706,7 @@ pub async fn build_grounded_draft_with_cite(
 
     checkpoint_building_pack(db_path, tools, subject, &research_pack, &pack_urls).await;
 
-    let (draft_response, draft_trace) = run_draft_phase(
+    let (mut body, draft_trace) = draft_body_with_mush_retry(
         router,
         subject,
         &research_pack,
@@ -681,12 +740,6 @@ pub async fn build_grounded_draft_with_cite(
         load_trace.model_label(),
         draft_trace.model_label()
     );
-    let mut body = scrub_and_validate_writer_body(
-        &draft_response.message.content,
-        &pack_urls,
-        subject,
-        brief_has_cite,
-    )?;
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = ensure_body_handles_from_pack(tools, &body, &research_pack);
     let (body, link_options) =
@@ -759,7 +812,7 @@ pub async fn build_grounded_draft_from_pack(
     let mut research_pack = research_pack.to_string();
     apply_pack_handles(tools, subject, &mut research_pack);
     checkpoint_building_pack(db_path, tools, subject, &research_pack, &urls).await;
-    let (draft_response, draft_trace) = run_draft_phase(
+    let (mut body, draft_trace) = draft_body_with_mush_retry(
         router,
         subject,
         &research_pack,
@@ -780,12 +833,6 @@ pub async fn build_grounded_draft_from_pack(
         ),
     )
     .await;
-    let mut body = scrub_and_validate_writer_body(
-        &draft_response.message.content,
-        &urls,
-        subject,
-        brief_has_cite,
-    )?;
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = ensure_body_handles_from_pack(tools, &body, &research_pack);
     let prefer = crate::sources::tweet_footer::extract_brief_cite(subject);
@@ -1545,6 +1592,29 @@ I'm watching 🦉 how this lands for systems teams that want polish without a se
         );
         assert!(out.contains('🦉') && out.contains('🦀'));
         assert_eq!(crate::llm::count_emoji(&out), 2);
+    }
+
+    #[test]
+    fn scrub_rejects_slogan_mush_with_dedicated_error() {
+        let body = "Cloudflare published a durable-object pricing change that shifts how edge \
+state bills per request instead of hiding cost inside bandwidth lines. Teams running WebSockets \
+and small session stores on Workers need to re-read the meter before the next deploy window \
+closes. The update also clarifies idle retention and cross-region replication surcharges that \
+were easy to miss in older docs. For builders shipping multiplayer backends or sync engines on \
+the edge, the headline is simpler billing math with fewer surprise overages during traffic \
+spikes. Operators should map their current object counts and egress before the grace period \
+ends. Finance teams want line-item clarity; platform teams want predictable caps; product teams \
+want fewer midnight pages when a demo goes viral. None of that requires slogan framing. \
+Still, the draft must not use template contrast lines. 🦀 The debate is not about edge versus \
+core; it's not about which cloud wins mindshare in a keynote slide.";
+        assert!(
+            prose_word_count(body) >= 120,
+            "fixture must stay above thin-body fallback"
+        );
+        let err =
+            scrub_and_validate_writer_body(body, &[], "Cloudflare durable object pricing", false)
+                .unwrap_err();
+        assert!(matches!(err, RagError::SloganMush));
     }
 
     #[test]
