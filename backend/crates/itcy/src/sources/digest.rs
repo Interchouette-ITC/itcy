@@ -549,6 +549,12 @@ pub fn format_ship_notice(post_id: &str, detail: &str) -> String {
     format!("*Ship notice* `{post_id}`\n{detail}")
 }
 
+/// Second Slack link: org **`drafts`** PR from `/accept` (manual Approve on org).
+#[must_use]
+pub fn format_org_draft_pr_notice(draft_id: &str, pr_url: &str) -> String {
+    format!("*Org drafts PR* `{draft_id}`\nApprove on Interchouette-ITC `drafts`:\n{pr_url}")
+}
+
 /// Slack after mock/live ship failed (promote still stands).
 #[must_use]
 pub fn format_ship_fail(post_id: &str, error: &str) -> String {
@@ -1914,6 +1920,12 @@ mod tests {
             out,
             "*Ship notice* `XPOST-1`\nhttps://x.com/Interchouette/status/1"
         );
+        let notice = format_org_draft_pr_notice(
+            "DRAFT-20260801-000001",
+            "https://github.com/Interchouette-ITC/itcy-publications/pull/70",
+        );
+        assert!(notice.contains("Org drafts PR"));
+        assert!(notice.contains("pull/70"));
     }
 
     #[test]

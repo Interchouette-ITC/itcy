@@ -459,7 +459,7 @@ fn row_to_draft(row: &rusqlite::Row<'_>) -> Result<StoredDraft, DraftStoreError>
     Ok(StoredDraft {
         draft_id: row.get(0)?,
         subject: row.get(1)?,
-        body: row.get(2)?,
+        body: text_column(row, 2, "body")?,
         model: row.get(3)?,
         tokens_in: u32::try_from(row.get::<_, i64>(4)?).unwrap_or(0),
         tokens_out: u32::try_from(row.get::<_, i64>(5)?).unwrap_or(0),
@@ -471,6 +471,21 @@ fn row_to_draft(row: &rusqlite::Row<'_>) -> Result<StoredDraft, DraftStoreError>
         updated_at: row.get(11)?,
         fork_pr_number,
         fork_pr_url,
+    })
+}
+
+/// Read a TEXT column; coerces legacy BLOB rows (bad agent writes) to UTF-8 lossy text.
+fn text_column(row: &rusqlite::Row<'_>, idx: usize, name: &str) -> Result<String, DraftStoreError> {
+    let value: rusqlite::types::Value = row.get(idx)?;
+    Ok(match value {
+        rusqlite::types::Value::Text(s) => s,
+        rusqlite::types::Value::Blob(b) => String::from_utf8_lossy(&b).into_owned(),
+        rusqlite::types::Value::Null => String::new(),
+        other => {
+            return Err(DraftStoreError::Other(format!(
+                "drafts.{name}: expected text, got {other:?}"
+            )));
+        }
     })
 }
 

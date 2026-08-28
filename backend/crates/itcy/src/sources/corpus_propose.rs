@@ -98,23 +98,6 @@ fn load_used_propose_subjects(db_path: &Path) -> HashSet<String> {
         .collect()
 }
 
-/// Tighter brief for one post-write retry after off-subject drift or slogan mush.
-#[must_use]
-pub fn tighter_corpus_propose_instructions(subject: &str, surface: ProposeSurface) -> String {
-    let base = match surface {
-        ProposeSurface::Draft => {
-            "Rewrite one company-page LinkedIn post strictly on the subject below. \
-Ignore entertainment spoilers and unrelated companies. Stay on this subject only. \
-No slogan mush: never write it's not about / it's not just / isn't just a shift / broader trend."
-        }
-        ProposeSurface::Tweet => {
-            "Rewrite one company X tweet strictly on the subject below. \
-Ignore entertainment spoilers and unrelated companies. Stay on this subject only."
-        }
-    };
-    format!("{base}\n\nSubject lock: {subject}")
-}
-
 fn load_used_propose_topic_fingerprints(db_path: &Path) -> Vec<HashSet<String>> {
     let Ok(store) = DraftStore::open(db_path) else {
         return Vec::new();
@@ -296,6 +279,29 @@ pub fn body_abandons_subject(body: &str, _subject: &str) -> bool {
 pub fn body_has_slogan_mush(body: &str) -> bool {
     let lower = normalize_ascii_apostrophes(&body.to_ascii_lowercase());
     SLOGAN_MUSH_NEEDLES.iter().any(|n| lower.contains(*n))
+}
+
+/// Drop sentences that contain slogan mush; keeps paragraph breaks.
+#[must_use]
+pub fn strip_slogan_mush_sentences(body: &str) -> String {
+    body.split("\n\n")
+        .map(strip_slogan_mush_paragraph)
+        .filter(|p| !p.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+fn strip_slogan_mush_paragraph(para: &str) -> String {
+    let mut kept: Vec<String> = Vec::new();
+    let normalized = para.replace('\n', " ");
+    for chunk in normalized.split(". ") {
+        let s = chunk.trim().trim_end_matches('.');
+        if s.is_empty() || body_has_slogan_mush(s) {
+            continue;
+        }
+        kept.push(s.to_string());
+    }
+    kept.join(". ")
 }
 
 const SLOGAN_MUSH_NEEDLES: &[&str] = &[
@@ -594,9 +600,31 @@ Builders care about stewardship without swallowing the community around the stac
     }
 
     #[test]
-    fn tighter_instructions_lock_subject() {
-        let s = tighter_corpus_propose_instructions("Rust async", ProposeSurface::Tweet);
-        assert!(s.contains("Subject lock: Rust async"));
-        assert!(s.contains("Stay on this subject") || s.contains("strictly on the subject"));
+    fn strip_slogan_mush_preserves_paragraph_breaks() {
+        let body = "Para one names Sätteri and the Astro ship.\n\n\
+Para two says it's not about mindshare; it names pulldown-cmark instead.\n\n\
+Para three closes with builders who ship.";
+        let out = strip_slogan_mush_sentences(body);
+        assert!(
+            out.contains("Para one names Sätteri"),
+            "keep clean paragraph: {out}"
+        );
+        assert!(
+            !out.contains("not about mindshare"),
+            "drop mush paragraph: {out}"
+        );
+        assert!(
+            out.contains("Para one names Sätteri and the Astro ship")
+                && out.contains("Para three closes with builders who ship")
+                && out.contains("\n\n"),
+            "preserve \\n\\n aeration: {out:?}"
+        );
+    }
+
+    #[test]
+    fn strip_slogan_mush_does_not_split_on_newlines_inside_paragraph() {
+        let body = "Line one still here.\nLine two still here.";
+        let out = strip_slogan_mush_sentences(body);
+        assert_eq!(out, "Line one still here. Line two still here");
     }
 }

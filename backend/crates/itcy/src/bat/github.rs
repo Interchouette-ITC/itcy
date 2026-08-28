@@ -61,11 +61,12 @@ impl BatGithubConfig {
     ///
     /// Override path with `GITHUB_CREDS_FILE`. Same habit as `scripts/github-mcp.sh`.
     ///
-    /// Soft debug = playground (mock): fork `drafts` + `posts`.
-    /// Live/cutover = production: org `drafts` + `posts`.
-    /// Same branch names; remote selects playground vs real.
-    /// Overrides: `ITCY_BAT_OWNER`, `ITCY_BAT_DRAFTS_OWNER`, `ITCY_BAT_POSTS_OWNER`,
-    /// `ITCY_BAT_DRAFTS_BASE`, `ITCY_BAT_POSTS_BASE`.
+    /// `LinkedIn` BAT defaults to the **fork** (`drafts` + `posts`). Playground publish mode
+    /// only selects manual vs MCP ship; it does not move BAT off the fork.
+    /// After fork BAT Approve, operator Approve on org **`drafts`** PR (opened at `/accept`).
+    /// Org **`posts`** are not written by `ITCy` on promote.
+    /// Overrides: `ITCY_BAT_DRAFTS_OWNER`, `ITCY_BAT_POSTS_OWNER`, `ITCY_BAT_DRAFTS_BASE`,
+    /// `ITCY_BAT_POSTS_BASE`.
     ///
     /// # Errors
     ///
@@ -74,16 +75,7 @@ impl BatGithubConfig {
         let token = load_github_token().ok_or(GithubError::MissingToken)?;
         let org_owner = env_or("ITCY_BAT_ORG_OWNER", "Interchouette-ITC");
         let fork_owner = env_or("ITCY_BAT_FORK_OWNER", "Interchouette");
-        let playground = is_playground_mode();
         let x_playground = is_x_playground_mode();
-        let owner = env_or(
-            "ITCY_BAT_OWNER",
-            if playground {
-                fork_owner.as_str()
-            } else {
-                org_owner.as_str()
-            },
-        );
         let tweet_default = env_or(
             "ITCY_BAT_TWEET_OWNER",
             if x_playground {
@@ -92,14 +84,16 @@ impl BatGithubConfig {
                 org_owner.as_str()
             },
         );
+        let drafts_owner = env_or("ITCY_BAT_DRAFTS_OWNER", fork_owner.as_str());
+        let posts_owner = env_or("ITCY_BAT_POSTS_OWNER", fork_owner.as_str());
         Ok(Self {
             token,
             org_owner,
             fork_owner,
             repo: env_or("ITCY_BAT_REPO", "itcy-publications"),
-            drafts_owner: env_or("ITCY_BAT_DRAFTS_OWNER", &owner),
+            drafts_owner,
             drafts_base: env_or("ITCY_BAT_DRAFTS_BASE", "drafts"),
-            posts_owner: env_or("ITCY_BAT_POSTS_OWNER", &owner),
+            posts_owner,
             posts_base: env_or("ITCY_BAT_POSTS_BASE", "posts"),
             tweet_drafts_base: env_or("ITCY_BAT_TWEET_DRAFTS_BASE", "drafts_tweet"),
             tweet_posts_owner: env_or("ITCY_BAT_TWEET_POSTS_OWNER", &tweet_default),
@@ -110,7 +104,7 @@ impl BatGithubConfig {
     }
 }
 
-/// Soft debug / mock = playground (fork). Live company-page mode = production org cutover.
+/// Playground publish mode = manual `LinkedIn` ship (no CM MCP). Does not move BAT off the fork.
 #[must_use]
 pub fn is_playground_mode() -> bool {
     playground_flag("ITCY_BAT_PLAYGROUND").unwrap_or_else(|| {
@@ -525,6 +519,60 @@ impl GithubClient {
             quote_tweet_id: String::new(),
             cite: String::new(),
         })
+    }
+
+    /// Opens (or refreshes) the org **`drafts`** PR for a `LinkedIn` draft (second repo, same branch name).
+    ///
+    /// Called at `/accept` with the fork Draft PR so the operator gets both links.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`GithubError`] variant for HTTP, auth, or GitHub API failure.
+    pub async fn open_org_draft_pr(
+        &self,
+        draft_id: &str,
+        draft_body: &str,
+        meta_raw: &str,
+        subject: &str,
+    ) -> Result<Option<OpenedPr>, GithubError> {
+        if self
+            .cfg
+            .drafts_owner
+            .eq_ignore_ascii_case(&self.cfg.org_owner)
+        {
+            return Ok(None);
+        }
+        let (body_path, meta_path) = crate::bat::pack::draft_paths(draft_id);
+        if self
+            .file_text_on_branch(&self.cfg.org_owner, &self.cfg.drafts_base, &body_path)
+            .await?
+            .is_some()
+        {
+            return Ok(None);
+        }
+        let branch = crate::bat::pack::branch_name_for_draft(draft_id);
+        let org = self.cfg.org_owner.clone();
+        let base = self.cfg.drafts_base.clone();
+        let files = [
+            RepoFile {
+                path: body_path,
+                content: draft_body.to_string(),
+            },
+            RepoFile {
+                path: meta_path,
+                content: meta_raw.to_string(),
+            },
+        ];
+        if let Some(existing) = self.find_open_pr_by_head(&org, &branch).await? {
+            self.update_draft_pr_files(&org, &branch, &files).await?;
+            return Ok(Some(existing));
+        }
+        let title = format!("Draft: {subject} ({draft_id})");
+        let body = org_draft_pr_body(draft_id, subject);
+        let pr = self
+            .open_pr_into(&org, &base, &branch, &title, &body, &files)
+            .await?;
+        Ok(Some(pr))
     }
 
     async fn promote_tweet_pr(
@@ -1235,9 +1283,30 @@ Draft `{draft_id}` for subject `{subject}` as `{draft_dir}/` on the **drafts** b
 \n\
 ## Notes\n\
 \n\
-Opened by ITCy. Soft debug = **playground** (fork Interchouette: `drafts` + `posts`). \
-Production = org Interchouette-ITC: same branch names (`drafts` + `posts`, real artefacts). \
-On Approve, ITCy writes a date-sharded `<POST-…>/` on `posts` of the active remote and ships.\n"
+Opened by ITCy. Fork BAT on **Interchouette** `drafts`; on Approve, POST on fork `posts` \
+and ship (playground = manual paste notice; production = MCP when CM token is set). \
+At `/accept`, ITCy also opens the org **`drafts`** PR on **Interchouette-ITC** (second Approve).\n"
+    )
+}
+
+/// PR body for the org **`drafts`** PR (production repo, opened at `/accept`).
+#[must_use]
+pub fn org_draft_pr_body(draft_id: &str, subject: &str) -> String {
+    let (body_path, _) = crate::bat::pack::draft_paths(draft_id);
+    let draft_dir = body_path.trim_end_matches("/body.md");
+    format!(
+        "## Draft checklist\n\
+\n\
+- [x] Disclosure line present\n\
+- [x] Content English\n\
+- [x] **gRoussac** requested as reviewer\n\
+- [ ] **gRoussac Approve** = production `drafts` mirror\n\
+\n\
+## Summary\n\
+\n\
+Draft `{draft_id}` for subject `{subject}` as `{draft_dir}/` on org **`drafts`**.\n\
+\n\
+Opened with the fork Draft PR at `/accept`. Fork `posts` is separate.\n"
     )
 }
 
@@ -1360,6 +1429,35 @@ fn push_toml_string_token(part: &str, out: &mut Vec<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn org_draft_pr_body_mentions_production_drafts() {
+        let b = org_draft_pr_body("DRAFT-20260801-000001", "subject");
+        assert!(b.contains("org **`drafts`**"));
+        assert!(b.contains("2026/08/01/DRAFT-20260801-000001/"));
+    }
+
+    #[test]
+    fn linkedin_bat_defaults_to_fork_owners() {
+        let _guard = env_lock().lock().expect("env lock");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("creds");
+        std::fs::write(&path, "GITHUB_TOKEN=ghp_test\n").expect("write");
+        unsafe {
+            std::env::remove_var("ITCY_BAT_DRAFTS_OWNER");
+            std::env::remove_var("ITCY_BAT_POSTS_OWNER");
+            std::env::remove_var("ITCY_BAT_OWNER");
+            std::env::set_var("GITHUB_CREDS_FILE", &path);
+            std::env::set_var("ITCY_LINKEDIN_PUBLISH_MODE", "production");
+        }
+        let cfg = BatGithubConfig::from_env().expect("cfg");
+        assert_eq!(cfg.drafts_owner, "Interchouette");
+        assert_eq!(cfg.posts_owner, "Interchouette");
+        unsafe {
+            std::env::remove_var("GITHUB_CREDS_FILE");
+            std::env::remove_var("ITCY_LINKEDIN_PUBLISH_MODE");
+        }
+    }
 
     #[test]
     fn pr_body_mentions_draft_and_bat() {

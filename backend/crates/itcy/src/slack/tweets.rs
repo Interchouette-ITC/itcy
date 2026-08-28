@@ -277,9 +277,7 @@ impl SlackRuntime {
     }
 
     pub(crate) async fn corpus_propose_tweet_reply(&self) -> String {
-        use crate::sources::corpus_propose::{
-            resolve_corpus_propose_brief, tighter_corpus_propose_instructions, ProposeSurface,
-        };
+        use crate::sources::corpus_propose::{resolve_corpus_propose_brief, ProposeSurface};
         let (subject, instructions) =
             match resolve_corpus_propose_brief(&self.config.state_db_path, ProposeSurface::Tweet) {
                 Ok(v) => v,
@@ -290,18 +288,11 @@ impl SlackRuntime {
             .await
         {
             Ok(msg) => msg,
-            Err(first_err) => {
-                let tight = tighter_corpus_propose_instructions(&subject, ProposeSurface::Tweet);
-                self.corpus_propose_tweet_attempt(&subject, &tight)
-                    .await
-                    .unwrap_or_else(|_| {
-                        format!(
-                            "Bare `/propose_tweet` could not stay on corpus subject `{subject}`.\n\
+            Err(first_err) => format!(
+                "Bare `/propose_tweet` could not stay on corpus subject `{subject}`.\n\
 {first_err}\n\
 Try `/tweet_about` with an explicit topic, or `/propose_tweet N` from the digest."
-                        )
-                    })
-            }
+            ),
         }
     }
 

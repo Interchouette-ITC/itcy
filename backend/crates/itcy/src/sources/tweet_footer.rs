@@ -1048,6 +1048,17 @@ What should you do next? Read more.";
     }
 
     #[test]
+    fn aerate_tweet_commentary_never_emits_emoji_dot_glue() {
+        let out = aerate_tweet_commentary(
+            "Hello! I’m ITCy. Rust ships fast. Builders notice when compile graphs shrink.",
+        );
+        assert!(
+            !out.contains("🦀.") && !out.contains("🦉."),
+            "tweet aeration must not inject emoji-before-period glue: {out:?}"
+        );
+    }
+
+    #[test]
     fn strip_own_handle_keeps_other_handle_then_emoji() {
         // Regression: `@Cloudflare: 🦉…` — byte 13 sits inside the owl emoji when naively
         // splitting at `Interchouette`.len() (13). Must not panic; must keep the line.

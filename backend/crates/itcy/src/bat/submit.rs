@@ -24,6 +24,9 @@ pub struct BatSubmitResult {
     pub updated_existing: bool,
     /// Set when Approve was already on GitHub and the Post was published (webhook-miss recovery).
     pub promoted: Option<RetryBatResult>,
+    /// Org **`drafts`** PR opened at `/accept` (production repo; second Approve).
+    pub org_draft_pr_number: Option<u64>,
+    pub org_draft_pr_url: Option<String>,
 }
 
 /// Outcome of publishing the Post after BAT (`/retry_bat` or auto after re-`/accept_draft`).
@@ -212,6 +215,19 @@ async fn accept_surface(
         Err(e) => return Err(e),
     };
 
+    let org_draft = if matches!(surface, BatSurface::LinkedIn) {
+        client
+            .open_org_draft_pr(
+                &files.draft_id,
+                &files.body_md,
+                &files.meta_toml,
+                &draft.subject,
+            )
+            .await?
+    } else {
+        None
+    };
+
     Ok(BatSubmitResult {
         pr_url: opened.html_url,
         pr_number: opened.number,
@@ -219,6 +235,8 @@ async fn accept_surface(
         draft_id: draft_id.to_string(),
         updated_existing,
         promoted,
+        org_draft_pr_number: org_draft.as_ref().map(|p| p.number),
+        org_draft_pr_url: org_draft.map(|p| p.html_url),
     })
 }
 

@@ -83,8 +83,6 @@ pub enum RagError {
     Llm(#[from] LlmError),
     #[error("no grounded sources for subject `{0}`")]
     NoSources(String),
-    #[error("writer kept banned LinkedIn slogans after retry")]
-    SloganMush,
     #[error("writer dumped an essay instead of a tweet")]
     NotATweet,
     #[error("farce tweet missing @grok @cursor_ai @elonmusk")]
@@ -398,7 +396,6 @@ struct DraftPhaseCtx<'a> {
     tools: Option<&'a ItcyTools>,
     brief_has_cite: bool,
     session_dir: Option<&'a PathBuf>,
-    extra_pack_note: Option<&'a str>,
 }
 
 async fn run_draft_phase(
@@ -420,15 +417,11 @@ async fn run_draft_phase(
 
     log_pipeline_banner("DRAFT (writer)");
 
-    let base_note = draft_pack_note(ctx.pack_urls.is_empty(), ctx.brief_has_cite);
-    let pack_note = match ctx.extra_pack_note {
-        Some(extra) if !extra.trim().is_empty() => format!("{base_note}\n\n{extra}"),
-        _ => base_note.to_string(),
-    };
+    let pack_note = draft_pack_note(ctx.pack_urls.is_empty(), ctx.brief_has_cite);
     let user = if ctx.brief_has_cite {
-        crate::prompts::draft_user_message_subject_https(ctx.research_pack, &pack_note, ctx.subject)
+        crate::prompts::draft_user_message_subject_https(ctx.research_pack, pack_note, ctx.subject)
     } else {
-        draft_user_message(ctx.research_pack, &pack_note, ctx.subject)
+        draft_user_message(ctx.research_pack, pack_note, ctx.subject)
     };
     let draft_messages = vec![
         LlmMessage::system(draft_system_prompt()),
@@ -559,84 +552,88 @@ pub(crate) fn scrub_and_validate_writer_body(
     }
     body = ensure_draft_emoji_bar(&body);
     if crate::sources::corpus_propose::body_has_slogan_mush(&body) {
-        return Err(RagError::SloganMush);
+        let primary = pack_urls.first().cloned();
+        let stripped = crate::sources::corpus_propose::strip_slogan_mush_sentences(&body);
+        if prose_word_count(&stripped) >= 80
+            && !crate::sources::corpus_propose::body_has_slogan_mush(&stripped)
+        {
+            warn!("load_draft: slogan mush stripped from writer body");
+            body = ensure_draft_emoji_bar(&stripped);
+        } else {
+            warn!("load_draft: slogan mush; subject-safe fallback prose");
+            body = fallback_subject_commentary(subject, primary.as_deref());
+            body = ensure_draft_emoji_bar(&body);
+        }
     }
+    body = strip_spurious_period_after_emoji(&body);
     Ok(body)
 }
 
-const DRAFT_ANTI_MUSH_RETRY_NOTE: &str = "HARD REWRITE: No slogan mush. Forbidden: it's not about, it's not just, isn't just a shift, broader trend. \
-Name the entity from the pack and state the concrete change in plain verbs.";
-
-async fn draft_body_with_mush_retry(
-    router: &FailoverRouter,
-    subject: &str,
-    research_pack: &str,
-    pack_urls: &[String],
-    tools: Option<&ItcyTools>,
-    brief_has_cite: bool,
-    session_dir: Option<&PathBuf>,
-) -> Result<(String, CompletionTrace), RagError> {
-    let base = DraftPhaseCtx {
-        router,
-        subject,
-        research_pack,
-        pack_urls,
-        tools,
-        brief_has_cite,
-        session_dir,
-        extra_pack_note: None,
-    };
-    let (draft_response, draft_trace) = run_draft_phase(&base).await?;
-    match scrub_and_validate_writer_body(
-        &draft_response.message.content,
-        pack_urls,
-        subject,
-        brief_has_cite,
-    ) {
-        Ok(body) => Ok((body, draft_trace)),
-        Err(RagError::SloganMush) => {
-            warn!("load_draft: slogan mush on first writer pass; retrying with anti-mush note");
-            let retry_ctx = DraftPhaseCtx {
-                extra_pack_note: Some(DRAFT_ANTI_MUSH_RETRY_NOTE),
-                ..base
-            };
-            let (draft_response, retry_trace) = run_draft_phase(&retry_ctx).await?;
-            let body = scrub_and_validate_writer_body(
-                &draft_response.message.content,
-                pack_urls,
-                subject,
-                brief_has_cite,
-            )?;
-            Ok((body, draft_trace.accumulate(&retry_trace)))
-        }
-        Err(e) => Err(e),
-    }
-}
-
 /// `LinkedIn` drafts: at least two unique emoji glyphs (same bar as tweets).
+///
+/// Safety net when the writer under-ships emoji. Weaves missing 🦀/🦉 into the closing
+/// sentence — never inserts before a period (that produced `🦀.` paste glue).
 fn ensure_draft_emoji_bar(body: &str) -> String {
     if crate::llm::tweet_emoji_ok(body) {
         return body.to_string();
     }
     let mut out = body.trim_end().to_string();
-    if !out.contains('🦀') {
-        // Weave crab near the first sentence break when missing.
-        if let Some(i) = out.find(". ") {
-            out.insert_str(i + 1, " 🦀");
-        } else {
-            out.push_str(" 🦀");
+    if !out.contains('🦀') || !out.contains('🦉') {
+        let mut tail = String::new();
+        if !out.contains('🦀') {
+            tail.push('🦀');
         }
-    }
-    if !out.contains('🦉') {
-        if let Some(i) = out.rfind('.') {
-            out.insert_str(i, " 🦉");
-        } else {
-            out.push_str(" 🦉");
+        if !out.contains('🦉') {
+            if !tail.is_empty() {
+                tail.push(' ');
+            }
+            tail.push('🦉');
         }
+        if out.ends_with('.') {
+            out.pop();
+        }
+        if !out.ends_with(' ') {
+            out.push(' ');
+        }
+        out.push_str(&tail);
     }
-    // Still short of two unique glyphs: force the signature pair.
     if !crate::llm::tweet_emoji_ok(&out) {
-        out.push_str("\n\n🦉 🦀");
+        out.push_str("\n\n🦀 🦉");
+    }
+    out
+}
+
+/// True when prose has emoji glued directly before a period (`🦀.` / `🚀.`).
+#[must_use]
+pub(crate) fn linkedin_draft_has_emoji_dot_glue(body: &str) -> bool {
+    let chars: Vec<char> = body.chars().collect();
+    chars
+        .windows(2)
+        .any(|w| crate::llm::char_is_emoji_like(w[0]) && w[1] == '.')
+}
+
+/// Remove a spurious `.` immediately after an emoji (`🚀.` → `🚀`); emoji glyphs stay.
+fn strip_spurious_period_after_emoji(body: &str) -> String {
+    if !linkedin_draft_has_emoji_dot_glue(body) {
+        return body.to_string();
+    }
+    let mut out = String::with_capacity(body.len());
+    let mut chars = body.chars().peekable();
+    while let Some(c) = chars.next() {
+        if crate::llm::char_is_emoji_like(c) {
+            out.push(c);
+            if chars.peek() == Some(&'.') {
+                chars.next();
+                if chars.peek() == Some(&' ') {
+                    out.push(' ');
+                    chars.next();
+                } else if chars.peek().is_some() {
+                    out.push(' ');
+                }
+                continue;
+            }
+        }
+        out.push(c);
     }
     out
 }
@@ -706,15 +703,15 @@ pub async fn build_grounded_draft_with_cite(
 
     checkpoint_building_pack(db_path, tools, subject, &research_pack, &pack_urls).await;
 
-    let (mut body, draft_trace) = draft_body_with_mush_retry(
+    let (draft_response, draft_trace) = run_draft_phase(&DraftPhaseCtx {
         router,
         subject,
-        &research_pack,
-        &pack_urls,
+        research_pack: &research_pack,
+        pack_urls: &pack_urls,
         tools,
         brief_has_cite,
-        session_dir.as_ref(),
-    )
+        session_dir: session_dir.as_ref(),
+    })
     .await?;
 
     info!(
@@ -740,6 +737,12 @@ pub async fn build_grounded_draft_with_cite(
         load_trace.model_label(),
         draft_trace.model_label()
     );
+    let mut body = scrub_and_validate_writer_body(
+        &draft_response.message.content,
+        &pack_urls,
+        subject,
+        brief_has_cite,
+    )?;
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = ensure_body_handles_from_pack(tools, &body, &research_pack);
     let (body, link_options) =
@@ -812,15 +815,15 @@ pub async fn build_grounded_draft_from_pack(
     let mut research_pack = research_pack.to_string();
     apply_pack_handles(tools, subject, &mut research_pack);
     checkpoint_building_pack(db_path, tools, subject, &research_pack, &urls).await;
-    let (mut body, draft_trace) = draft_body_with_mush_retry(
+    let (draft_response, draft_trace) = run_draft_phase(&DraftPhaseCtx {
         router,
         subject,
-        &research_pack,
-        &urls,
+        research_pack: &research_pack,
+        pack_urls: &urls,
         tools,
         brief_has_cite,
-        session_dir.as_ref(),
-    )
+        session_dir: session_dir.as_ref(),
+    })
     .await?;
     let draft_id = resolve_session_draft_id(tools, db_path).await;
     let refill_pool = draft_link_refill_pool(tools, &urls).await;
@@ -833,6 +836,12 @@ pub async fn build_grounded_draft_from_pack(
         ),
     )
     .await;
+    let mut body = scrub_and_validate_writer_body(
+        &draft_response.message.content,
+        &urls,
+        subject,
+        brief_has_cite,
+    )?;
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = ensure_body_handles_from_pack(tools, &body, &research_pack);
     let prefer = crate::sources::tweet_footer::extract_brief_cite(subject);
@@ -1595,7 +1604,135 @@ I'm watching 🦉 how this lands for systems teams that want polish without a se
     }
 
     #[test]
-    fn scrub_rejects_slogan_mush_with_dedicated_error() {
+    fn scrub_preserves_writer_paragraph_breaks() {
+        let body = "\
+Sätteri is the Rust-powered Markdown engine Astro shipped for faster builds on real sites. \
+Teams parsing MDX on every compile feel the win when the runtime stays native and predictable. 🦀 \
+Pulldown-cmark and Oxc keep the parser honest without dragging a JavaScript toolchain along for every page.\n\n\
+Native GitHub Flavored Markdown, math, and wikilinks land without a plugin zoo on typical doc sites. \
+Builders get fewer moving parts and a cleaner dependency tree when content pipelines already choke on install time. 🚀 \
+That matters when CI time is the bottleneck before a release window closes and reviewers want diffs not drama.\n\n\
+I'm watching how Astro 7 teams adopt the swap without rewriting every remark plugin they already trust. 🦉 \
+Maintainers who measure compile graphs and cache hits will notice the gap first on large content trees.";
+        assert!(
+            prose_word_count(body) >= 120,
+            "fixture must stay above thin-body fallback (got {})",
+            prose_word_count(body)
+        );
+        let out = scrub_and_validate_writer_body(body, &[], "Sätteri Astro Markdown Rust", false)
+            .expect("scrub must not fail clean multi-paragraph prose");
+        assert!(
+            out.contains("\n\n"),
+            "LinkedIn paragraph aeration must survive scrub: {out:?}"
+        );
+        assert!(
+            out.contains("Pulldown-cmark") && out.contains("wikilinks"),
+            "both paragraphs must remain: {out}"
+        );
+    }
+
+    #[test]
+    fn scrub_mush_strip_keeps_paragraph_breaks() {
+        let body = "\
+Sätteri is the Rust-powered Markdown engine Astro shipped for faster builds on real sites. \
+Teams parsing MDX on every compile feel the win when the runtime stays native and predictable. 🦀 \
+Pulldown-cmark and Oxc keep the parser honest without dragging a JavaScript toolchain along for every page.\n\n\
+Native GitHub Flavored Markdown, math, and wikilinks land without a plugin zoo on typical doc sites. \
+It's not about which parser wins a keynote slide; it's about compile time on real production sites. 🚀 \
+That matters when CI time is the bottleneck before a release window closes and reviewers want diffs not drama.\n\n\
+I'm watching how Astro 7 teams adopt the swap without rewriting every remark plugin they already trust. 🦉 \
+Maintainers who measure compile graphs and cache hits will notice the gap first on large content trees.";
+        assert!(
+            prose_word_count(body) >= 120,
+            "fixture must stay above thin-body fallback (got {})",
+            prose_word_count(body)
+        );
+        let out = scrub_and_validate_writer_body(body, &[], "Sätteri Astro Markdown Rust", false)
+            .expect("mush salvage must deliver open prose, not Err");
+        assert!(
+            !crate::sources::corpus_propose::body_has_slogan_mush(&out),
+            "mush must be stripped: {out}"
+        );
+        assert!(
+            out.contains("\n\n"),
+            "mush strip must not collapse LinkedIn paragraphs to one blob: {out:?}"
+        );
+        assert!(
+            out.contains("Pulldown-cmark") && out.contains("Astro 7"),
+            "clean paragraphs must remain after mush strip: {out}"
+        );
+    }
+
+    #[test]
+    fn strip_spurious_period_after_emoji_normalizes_model_x_beat_habit() {
+        let raw = "maintainable stack. 🚀. But here's the kicker";
+        let out = strip_spurious_period_after_emoji(raw);
+        assert!(
+            !linkedin_draft_has_emoji_dot_glue(&out),
+            "must remove period after emoji, not the emoji: {out:?}"
+        );
+        assert!(out.contains('🚀'), "emoji must remain: {out:?}");
+        assert!(out.contains("stack. 🚀 But"), "{out}");
+    }
+
+    #[test]
+    fn ensure_draft_emoji_bar_never_emits_emoji_dot_glue() {
+        let thin = "\
+First paragraph names Sätteri and why Astro teams care about compile time on content-heavy sites. \
+Teams shipping docs at scale need predictable parse cost before they touch routing or auth layers.\n\n\
+Second paragraph names native GFM, math, and wikilinks without a plugin zoo on typical doc sites. \
+That keeps dependency graphs smaller when CI already runs linters, tests, and type checks on every push.";
+        let out = ensure_draft_emoji_bar(thin);
+        assert!(
+            !linkedin_draft_has_emoji_dot_glue(&out),
+            "scrub must not glue emoji before a period: {out:?}"
+        );
+        assert!(
+            crate::llm::tweet_emoji_ok(&out),
+            "emoji bar must still pass: {out}"
+        );
+    }
+
+    #[test]
+    fn scrub_leaves_writer_woven_emojis_untouched_when_bar_met() {
+        let body = "\
+Sätteri is the Rust-powered Markdown engine Astro shipped for faster builds on real sites. \
+Teams parsing MDX on every compile feel the win when the runtime stays native and predictable. 🦀 \
+Pulldown-cmark and Oxc keep the parser honest without dragging a JavaScript toolchain along for every page.\n\n\
+Native GitHub Flavored Markdown, math, and wikilinks land without a plugin zoo on typical doc sites. \
+Builders get fewer moving parts and a cleaner dependency tree when content pipelines already choke on install time. 🚀 \
+That matters when CI time is the bottleneck before a release window closes and reviewers want diffs not drama.\n\n\
+I'm watching how Astro 7 teams adopt the swap without rewriting every remark plugin they already trust. 🦉 \
+Maintainers who measure compile graphs and cache hits will notice the gap first on large content trees.";
+        let out = scrub_and_validate_writer_body(body, &[], "Sätteri Astro Markdown Rust", false)
+            .expect("ok");
+        assert!(
+            !linkedin_draft_has_emoji_dot_glue(&out),
+            "writer-woven emoji must not get dot glue: {out:?}"
+        );
+        assert!(out.contains('🦀') && out.contains('🦉') && out.contains('🚀'));
+    }
+
+    #[test]
+    fn ensure_draft_emoji_bar_preserves_paragraph_breaks() {
+        let body = "\
+First paragraph names the engine and why builders care about compile time on content-heavy sites. \
+Teams shipping docs at scale need predictable parse cost before they touch routing or auth layers.\n\n\
+Second paragraph names native GFM, math, and wikilinks without a plugin zoo on typical doc sites. \
+That keeps dependency graphs smaller when CI already runs linters, tests, and type checks on every push.";
+        let out = ensure_draft_emoji_bar(body);
+        assert!(
+            out.contains("\n\n"),
+            "emoji injection must not collapse LinkedIn paragraphs: {out:?}"
+        );
+        assert!(
+            crate::llm::tweet_emoji_ok(&out),
+            "emoji bar must be satisfied: {out}"
+        );
+    }
+
+    #[test]
+    fn scrub_salvages_slogan_mush_without_failing() {
         let body = "Cloudflare published a durable-object pricing change that shifts how edge \
 state bills per request instead of hiding cost inside bandwidth lines. Teams running WebSockets \
 and small session stores on Workers need to re-read the meter before the next deploy window \
@@ -1611,10 +1748,14 @@ core; it's not about which cloud wins mindshare in a keynote slide.";
             prose_word_count(body) >= 120,
             "fixture must stay above thin-body fallback"
         );
-        let err =
+        let out =
             scrub_and_validate_writer_body(body, &[], "Cloudflare durable object pricing", false)
-                .unwrap_err();
-        assert!(matches!(err, RagError::SloganMush));
+                .expect("mush must coerce, not fail");
+        assert!(
+            !crate::sources::corpus_propose::body_has_slogan_mush(&out),
+            "salvaged body must not keep mush"
+        );
+        assert!(prose_word_count(&out) >= 80);
     }
 
     #[test]

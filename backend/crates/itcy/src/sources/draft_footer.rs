@@ -722,6 +722,77 @@ mod tests {
     }
 
     #[test]
+    fn change_url_pipeline_preserves_paragraph_aeration() {
+        use crate::sources::draft_url::set_single_in_post_url;
+        let prose = "\
+Para one about Sätteri and Astro compile wins on content-heavy sites.\n\n\
+Para two about native GFM, math, and wikilinks without plugin sprawl.\n\n\
+https://byteiota.com/astro-64-satteri-rust-markdown-plugin-tradeoff\n";
+        let composed = compose_draft_message(
+            prose,
+            "DRAFT-20260828-000122",
+            &[
+                "https://byteiota.com/astro-64-satteri-rust-markdown-plugin-tradeoff".into(),
+                "https://www.infoq.com/news/2026/08/astro-satteri-rust".into(),
+            ],
+        );
+        let swapped = set_single_in_post_url(
+            &composed,
+            "https://www.infoq.com/news/2026/08/astro-satteri-rust",
+        );
+        let body_only = draft_prose_for_rework(&swapped);
+        assert!(
+            body_only.contains("Para one about Sätteri")
+                && body_only.contains("Para two about native GFM")
+                && body_only.contains("\n\n"),
+            "/change_url normalize must keep \\n\\n aeration: {body_only:?}"
+        );
+    }
+
+    #[test]
+    fn compose_draft_message_preserves_paragraph_aeration() {
+        let prose = "\
+Para one about Sätteri and Astro compile wins on content-heavy sites.\n\n\
+Para two about native GFM, math, and wikilinks without plugin sprawl.\n\n\
+https://byteiota.com/astro-64-satteri-rust-markdown-plugin-tradeoff\n";
+        let links = vec![
+            "https://byteiota.com/astro-64-satteri-rust-markdown-plugin-tradeoff".into(),
+            "https://www.infoq.com/news/2026/08/astro-satteri-rust".into(),
+        ];
+        let composed = compose_draft_message(prose, "DRAFT-20260828-000122", &links);
+        let body_only = draft_prose_for_rework(&composed);
+        assert!(
+            body_only.contains("Para one about Sätteri"),
+            "compose must keep prose: {body_only}"
+        );
+        assert!(
+            body_only.contains("Para one about Sätteri")
+                && body_only.contains("Para two about native GFM")
+                && body_only.contains("\n\n"),
+            "compose + rework extract must keep \\n\\n aeration: {body_only:?}"
+        );
+    }
+
+    #[test]
+    fn linkedin_manual_paste_preserves_paragraph_aeration() {
+        let prose = "\
+Para one about Sätteri and Astro compile wins.\n\n\
+Para two about native GFM without plugin sprawl.\n\n\
+https://byteiota.com/astro-64-satteri-rust-markdown-plugin-tradeoff\n";
+        let paste = linkedin_manual_paste_message(prose, "ollama/qwen3:8b", 100, 200);
+        assert!(
+            paste.contains("Para one about Sätteri")
+                && paste.contains("Para two about native GFM")
+                && paste.contains("\n\n"),
+            "LinkedIn paste block must keep paragraph breaks: {paste:?}"
+        );
+        assert!(
+            paste.contains("https://byteiota.com/astro-64-satteri-rust-markdown-plugin-tradeoff"),
+            "paste must keep cite URL: {paste}"
+        );
+    }
+
+    #[test]
     fn slack_paste_safe_fences_prose_keeps_footer() {
         let stored = compose_draft_message(
             "Hello 🦉 world.\n\nhttps://example.com/a\n",

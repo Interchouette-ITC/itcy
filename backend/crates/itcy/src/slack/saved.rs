@@ -6,7 +6,8 @@
 //! After BAT ship, rows stay as `published`. `/list` shows them under Posts / X posts
 //! (display ids `POST-…` / `XPOST-…`). `/show` accepts DRAFT/TWEET/POST/XPOST.
 
-use crate::bat::github::{BatGithubConfig, ClosePrOutcome, GithubClient};
+use crate::bat::github::{github_owner_from_pr_url, BatGithubConfig, ClosePrOutcome, GithubClient};
+use crate::bat::pack::branch_name_for_draft;
 use crate::bat::store::{status, DraftStore, StoredDraft};
 use crate::slack::api::post_digest_channel;
 use crate::slack::handler::SlackRuntime;
@@ -107,8 +108,9 @@ impl SlackRuntime {
                         row.tokens_out,
                     );
                     let next = reply_or_draft_next(&display, &row);
+                    let pr_footer = pending_pr_footer_for_row(&row).await;
                     format!(
-                        "{kind} `{display}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{paste}\n\n{next}",
+                        "{kind} `{display}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{paste}\n\n{next}{pr_footer}",
                         kind = title_case_for_row(&row),
                         semoji = status_emoji(&row.status),
                         st = row.status,
@@ -130,9 +132,10 @@ impl SlackRuntime {
                         crate::sources::draft_footer::slack_highlight_active_link(&restored)
                     };
                     let next = reply_or_draft_next(&display, &row);
+                    let pr_footer = pending_pr_footer_for_row(&row).await;
                     if next.is_empty() {
                         format!(
-                            "{kind} `{display}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{body}",
+                            "{kind} `{display}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{body}{pr_footer}",
                             kind = title_case_for_row(&row),
                             semoji = status_emoji(&row.status),
                             st = row.status,
@@ -140,7 +143,7 @@ impl SlackRuntime {
                         )
                     } else {
                         format!(
-                            "{kind} `{display}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{body}\n\n{next}",
+                            "{kind} `{display}`  {semoji} status=`{st}`  updated=`{upd}`\n\n{body}\n\n{next}{pr_footer}",
                             kind = title_case_for_row(&row),
                             semoji = status_emoji(&row.status),
                             st = row.status,
@@ -375,6 +378,87 @@ fn clip_list_subject(subject: &str) -> String {
     out
 }
 
+struct PendingPrLink {
+    label: &'static str,
+    url: String,
+}
+
+/// Footer `:link:` lines for open PRs still waiting gRoussac Approve (`/show` after Next block).
+async fn pending_pr_footer_for_row(row: &StoredDraft) -> String {
+    let links = pending_pr_links_for_row(row).await;
+    format_pending_pr_footer(&links)
+}
+
+async fn pending_pr_links_for_row(row: &StoredDraft) -> Vec<PendingPrLink> {
+    if row.status != status::ACCEPTED {
+        return Vec::new();
+    }
+    let Ok(cfg) = BatGithubConfig::from_env() else {
+        return fallback_pending_links(row);
+    };
+    let Ok(client) = GithubClient::new(cfg.clone()) else {
+        return fallback_pending_links(row);
+    };
+    let mut links = Vec::new();
+    if let (Some(n), url) = (row.fork_pr_number, row.fork_pr_url.as_str()) {
+        if !url.is_empty() {
+            let owner = github_owner_from_pr_url(url).unwrap_or(&cfg.drafts_owner);
+            let approved = client
+                .bat_readiness_on(owner, n)
+                .await
+                .is_ok_and(|r| r.approved);
+            if !approved {
+                links.push(PendingPrLink {
+                    label: "Fork BAT",
+                    url: url.to_string(),
+                });
+            }
+        }
+    }
+    if row.draft_id.starts_with("DRAFT-") && !cfg.drafts_owner.eq_ignore_ascii_case(&cfg.org_owner)
+    {
+        let branch = branch_name_for_draft(&row.draft_id);
+        if let Ok(Some(org_pr)) = client.find_open_pr_by_head(&cfg.org_owner, &branch).await {
+            let approved = client
+                .bat_readiness_on(&cfg.org_owner, org_pr.number)
+                .await
+                .is_ok_and(|r| r.approved);
+            if !approved {
+                links.push(PendingPrLink {
+                    label: "Org drafts",
+                    url: org_pr.html_url,
+                });
+            }
+        }
+    }
+    links
+}
+
+/// When GitHub is unavailable, still remind from stored fork URL while status is `accepted`.
+fn fallback_pending_links(row: &StoredDraft) -> Vec<PendingPrLink> {
+    if row.status != status::ACCEPTED {
+        return Vec::new();
+    }
+    if row.fork_pr_url.is_empty() {
+        return Vec::new();
+    }
+    vec![PendingPrLink {
+        label: "Fork BAT",
+        url: row.fork_pr_url.clone(),
+    }]
+}
+
+fn format_pending_pr_footer(links: &[PendingPrLink]) -> String {
+    if links.is_empty() {
+        return String::new();
+    }
+    let mut out = String::new();
+    for link in links {
+        let _ = write!(out, "\n:link: {}: {}", link.label, link.url);
+    }
+    out
+}
+
 async fn close_row_pr(row: &StoredDraft) -> String {
     let Some(pr) = row.fork_pr_number.filter(|n| *n > 0) else {
         return String::new();
@@ -451,5 +535,25 @@ mod tests {
         assert!(n.contains("/show POST-20260822-000089"));
         assert!(n.contains("/retry_bat POST-20260822-000089"));
         assert!(n.contains("/delete POST-20260822-000089"));
+    }
+
+    #[test]
+    fn pending_pr_footer_formats_link_lines() {
+        let links = [
+            PendingPrLink {
+                label: "Fork BAT",
+                url: "https://github.com/Interchouette/itcy-publications/pull/58".into(),
+            },
+            PendingPrLink {
+                label: "Org drafts",
+                url: "https://github.com/Interchouette-ITC/itcy-publications/pull/101".into(),
+            },
+        ];
+        let footer = format_pending_pr_footer(&links);
+        assert!(footer.contains(":link: Fork BAT:"), "{footer}");
+        assert!(footer.contains(":link: Org drafts:"), "{footer}");
+        assert!(footer.contains("pull/58"), "{footer}");
+        assert!(footer.contains("pull/101"), "{footer}");
+        assert!(format_pending_pr_footer(&[]).is_empty());
     }
 }
