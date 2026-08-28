@@ -728,7 +728,7 @@ Try `/draft_about` with an explicit topic, or `/propose_draft N` from the digest
         topic: &str,
         instructions: &str,
     ) -> Result<String, String> {
-        use crate::sources::corpus_propose::{body_abandons_subject, body_has_slogan_mush};
+        use crate::sources::corpus_propose::body_abandons_subject;
         let operator_brief = compose_operator_brief(topic, instructions);
         let draft_id = crate::sources::draft_footer::next_draft_id(&self.config.state_db_path)
             .unwrap_or_else(|e| {
@@ -762,14 +762,6 @@ Try `/draft_about` with an explicit topic, or `/propose_draft N` from the digest
                         .and_then(|st| st.delete(&draft_id).ok());
                     return Err(format!(
                         "Writer abandoned corpus subject `{topic}` (draft `{draft_id}` discarded)."
-                    ));
-                }
-                if body_has_slogan_mush(&draft.body) {
-                    let _ = DraftStore::open(&self.config.state_db_path)
-                        .ok()
-                        .and_then(|st| st.delete(&draft_id).ok());
-                    return Err(format!(
-                        "Writer used slogan mush on corpus subject `{topic}` (draft `{draft_id}` discarded)."
                     ));
                 }
                 if let Err(e) = self.persist_grounded_draft(&draft) {
@@ -863,6 +855,19 @@ Try `/draft_about` with an explicit topic, or `/propose_draft N` from the digest
                     "No corpus hits yet for `{s}`, and the model could not ground a draft.\n\n\
 Try /draft_about again, or paste a public article URL into freeform so ingest can save it.\n\n\
 Draft `{draft_id}` marked failed"
+                )
+            }
+            Err(RagError::SloganMush) => {
+                let _ = DraftStore::open(&self.config.state_db_path)
+                    .ok()
+                    .and_then(|st| {
+                        st.mark_status_from(&draft_id, status::BUILDING, status::FAILED)
+                            .ok()
+                    });
+                format!(
+                    "Writer kept banned LinkedIn slogans after one retry (it's not about / it's not just).\n\n\
+Try `/draft_about` with explicit instructions: no slogan framing, name the entity directly.\n\n\
+Draft `{draft_id}` marked failed."
                 )
             }
             Err(e) => {
