@@ -264,6 +264,8 @@ try {
     throw new Error(`unknown mode ${mode}`);
   }
   process.stdout.write(JSON.stringify(hits));
-} finally {
-  // Leave Brave up; the shell trap owns the process lifetime.
+  process.exit(0);
+} catch (e) {
+  console.error(e && e.message ? e.message : String(e));
+  process.exit(1);
 }

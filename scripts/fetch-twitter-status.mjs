@@ -141,10 +141,10 @@ async function main() {
         detail: "brave status fetch ok",
       }) + "\n"
     );
+    process.exit(0);
   } catch (e) {
     fail(e && e.message ? e.message : String(e));
   }
-  // Leave Brave up; the shell trap owns the process lifetime.
 }
 
 

@@ -60,6 +60,8 @@ function ok(statusId, url, detail, reply) {
     payload.reply_url = reply.url;
   }
   process.stdout.write(JSON.stringify(payload) + "\n");
+  // CDP keeps the event loop alive; exit so the shell trap can kill Brave.
+  process.exit(0);
 }
 
 async function composerLooksLike(box, text) {
@@ -561,8 +563,9 @@ async function main() {
   } catch (e) {
     fail(e && e.message ? e.message : String(e));
   }
-  // Do not close the CDP-attached browser from Node: Playwright would tear down
-  // the Brave process the shell trap owns and can abort mid root→reply (XPOST-095).
+  // Do not call Playwright browser teardown here: on CDP that kills Brave while
+  // the shell still owns cleanup. process.exit after ok/fail drops the CDP
+  // handle; post-twitter.sh trap then SIGTERM the Brave we started.
 }
 
 

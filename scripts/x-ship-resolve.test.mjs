@@ -42,8 +42,9 @@ test("XPOST-095 first pass: one Brave session posts root then reply (no CDP clos
     fileURLToPath(new URL("./post-twitter.mjs", import.meta.url)),
     "utf8"
   );
-  // CDP browser.close() kills Brave mid root→reply.
+  // CDP Playwright teardown mid-run kills Brave; exit after ok so shell trap cleans up.
   assert.equal((src.match(/browser\.close\(/g) || []).length, 0);
+  assert.match(src, /process\.exit\(0\)/);
   assert.match(src, /overflow reply file empty/);
   assert.equal(/findTimelineRoot|timelineLooksLikeRoot|ALREADY_SAID/.test(src), false);
   const rootThenReply = src.indexOf("rootToastHref = await clickPost");
@@ -69,6 +70,11 @@ test("ship scripts take brave.lock (no concurrent CDP steal)", () => {
       `${name} must not hard-bind stale :9224`
     );
   }
+  const postSh = fs.readFileSync(
+    fileURLToPath(new URL("./post-twitter.sh", import.meta.url)),
+    "utf8"
+  );
+  assert.match(postSh, /timeout --signal=TERM/);
 });
 
 test("statusFromHref keeps /i/ as handle i", () => {
