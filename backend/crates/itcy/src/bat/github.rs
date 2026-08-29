@@ -1114,10 +1114,9 @@ impl GithubClient {
             .send()
             .await?;
         if !resp.status().is_success() {
-            return Err(GithubError::Api(format!(
-                "put {}: {}",
-                file.path,
-                resp.text().await.unwrap_or_default()
+            let body = resp.text().await.unwrap_or_default();
+            return Err(GithubError::Api(format_contents_put_error(
+                &file.path, &body,
             )));
         }
         Ok(())
@@ -1552,6 +1551,46 @@ struct ReviewUser {
     login: String,
 }
 
+/// True when GitHub Contents API refused a direct put because the branch requires a PR.
+#[must_use]
+pub fn contents_put_blocked_by_branch_protection(api_body: &str) -> bool {
+    let b = api_body;
+    b.contains("Changes must be made through a pull request")
+        || (b.contains("\"status\":\"409\"") && b.contains("pull request"))
+}
+
+/// Operator-facing Contents put error (playground `LinkedIn` BAT mirrors onto org `drafts`).
+#[must_use]
+pub fn format_contents_put_error(path: &str, api_body: &str) -> String {
+    if contents_put_blocked_by_branch_protection(api_body) {
+        format!(
+            "put {path}: Contents API blocked - branch protection requires a pull request. \
+             Playground LinkedIn BAT mirrors with a direct put onto org `drafts`; that branch must not require PRs."
+        )
+    } else {
+        format!("put {path}: {api_body}")
+    }
+}
+
+/// Org draft mirror targets after fork `posts` BAT (owner, branch, body path, meta path).
+#[must_use]
+pub fn org_drafts_mirror_targets(
+    org_owner: &str,
+    drafts_base: &str,
+    draft_id: &str,
+) -> Option<(String, String, String, String)> {
+    let (body_path, meta_path) = crate::bat::pack::draft_paths(draft_id);
+    if !draft_id.starts_with("DRAFT-") {
+        return None;
+    }
+    Some((
+        org_owner.to_string(),
+        drafts_base.to_string(),
+        body_path,
+        meta_path,
+    ))
+}
+
 /// PR body for a Post BAT PR (Approve = merge into **`posts`** + ship).
 #[must_use]
 pub fn post_pr_body(subject: &str, draft_id: &str, post_id: &str) -> String {
@@ -1778,6 +1817,36 @@ mod tests {
         let b = org_draft_pr_body("DRAFT-20260801-000001", "subject");
         assert!(b.contains("org **`drafts`**"));
         assert!(b.contains("2026/08/01/DRAFT-20260801-000001/"));
+    }
+
+    #[test]
+    fn org_drafts_mirror_targets_org_drafts_branch_not_posts() {
+        // POST-132 failure: sync must put DRAFT paths on org `drafts`, not fork `posts`.
+        let (owner, branch, body, meta) =
+            org_drafts_mirror_targets("Interchouette-ITC", "drafts", "DRAFT-20260829-000132")
+                .expect("draft id");
+        assert_eq!(owner, "Interchouette-ITC");
+        assert_eq!(branch, "drafts");
+        assert_eq!(body, "2026/08/29/DRAFT-20260829-000132/body.md");
+        assert_eq!(meta, "2026/08/29/DRAFT-20260829-000132/meta.toml");
+        assert!(org_drafts_mirror_targets("Interchouette-ITC", "drafts", "POST-1").is_none());
+    }
+
+    #[test]
+    fn contents_put_error_names_branch_protection_not_generic_409() {
+        // Live failure on DRAFT-20260829-000132 before org `drafts` was unprotected.
+        let api = r#"{"message":"Could not create file: Changes must be made through a pull request.","documentation_url":"https://docs.github.com/articles/about-protected-branches","status":"409"}"#;
+        assert!(contents_put_blocked_by_branch_protection(api));
+        let msg = format_contents_put_error("2026/08/29/DRAFT-20260829-000132/body.md", api);
+        assert!(
+            msg.contains("branch protection requires a pull request"),
+            "{msg}"
+        );
+        assert!(msg.contains("org `drafts`"), "{msg}");
+        assert!(!contents_put_blocked_by_branch_protection(
+            "put failed: 500 boom"
+        ));
+        assert_eq!(format_contents_put_error("x.md", "nope"), "put x.md: nope");
     }
 
     #[test]

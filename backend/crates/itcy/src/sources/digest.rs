@@ -558,19 +558,49 @@ pub fn format_org_draft_pr_notice(draft_id: &str, pr_url: &str) -> String {
 /// Slack after mock/live ship failed (promote still stands).
 #[must_use]
 pub fn format_ship_fail(post_id: &str, error: &str) -> String {
-    format!("*Ship failed* `{post_id}`\n{}", shorten_ship_error(error))
+    format!(
+        "*Ship failed* `{post_id}`\n{}",
+        clarify_bat_or_ship_error(error)
+    )
 }
 
-/// Drop Playwright dumps; keep a short operator reason.
+/// Slack when Approve wake could not finish promote + ship.
+#[must_use]
+pub fn format_bat_fail(pr_number: u64, error: &str) -> String {
+    format!(
+        "*BAT failed* PR #{pr_number}\n{}\n\n:repeat: /retry_bat <DRAFT-…|POST-…|TWEET-…|XPOST-…>",
+        clarify_bat_or_ship_error(error)
+    )
+}
+
+/// Drop Playwright dumps; keep a short operator reason (incl. org `drafts` protection).
 #[must_use]
 pub fn shorten_ship_error(error: &str) -> String {
+    clarify_bat_or_ship_error(error)
+}
+
+/// Operator-facing BAT / ship failure reason.
+#[must_use]
+pub fn clarify_bat_or_ship_error(error: &str) -> String {
     let e = error.trim();
     let low = e.to_ascii_lowercase();
+    if crate::bat::github::contents_put_blocked_by_branch_protection(e)
+        || e.contains("Contents API blocked - branch protection")
+        || (low.contains("changes must be made through a pull request") && low.contains("protect"))
+    {
+        return "Org `drafts` (or `drafts_tweet`) rejects Contents API puts because branch protection requires a PR. \
+Unprotect that staging branch on Interchouette-ITC/itcy-publications (keep `posts`/`tweets` protected). \
+Ship did not run."
+            .into();
+    }
     if low.contains("aria-disabled")
         || (low.contains("tweetbutton") && low.contains("not enabled"))
         || low.contains("element is not enabled")
     {
         return "X Post button stayed disabled. Composer would not enable Post (text too long, or X blocked send). Promote still stands.".into();
+    }
+    if low.contains("already said that") {
+        return "X rejected the Post as a duplicate of text already on the timeline (often a second submit of the same root). Overflow reply may be missing. Promote still stands.".into();
     }
     if let Some(i) = e.find("Call log:") {
         return clip_reason(e[..i].trim(), 400);
@@ -1911,6 +1941,26 @@ mod tests {
         assert!(out.contains("Post button stayed disabled"));
         assert!(!out.contains("Call log:"));
         assert!(out.len() < 400);
+    }
+
+    #[test]
+    fn bat_fail_slack_names_org_drafts_protection() {
+        // DRAFT-20260829-000132: Approve merged posts PR then Contents put 409; no Slack reason.
+        let api = r#"github api: put 2026/08/29/DRAFT-20260829-000132/body.md: {"message":"Could not create file: Changes must be made through a pull request.","documentation_url":"https://docs.github.com/articles/about-protected-branches","status":"409"}"#;
+        let out = format_bat_fail(63, api);
+        assert!(out.starts_with("*BAT failed* PR #63"), "{out}");
+        assert!(out.contains("branch protection"), "{out}");
+        assert!(out.contains("Ship did not run"), "{out}");
+        assert!(out.contains("/retry_bat"), "{out}");
+        assert!(!out.contains("documentation_url"), "{out}");
+    }
+
+    #[test]
+    fn ship_fail_clarifies_already_said_that() {
+        let e = r#"publish: Brave X post failed (exit Some(1)): {"ok":false,"detail":"X rejected Post: Whoops! You already said that. screenshot=pw/x.png"}"#;
+        let out = format_ship_fail("XPOST-20260829-000094", e);
+        assert!(out.contains("duplicate"), "{out}");
+        assert!(out.contains("Overflow reply"), "{out}");
     }
 
     #[test]

@@ -133,6 +133,11 @@ pub async fn post_ship_fail(post_id: &str, error: &str) {
     post_ship_slack(&crate::sources::format_ship_fail(post_id, error), true).await;
 }
 
+/// BAT promote/ship failure after Approve (operator channel + digest).
+pub async fn post_bat_fail(pr_number: u64, error: &str) {
+    post_ship_slack(&crate::sources::format_bat_fail(pr_number, error), true).await;
+}
+
 async fn post_ship_slack(text: &str, also_operator: bool) {
     let token = env_nonempty("SLACK_BOT_TOKEN");
     let Some(token) = token else {
