@@ -593,6 +593,7 @@ pub(crate) fn scrub_and_validate_writer_body(
     let mut body = scrub_invented_urls(&crate::llm::sanitize_itcy_text(body_raw));
     body = scrub_urls_outside_pack(&body, pack_urls);
     body = crate::sources::draft_url::strip_sources_section(&body);
+    body = crate::sources::draft_footer::strip_leading_page_title_lede(&body);
     if looks_like_writer_scratchpad(&body) {
         if brief_has_cite {
             let primary = pack_urls.first().cloned();

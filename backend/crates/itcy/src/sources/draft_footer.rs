@@ -384,6 +384,113 @@ pub fn draft_prose_for_rework(body: &str) -> String {
     lines.join("\n").trim().to_string()
 }
 
+/// Drop Playwright a11y `Page Title:` lines so the writer cannot paste them as the lede.
+#[must_use]
+pub fn strip_browse_page_title_chrome(text: &str) -> String {
+    text.lines()
+        .filter(|line| {
+            let low = line.trim().to_ascii_lowercase();
+            !(low.starts_with("- page title:") || low.starts_with("page title:"))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Drop a pasted page-title first line (`Title | @handle date` / `Title | Publisher`).
+#[must_use]
+pub fn strip_leading_page_title_lede(body: &str) -> String {
+    let mut lines: Vec<&str> = body.lines().collect();
+    while lines.first().is_some_and(|l| l.trim().is_empty()) {
+        lines.remove(0);
+    }
+    if lines
+        .first()
+        .is_some_and(|l| looks_like_page_title_lede(l.trim()))
+    {
+        lines.remove(0);
+        while lines.first().is_some_and(|l| l.trim().is_empty()) {
+            lines.remove(0);
+        }
+    }
+    lines.join("\n").trim().to_string()
+}
+
+fn looks_like_page_title_lede(t: &str) -> bool {
+    if t.len() < 24 {
+        return false;
+    }
+    // Real LinkedIn ledes open with a context emoji (📜 …), not a CMS title.
+    if let Some(c) = t.chars().next() {
+        if !c.is_ascii() && !c.is_alphanumeric() && c != '@' && c != '#' {
+            return false;
+        }
+    }
+    if t.contains(" | @") {
+        return true;
+    }
+    if let Some((_, right)) = t.rsplit_once(" | ") {
+        let r = right.trim();
+        if r.len() <= 48 && !r.contains('.') && r.split_whitespace().count() <= 6 {
+            return true;
+        }
+    }
+    false
+}
+
+/// Remove substrings the operator quoted in `/rework` instructions (hard, not model hope).
+#[must_use]
+pub fn strip_rework_quoted_removals(body: &str, instructions: &str) -> String {
+    let mut out = body.to_string();
+    for phrase in quoted_phrases_in_instructions(instructions) {
+        if phrase.chars().count() < 16 {
+            continue;
+        }
+        out = out.replace(&phrase, "");
+    }
+    collapse_blank_lines(&out).trim().to_string()
+}
+
+fn quoted_phrases_in_instructions(instructions: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (open, close) in [
+        ('"', '"'),
+        ('\u{201c}', '\u{201d}'),
+        ('\u{2018}', '\u{2019}'),
+    ] {
+        let mut rest = instructions;
+        while let Some(start) = rest.find(open) {
+            let after = &rest[start + open.len_utf8()..];
+            let Some(end) = after.find(close) else {
+                break;
+            };
+            let phrase = after[..end].trim();
+            if !phrase.is_empty() {
+                out.push(phrase.to_string());
+            }
+            rest = &after[end + close.len_utf8()..];
+        }
+    }
+    out
+}
+
+fn collapse_blank_lines(s: &str) -> String {
+    let mut out = String::new();
+    let mut blank = 0_u8;
+    for line in s.lines() {
+        if line.trim().is_empty() {
+            blank = blank.saturating_add(1);
+            if blank <= 2 {
+                out.push('\n');
+            }
+        } else {
+            blank = 0;
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
 fn is_draft_footer_break(t: &str) -> bool {
     let t = strip_leading_slack_emoji(t);
     t.starts_with("Link:")
@@ -726,6 +833,54 @@ mod tests {
         assert!(!prose.contains("Link:"));
         assert!(!prose.contains("0 = no link"));
         assert!(!prose.contains("change_url"));
+    }
+
+    #[test]
+    fn strip_leading_page_title_lede_drops_openai_cursor_title() {
+        // DRAFT-20260829-000133: model pasted browse Page Title as the LinkedIn lede.
+        let body = "\
+Our decision on Cursor following its acquisition by SpaceX | @openai August 28, 2026
+
+📜 Today, @openai made a move that feels both strategic and symbolic.
+
+https://openai.com/index/our-decision-on-cursor-following-its-acquisition-by-spacex
+";
+        let out = strip_leading_page_title_lede(body);
+        assert!(
+            !out.contains("Our decision on Cursor"),
+            "title lede must die: {out}"
+        );
+        assert!(out.starts_with("📜 Today, @openai"), "{out}");
+    }
+
+    #[test]
+    fn strip_browse_page_title_chrome_drops_a11y_title_line() {
+        let snap = "\
+### Page
+- Page URL: https://openai.com/index/our-decision-on-cursor-following-its-acquisition-by-spacex/
+- Page Title: Our decision on Cursor following its acquisition by SpaceX | OpenAI
+### Snapshot
+body text about November 12 shutoff
+";
+        let out = strip_browse_page_title_chrome(snap);
+        assert!(!out.to_ascii_lowercase().contains("page title:"), "{out}");
+        assert!(out.contains("November 12"), "{out}");
+    }
+
+    #[test]
+    fn strip_rework_quoted_removals_honors_operator_quotes() {
+        let body = "\
+Our decision on Cursor following its acquisition by SpaceX | @openai August 28, 2026
+
+📜 Today, OpenAI made a move.
+";
+        let instructions = "remove this what is this crap ?\" Our decision on Cursor following its acquisition by SpaceX | @openai August 28, 2026\" correctly cite 📜 Today, @openai";
+        let out = strip_rework_quoted_removals(body, instructions);
+        assert!(
+            !out.contains("Our decision on Cursor"),
+            "quoted removal must apply: {out}"
+        );
+        assert!(out.contains("📜 Today"), "{out}");
     }
 
     #[test]

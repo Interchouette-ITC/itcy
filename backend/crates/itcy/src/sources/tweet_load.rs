@@ -116,6 +116,7 @@ async fn fetch_cite_clipped(url: &str, tools: Option<&ItcyTools>) -> (String, Ve
     let (cite_raw, cite_via) = fetch_subject_url(url, tools).await;
     let cite_publishers = crate::sources::url_hygiene::publisher_urls_from_text(&cite_raw);
     let cite_text = clip(&cite_raw, CITE_TEXT_CHARS);
+    let cite_text = crate::sources::draft_footer::strip_browse_page_title_chrome(&cite_text);
     info!(
         url = %url,
         via = cite_via,
