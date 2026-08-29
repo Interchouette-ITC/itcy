@@ -143,13 +143,9 @@ async function main() {
     );
   } catch (e) {
     fail(e && e.message ? e.message : String(e));
-  } finally {
-    try {
-      await browser.close();
-    } catch (_) {
-      /* ignore */
-    }
   }
+  // Leave Brave up; the shell trap owns the process lifetime.
 }
+
 
 main();

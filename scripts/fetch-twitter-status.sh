@@ -101,9 +101,11 @@ else
 fi
 
 RUN_ROOT="${ITCY_TWITTER_RUN_DIR:-${ROOT}/pw/profile-x-run}"
-mkdir -p "${RUN_ROOT}"
+# shellcheck source=lib/twitter-brave-lock.sh
+. "${ROOT}/scripts/lib/twitter-brave-lock.sh"
+twitter_brave_acquire_lock "${RUN_ROOT}" || exit 1
 WORK="${RUN_ROOT}/status-$$"
-CDP_PORT="${ITCY_TWITTER_STATUS_CDP_PORT:-${ITCY_TWITTER_CDP_PORT:-9225}}"
+CDP_PORT="$(twitter_brave_pick_cdp_port "${ITCY_TWITTER_STATUS_CDP_PORT:-${ITCY_TWITTER_CDP_PORT:-}}")"
 BRAVE_PID=""
 
 cleanup() {
@@ -177,6 +179,9 @@ BRAVE_PID=$!
 
 ready=0
 for _ in $(seq 1 50); do
+  if ! kill -0 "${BRAVE_PID}" 2>/dev/null; then
+    break
+  fi
   if curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1; then
     ready=1
     break

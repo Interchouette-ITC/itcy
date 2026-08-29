@@ -9,10 +9,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   detectPostRejectReason,
+  normalizeShipText,
   resolvePostedStatus,
   statusIdNewer,
   stripQuotedStatusUrl,
-  timelineLooksLikeRoot,
 } from "./x-ship-resolve.mjs";
 
 const requireFrom = process.env.PLAYWRIGHT_REQUIRE_FROM;
@@ -63,8 +63,10 @@ function ok(statusId, url, detail, reply) {
 }
 
 async function composerLooksLike(box, text) {
-  const got = (await box.innerText()).replace(/\u200b/g, "").replace(/\s+/g, " ");
-  const want = text.replace(/\s+/g, " ").trim();
+  const got = normalizeShipText(
+    (await box.innerText()).replace(/\u200b/g, "")
+  );
+  const want = normalizeShipText(text);
   const needle = want.slice(0, Math.min(24, want.length));
   return needle.length > 0 && got.includes(needle);
 }
@@ -300,7 +302,9 @@ async function composerStillOpen(scope) {
 }
 
 async function failIfRejected(waitPage, label) {
-  const reason = detectPostRejectReason(await waitPage.evaluate(() => document.body?.innerText || ""));
+  const reason = detectPostRejectReason(
+    await waitPage.evaluate(() => document.body?.innerText || "")
+  );
   if (!reason) return;
   const cap = await captureOverlay(waitPage, label);
   fail(`X rejected Post: ${reason} screenshot=${relArtifact(cap.png)}`);
@@ -487,53 +491,46 @@ async function main() {
 
     const excludeIds = quoteId ? [quoteId] : [];
 
-    let found = null;
-    // Root already on timeline + overflow reply pending: do not post the root again.
-    if (
-      replyFile &&
-      before &&
-      timelineLooksLikeRoot(before.snippet, text)
-    ) {
-      found = before;
+    let rootToastHref = null;
+    if (quoteId) {
+      const scope = await openQuoteComposer(page, quoteId);
+      await fillComposer(page, text, scope);
+      rootToastHref = await clickPost(scope);
     } else {
-      let rootToastHref = null;
-      if (quoteId) {
-        const scope = await openQuoteComposer(page, quoteId);
-        await fillComposer(page, text, scope);
-        rootToastHref = await clickPost(scope);
-      } else {
-        await clickProfilePost(page);
-        if (looksLoggedOut(page.url(), await page.content())) {
-          fail("logged out on compose");
-        }
-        if (isStatusPermalink(page.url())) {
-          fail("compose landed on a status permalink; refusing to type into that reply box");
-        }
-        const dialog = page
-          .locator('[role="dialog"]')
-          .filter({ has: page.locator('[data-testid="tweetTextarea_0"]') })
-          .first();
-        const scope = (await dialog.isVisible().catch(() => false)) ? dialog : page;
-        await fillComposer(page, text, scope);
-        rootToastHref = await clickPost(scope);
+      await clickProfilePost(page);
+      if (looksLoggedOut(page.url(), await page.content())) {
+        fail("logged out on compose");
       }
-
-      // Toast first (captured before navigation). Profile reload is fallback only.
-      found = await resolveAfterPost(
-        page,
-        excludeIds,
-        beforeId,
-        rootToastHref
-      );
-      if (!found) {
-        const cap = await captureOverlay(page, "resolve-miss");
+      if (isStatusPermalink(page.url())) {
         fail(
-          `posted but could not resolve status (toast=${rootToastHref || "none"}; no newer own than ${beforeId}). screenshot=${relArtifact(cap.png)}`
+          "compose landed on a status permalink; refusing to type into that reply box"
         );
       }
-      if (!statusIdNewer(found.id, beforeId)) {
-        fail(`resolve picked non-newer id ${found.id} (before=${beforeId})`);
-      }
+      const dialog = page
+        .locator('[role="dialog"]')
+        .filter({ has: page.locator('[data-testid="tweetTextarea_0"]') })
+        .first();
+      const scope = (await dialog.isVisible().catch(() => false))
+        ? dialog
+        : page;
+      await fillComposer(page, text, scope);
+      rootToastHref = await clickPost(scope);
+    }
+
+    const found = await resolveAfterPost(
+      page,
+      excludeIds,
+      beforeId,
+      rootToastHref
+    );
+    if (!found) {
+      const cap = await captureOverlay(page, "resolve-miss");
+      fail(
+        `posted but could not resolve status (toast=${rootToastHref || "none"}; no newer own than ${beforeId}). screenshot=${relArtifact(cap.png)}`
+      );
+    }
+    if (!statusIdNewer(found.id, beforeId)) {
+      fail(`resolve picked non-newer id ${found.id} (before=${beforeId})`);
     }
 
     let replyFound = null;
@@ -544,14 +541,15 @@ async function main() {
       } catch (e) {
         fail(`read reply file: ${e}`);
       }
-      if (replyText) {
-        replyFound = await postReply(page, replyText, found, excludeIds);
-        if (!replyFound) {
-          const cap = await captureOverlay(page, "reply-resolve-miss");
-          fail(
-            `reply posted but profile has no newer own tweet than ${found.id}. screenshot=${relArtifact(cap.png)}`
-          );
-        }
+      if (!replyText) {
+        fail("overflow reply file empty (root would ship without tags/URL)");
+      }
+      replyFound = await postReply(page, replyText, found, excludeIds);
+      if (!replyFound) {
+        const cap = await captureOverlay(page, "reply-resolve-miss");
+        fail(
+          `root ${found.id} live but overflow reply did not resolve. screenshot=${relArtifact(cap.png)}`
+        );
       }
     }
     ok(
@@ -562,14 +560,11 @@ async function main() {
     );
   } catch (e) {
     fail(e && e.message ? e.message : String(e));
-  } finally {
-    try {
-      await browser.close();
-    } catch (_) {
-      /* ignore */
-    }
   }
+  // Do not close the CDP-attached browser from Node: Playwright would tear down
+  // the Brave process the shell trap owns and can abort mid root→reply (XPOST-095).
 }
+
 
 
 main();

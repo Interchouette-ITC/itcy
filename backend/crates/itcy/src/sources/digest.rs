@@ -599,6 +599,11 @@ Ship did not run."
     {
         return "X Post button stayed disabled. Composer would not enable Post (text too long, or X blocked send). Promote still stands.".into();
     }
+    if low.contains("browser has been closed")
+        || low.contains("target page, context or browser has been closed")
+    {
+        return "Brave died mid root→reply (CDP browser.close or port steal). First pass never finished the overflow reply.".into();
+    }
     if low.contains("already said that") {
         return "X rejected the Post as a duplicate of text already on the timeline (often a second submit of the same root). Overflow reply may be missing. Promote still stands.".into();
     }

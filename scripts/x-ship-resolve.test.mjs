@@ -13,7 +13,6 @@ import {
   statusFromHref,
   statusIdNewer,
   stripQuotedStatusUrl,
-  timelineLooksLikeRoot,
 } from "./x-ship-resolve.mjs";
 
 test("detectPostRejectReason catches duplicate-post copy", () => {
@@ -35,20 +34,41 @@ test("XPOST-094 clickPost must not re-submit root after Control+Enter", () => {
   const body = m[0];
   assert.match(body, /Control\+Enter/);
   assert.equal((body.match(/btn\.click/g) || []).length, 0);
-  assert.match(
-    src,
-    /postReply\(page,\s*replyText,\s*found/
-  );
+  assert.match(src, /postReply\(page,\s*replyText,\s*found/);
 });
 
-test("XPOST-094 half-ship: timeline root matches → reply only", () => {
-  const root =
-    "📜 Apache Iggy just shipped its big move, from incubator to top-level project in just 1.5 years. 🚀 Rust devs are already building faster, safer pipelines with this one.";
-  assert.equal(timelineLooksLikeRoot(root.slice(0, 96), root), true);
-  assert.equal(
-    timelineLooksLikeRoot("unrelated older tweet about something else", root),
-    false
+test("XPOST-095 first pass: one Brave session posts root then reply (no CDP close)", () => {
+  const src = fs.readFileSync(
+    fileURLToPath(new URL("./post-twitter.mjs", import.meta.url)),
+    "utf8"
   );
+  // CDP browser.close() kills Brave mid root→reply.
+  assert.equal((src.match(/browser\.close\(/g) || []).length, 0);
+  assert.match(src, /overflow reply file empty/);
+  assert.equal(/findTimelineRoot|timelineLooksLikeRoot|ALREADY_SAID/.test(src), false);
+  const rootThenReply = src.indexOf("rootToastHref = await clickPost");
+  const replyCall = src.indexOf("postReply(page, replyText, found");
+  assert.ok(rootThenReply > 0 && replyCall > rootThenReply, "root Post then reply");
+});
+
+test("ship scripts take brave.lock (no concurrent CDP steal)", () => {
+  for (const name of [
+    "post-twitter.sh",
+    "fetch-twitter-pulse.sh",
+    "fetch-twitter-status.sh",
+  ]) {
+    const src = fs.readFileSync(
+      fileURLToPath(new URL(`./${name}`, import.meta.url)),
+      "utf8"
+    );
+    assert.match(src, /twitter_brave_acquire_lock/, name);
+    assert.match(src, /twitter_brave_pick_cdp_port/, name);
+    assert.equal(
+      /CDP_PORT="\$\{ITCY_TWITTER_CDP_PORT:-9224\}"/.test(src),
+      false,
+      `${name} must not hard-bind stale :9224`
+    );
+  }
 });
 
 test("statusFromHref keeps /i/ as handle i", () => {
