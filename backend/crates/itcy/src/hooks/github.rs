@@ -318,23 +318,26 @@ fn handle_pull_request_review(
     let delivery_id = delivery.id.to_string();
     let reviewer_bg = reviewer.clone();
     tokio::spawn(async move {
-        let (merged, detail) = merge_outcome(&state_bg, &full_name, pr_number).await;
+        let outcome = merge_outcome(&state_bg, &full_name, pr_number).await;
         info!(
             delivery = delivery_id.as_str(),
             repo = %full_name,
             pr = pr_number,
-            merged,
-            detail = %detail,
+            merged = outcome.merged(),
+            detail = %outcome.detail(),
             "hooks/github: BAT merge outcome"
         );
+        if outcome.operator_alert() {
+            maybe_post_bat_fail(pr_number, outcome.detail()).await;
+        }
         record_wake(
             &state_bg,
             full_name,
             pr_number,
             reviewer_bg,
             "approved".into(),
-            merged,
-            detail,
+            outcome.merged(),
+            outcome.detail().to_string(),
         );
     });
 
@@ -500,11 +503,14 @@ async fn handle_pull_request(
             delivery = delivery.id,
             repo = %full_name,
             pr = pr_number,
-            merged = outcome.0,
-            detail = %outcome.1,
+            merged = outcome.merged(),
+            detail = %outcome.detail(),
             "hooks/github: BAT merge outcome"
         );
-        outcome
+        if outcome.operator_alert() {
+            maybe_post_bat_fail(pr_number, outcome.detail()).await;
+        }
+        (outcome.merged(), outcome.detail().to_string())
     } else if action == "closed" {
         let merged_flag = payload
             .pull_request
@@ -723,11 +729,14 @@ async fn handle_issue_comment(
             delivery = delivery.id,
             repo = %full_name,
             pr = pr_number,
-            merged = outcome.0,
-            detail = %outcome.1,
+            merged = outcome.merged(),
+            detail = %outcome.detail(),
             "hooks/github: BAT merge outcome"
         );
-        outcome
+        if outcome.operator_alert() {
+            maybe_post_bat_fail(pr_number, outcome.detail()).await;
+        }
+        (outcome.merged(), outcome.detail().to_string())
     } else {
         (
             false,
@@ -818,14 +827,38 @@ fn repo_full_name(repo: &RepoBody) -> String {
     repo.full_name.clone()
 }
 
-async fn merge_outcome(state: &GithubHookState, full_name: &str, pr_number: u64) -> (bool, String) {
+async fn merge_outcome(state: &GithubHookState, full_name: &str, pr_number: u64) -> BatWakeResult {
     if !repo_allowed(state, full_name) {
-        return (false, format!("repo filter ({full_name})"));
+        return BatWakeResult::Waiting(format!("repo filter ({full_name})"));
     }
     let owner = full_name.split('/').next().unwrap_or("");
     match try_promote_if_bat_green(state, owner, pr_number).await {
-        Ok(msg) => (true, msg),
-        Err(WakeSkip::NotReady(msg) | WakeSkip::Error(msg)) => (false, msg),
+        Ok(msg) => BatWakeResult::Done(msg),
+        Err(WakeSkip::NotReady(msg)) => BatWakeResult::Waiting(msg),
+        Err(WakeSkip::Error(msg)) => BatWakeResult::Failed(msg),
+    }
+}
+
+#[derive(Debug)]
+enum BatWakeResult {
+    Done(String),
+    Waiting(String),
+    Failed(String),
+}
+
+impl BatWakeResult {
+    const fn merged(&self) -> bool {
+        matches!(self, Self::Done(_))
+    }
+
+    const fn detail(&self) -> &str {
+        match self {
+            Self::Done(s) | Self::Waiting(s) | Self::Failed(s) => s.as_str(),
+        }
+    }
+
+    const fn operator_alert(&self) -> bool {
+        matches!(self, Self::Failed(_))
     }
 }
 
@@ -994,6 +1027,10 @@ async fn maybe_post_ship_notice(post_id: &str, detail: &str) {
 
 async fn maybe_post_ship_fail(post_id: &str, error: &str) {
     crate::slack::api::post_ship_fail(post_id, error).await;
+}
+
+async fn maybe_post_bat_fail(pr_number: u64, error: &str) {
+    crate::slack::api::post_bat_fail(pr_number, error).await;
 }
 
 #[derive(Debug, Deserialize)]
