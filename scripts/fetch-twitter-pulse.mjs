@@ -265,5 +265,5 @@ try {
   }
   process.stdout.write(JSON.stringify(hits));
 } finally {
-  await browser.close().catch(() => {});
+  // Leave Brave up; the shell trap owns the process lifetime.
 }

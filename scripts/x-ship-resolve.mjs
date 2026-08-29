@@ -53,21 +53,14 @@ export function detectPostRejectReason(pageText) {
   return null;
 }
 
-/**
- * True when the newest own timeline card is already the overflow root body.
- * Half-ship (root live, reply missing): skip posting the root again; reply only.
- */
-export function timelineLooksLikeRoot(snippet, rootText) {
-  const got = String(snippet || "")
+/** Normalize X timeline / compose text (curly quotes, NBSP) for matching. */
+export function normalizeShipText(s) {
+  return String(s || "")
+    .normalize("NFKC")
+    .replace(/[\u2018\u2019\u2032\u00B4`]/g, "'")
+    .replace(/\u00A0/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  const want = String(rootText || "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!got || !want) return false;
-  const n = Math.min(40, want.length);
-  if (n < 16) return false;
-  return got.includes(want.slice(0, n));
 }
 
 /** Drop a bare status URL that duplicates an attached cited status. */

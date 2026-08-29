@@ -983,6 +983,52 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:106";
     }
 
     #[test]
+    fn openai_cursor_overflow_ships_root_plus_reply_first_pass() {
+        // XPOST-20260829-000095: first Brave pass must get root+reply (tags+URL).
+        let body = "\
+XPOST ID: XPOST-20260829-000095
+
+🤖 @OpenAI’s partnership with Cursor is ending, and it’s not a soft goodbye.
+
+The direct access to models will shut down by Nov 12.
+
+Developers who rely on this tool will feel the ripple.
+
+We care, but the move feels like a pivot, not a pause.
+
+#AI #OpenSource #Cursor #ModelAccess
+
+https://x.com/OpenAI/status/2093515564786540695
+
+Link: 1
+0 = no link. /change_url TWEET-20260829-000095 <0|1|2|3|4|5|url>
+1. https://x.com/OpenAI/status/2093515564786540695
+
+Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:110";
+        let (root, reply) = ship_texts(body).expect("ship texts");
+        let reply = reply.expect("overflow must ship a reply");
+        assert!(
+            crate::sources::tweet_thread::fits_x_limit(&root),
+            "root len={}",
+            crate::sources::tweet_thread::x_weighted_len(&root)
+        );
+        assert!(
+            crate::sources::tweet_thread::fits_x_limit(&reply),
+            "reply len={}",
+            crate::sources::tweet_thread::x_weighted_len(&reply)
+        );
+        assert!(root.contains("OpenAI"), "{root}");
+        assert!(
+            !root.contains("#AI") && !root.contains("2093515564786540695"),
+            "tags+URL on reply only: {root}"
+        );
+        assert!(
+            reply.contains("#AI") && reply.contains("2093515564786540695"),
+            "reply must carry tags+URL: {reply}"
+        );
+    }
+
+    #[test]
     fn gpui_quote_body_ships_as_single_tweet() {
         // TWEET-20260821-000047 style: commentary + tags + same X URL as quote.
         // Fits 280 weighted → one Brave post, no reply file.
