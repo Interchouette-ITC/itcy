@@ -119,6 +119,8 @@ pub async fn rework_stored_draft(
         .complete_with_tools(TaskKind::Draft, &messages, tools, 6)
         .await?;
     let mut body = crate::llm::sanitize_itcy_text(response.message.content.trim());
+    body = crate::sources::draft_footer::strip_leading_page_title_lede(&body);
+    body = crate::sources::draft_footer::strip_rework_quoted_removals(&body, instructions);
     let pack_urls = stored.sources.clone();
     let mut link_options = if stored.link_options.is_empty() {
         pick_link_options(&pack_urls, &body)

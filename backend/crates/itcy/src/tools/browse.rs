@@ -171,16 +171,19 @@ Page text / snapshot (may be a login wall):\n{trimmed}"
             return Ok(format!(
                 "browse_url opened={url}\nfinal_url={final_url}\n\
 SOCIAL_FORBIDDEN: LinkedIn/Instagram are not research sources. Do NOT cite this URL.\n\n\
-Page text / snapshot:\n{trimmed}"
+Page text / snapshot:\n{}",
+                crate::sources::draft_footer::strip_browse_page_title_chrome(&trimmed)
             ));
         }
         info!(opened = %url, final_url = %final_url, "tools: browse_url ok");
+        let cleaned = crate::sources::draft_footer::strip_browse_page_title_chrome(&trimmed);
         Ok(format!(
             "browse_url opened={url}\nfinal_url={final_url}\n\
 SUPPORT ONLY: use facts from this page to support the OPERATOR SUBJECT. \
 Do NOT rewrite the post as a summary of this page. Do NOT change the subject to match this page. \
+Do NOT paste the page title as the LinkedIn opening line. \
 Cite final_url only if it is ON-TOPIC for the operator request.\n\n\
-Page text / snapshot (truncated):\n{trimmed}"
+Page text / snapshot (truncated):\n{cleaned}"
         ))
     }
 
