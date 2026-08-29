@@ -12,6 +12,7 @@ import {
   resolvePostedStatus,
   statusIdNewer,
   stripQuotedStatusUrl,
+  timelineLooksLikeRoot,
 } from "./x-ship-resolve.mjs";
 
 const requireFrom = process.env.PLAYWRIGHT_REQUIRE_FROM;
@@ -345,14 +346,9 @@ async function clickPost(scope) {
       }
       return toastHref;
     }
-    // Ctrl+Enter missed: click the dialog Post once, then keep waiting.
-    if (i === 8) {
-      try {
-        await btn.click({ timeout: 5000 });
-      } catch {
-        await clickOrDump(waitPage, btn, "post");
-      }
-    }
+    // XPOST-20260829-000094: do not submit again here. Control+Enter already
+    // posted the root; a second Post retries the same body and never opens the
+    // root status to post the overflow reply.
     await waitPage.waitForTimeout(250);
   }
   await failIfRejected(waitPage, "post-rejected");
@@ -491,44 +487,53 @@ async function main() {
 
     const excludeIds = quoteId ? [quoteId] : [];
 
-    let rootToastHref = null;
-    if (quoteId) {
-      const scope = await openQuoteComposer(page, quoteId);
-      await fillComposer(page, text, scope);
-      rootToastHref = await clickPost(scope);
+    let found = null;
+    // Root already on timeline + overflow reply pending: do not post the root again.
+    if (
+      replyFile &&
+      before &&
+      timelineLooksLikeRoot(before.snippet, text)
+    ) {
+      found = before;
     } else {
-      await clickProfilePost(page);
-      if (looksLoggedOut(page.url(), await page.content())) {
-        fail("logged out on compose");
+      let rootToastHref = null;
+      if (quoteId) {
+        const scope = await openQuoteComposer(page, quoteId);
+        await fillComposer(page, text, scope);
+        rootToastHref = await clickPost(scope);
+      } else {
+        await clickProfilePost(page);
+        if (looksLoggedOut(page.url(), await page.content())) {
+          fail("logged out on compose");
+        }
+        if (isStatusPermalink(page.url())) {
+          fail("compose landed on a status permalink; refusing to type into that reply box");
+        }
+        const dialog = page
+          .locator('[role="dialog"]')
+          .filter({ has: page.locator('[data-testid="tweetTextarea_0"]') })
+          .first();
+        const scope = (await dialog.isVisible().catch(() => false)) ? dialog : page;
+        await fillComposer(page, text, scope);
+        rootToastHref = await clickPost(scope);
       }
-      if (isStatusPermalink(page.url())) {
-        fail("compose landed on a status permalink; refusing to type into that reply box");
-      }
-      const dialog = page
-        .locator('[role="dialog"]')
-        .filter({ has: page.locator('[data-testid="tweetTextarea_0"]') })
-        .first();
-      const scope = (await dialog.isVisible().catch(() => false)) ? dialog : page;
-      await fillComposer(page, text, scope);
-      rootToastHref = await clickPost(scope);
-    }
 
-    // Toast first (captured before navigation). Profile reload is fallback only.
-    // Reply only if Rust handed a split second file.
-    const found = await resolveAfterPost(
-      page,
-      excludeIds,
-      beforeId,
-      rootToastHref
-    );
-    if (!found) {
-      const cap = await captureOverlay(page, "resolve-miss");
-      fail(
-        `posted but could not resolve status (toast=${rootToastHref || "none"}; no newer own than ${beforeId}). screenshot=${relArtifact(cap.png)}`
+      // Toast first (captured before navigation). Profile reload is fallback only.
+      found = await resolveAfterPost(
+        page,
+        excludeIds,
+        beforeId,
+        rootToastHref
       );
-    }
-    if (!statusIdNewer(found.id, beforeId)) {
-      fail(`resolve picked non-newer id ${found.id} (before=${beforeId})`);
+      if (!found) {
+        const cap = await captureOverlay(page, "resolve-miss");
+        fail(
+          `posted but could not resolve status (toast=${rootToastHref || "none"}; no newer own than ${beforeId}). screenshot=${relArtifact(cap.png)}`
+        );
+      }
+      if (!statusIdNewer(found.id, beforeId)) {
+        fail(`resolve picked non-newer id ${found.id} (before=${beforeId})`);
+      }
     }
 
     let replyFound = null;
