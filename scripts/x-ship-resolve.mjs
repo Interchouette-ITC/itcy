@@ -53,6 +53,23 @@ export function detectPostRejectReason(pageText) {
   return null;
 }
 
+/**
+ * True when the newest own timeline card is already the overflow root body.
+ * Half-ship (root live, reply missing): skip posting the root again; reply only.
+ */
+export function timelineLooksLikeRoot(snippet, rootText) {
+  const got = String(snippet || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const want = String(rootText || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!got || !want) return false;
+  const n = Math.min(40, want.length);
+  if (n < 16) return false;
+  return got.includes(want.slice(0, n));
+}
+
 /** Drop a bare status URL that duplicates an attached cited status. */
 export function stripQuotedStatusUrl(text, qid) {
   const id = String(qid || "").trim();

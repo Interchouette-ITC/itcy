@@ -938,6 +938,51 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
     }
 
     #[test]
+    fn apache_iggy_overflow_ships_root_plus_reply_with_tags_and_url() {
+        // XPOST-20260829-000094: root landed without tags/URL; reply never sent.
+        // Layout must force root + reply (tags + Link URL on the reply).
+        let body = "\
+XPOST ID: XPOST-20260829-000094
+
+📜 Apache Iggy just shipped its big move, from incubator to top-level project in just 1.5 years. 🚀
+
+Rust devs are already building faster, safer pipelines with this one.
+
+🦀 It’s a win for speed, security, and the whole ecosystem, no more waiting.
+
+#Rust #Apache #Streaming #DevTools
+
+https://x.com/rustaceans_rs/status/2093377764128633214
+
+Link: 1
+0 = no link. /change_url TWEET-20260829-000094 <0|1|2|3|4|5|url>
+1. https://x.com/rustaceans_rs/status/2093377764128633214
+
+Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:106";
+        let (root, reply) = ship_texts(body).expect("ship texts");
+        let reply = reply.expect("overflow must ship a reply with tags+URL");
+        assert!(
+            crate::sources::tweet_thread::fits_x_limit(&root),
+            "root len={}",
+            crate::sources::tweet_thread::x_weighted_len(&root)
+        );
+        assert!(
+            crate::sources::tweet_thread::fits_x_limit(&reply),
+            "reply len={}",
+            crate::sources::tweet_thread::x_weighted_len(&reply)
+        );
+        assert!(root.contains("Apache Iggy"), "{root}");
+        assert!(
+            !root.contains("#Rust") && !root.contains("rustaceans_rs"),
+            "tags+URL must not stay on root alone: {root}"
+        );
+        assert!(
+            reply.contains("#Rust") && reply.contains("2093377764128633214"),
+            "reply must carry tags+URL: {reply}"
+        );
+    }
+
+    #[test]
     fn gpui_quote_body_ships_as_single_tweet() {
         // TWEET-20260821-000047 style: commentary + tags + same X URL as quote.
         // Fits 280 weighted → one Brave post, no reply file.

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   asOurPostedStatus,
   detectPostRejectReason,
@@ -11,6 +13,7 @@ import {
   statusFromHref,
   statusIdNewer,
   stripQuotedStatusUrl,
+  timelineLooksLikeRoot,
 } from "./x-ship-resolve.mjs";
 
 test("detectPostRejectReason catches duplicate-post copy", () => {
@@ -18,6 +21,34 @@ test("detectPostRejectReason catches duplicate-post copy", () => {
     "It looks like you already said that! Let's give other folks a chance to say their piece. Wait a little while before you post again. Not helpful?";
   assert.match(detectPostRejectReason(t), /already said that/i);
   assert.equal(detectPostRejectReason("Home timeline For you Following"), null);
+});
+
+test("XPOST-094 clickPost must not re-submit root after Control+Enter", () => {
+  const src = fs.readFileSync(
+    fileURLToPath(new URL("./post-twitter.mjs", import.meta.url)),
+    "utf8"
+  );
+  const m = src.match(
+    /async function clickPost\([\s\S]*?\nasync function scanProfileTimeline/
+  );
+  assert.ok(m, "clickPost missing");
+  const body = m[0];
+  assert.match(body, /Control\+Enter/);
+  assert.equal((body.match(/btn\.click/g) || []).length, 0);
+  assert.match(
+    src,
+    /postReply\(page,\s*replyText,\s*found/
+  );
+});
+
+test("XPOST-094 half-ship: timeline root matches → reply only", () => {
+  const root =
+    "📜 Apache Iggy just shipped its big move, from incubator to top-level project in just 1.5 years. 🚀 Rust devs are already building faster, safer pipelines with this one.";
+  assert.equal(timelineLooksLikeRoot(root.slice(0, 96), root), true);
+  assert.equal(
+    timelineLooksLikeRoot("unrelated older tweet about something else", root),
+    false
+  );
 });
 
 test("statusFromHref keeps /i/ as handle i", () => {
