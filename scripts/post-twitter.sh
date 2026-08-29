@@ -197,9 +197,19 @@ if [[ "${ready}" != "1" ]]; then
 fi
 
 cd "${ROOT}"
-env PLAYWRIGHT_REQUIRE_FROM="${PW_JSON}" ITCY_TWITTER_CDP_URL="http://127.0.0.1:${CDP_PORT}" \
+# Hard ceiling: a hung CDP session must not leave Brave open forever.
+set +e
+timeout --signal=TERM --kill-after=20s 360s \
+  env PLAYWRIGHT_REQUIRE_FROM="${PW_JSON}" ITCY_TWITTER_CDP_URL="http://127.0.0.1:${CDP_PORT}" \
   ITCY_TWITTER_POST_TEXT_FILE="${TEXT_FILE}" ITCY_TWITTER_QUOTE_STATUS_ID="${QUOTE_ID}" \
   ITCY_TWITTER_REPLY_TEXT_FILE="${ITCY_TWITTER_REPLY_TEXT_FILE:-}" \
   ITCY_TWITTER_IN_REPLY_TO_STATUS_ID="${ITCY_TWITTER_IN_REPLY_TO_STATUS_ID:-}" \
   ITCY_X_SHIP_DEBUG_DIR="${ITCY_X_SHIP_DEBUG_DIR:-${ROOT}/pw/screenshots/x-ship}" \
   node "${ROOT}/scripts/post-twitter.mjs"
+rc=$?
+set -e
+if [[ "${rc}" -eq 124 ]]; then
+  echo '{"ok":false,"detail":"Brave X post timed out (360s); browser cleaned up by shell"}' 
+  exit 1
+fi
+exit "${rc}"
