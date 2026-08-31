@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Interchouette-ITC
 // SPDX-License-Identifier: BUSL-1.1
 
-//! Bare `/propose_draft` / `/propose_tweet`: resolve a concrete subject from corpus.
+//! Bare `/propose_draft` / `/propose_tweet`: resolve a concrete subject from the latest
+//! web digest (untreated press / X lanes), not stale corpus angles alone.
 
 use crate::bat::store::DraftStore;
+use crate::sources::digest::{digest_propose_brief, is_itc_lane, latest_open_digest, DigestItem};
 use crate::sources::store::{ChunkRecord, SourceDb};
-use crate::sources::url_hygiene::{is_junk_or_search_url, scrub_https_url};
+use crate::sources::url_hygiene::{is_junk_or_search_url, normalize_url_key, scrub_https_url};
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -29,6 +31,9 @@ const MIN_CHUNK_TEXT: usize = 40;
 ///
 /// Skips corpus angles whose subject or topic tokens already appear on an in-flight
 /// or shipped `DRAFT-` / `TWEET-` row so bare propose does not re-open the same story.
+///
+/// Prefer [`resolve_web_propose_brief`] for bare `/propose_draft` / `/propose_tweet`
+/// (web digest lanes). This corpus path remains for tests and fallback tooling.
 ///
 /// # Errors
 ///
@@ -82,6 +87,98 @@ Corpus grounding:\n{grounding}"
         ),
     };
     Ok((subject, instructions))
+}
+
+/// Bare `/propose_draft` / `/propose_tweet`: next untreated item from the latest web digest.
+///
+/// Digests are built by `/daily_digest` (live hubs + X lanes). This picks the first
+/// non-ITC item with a publisher URL that is not already used as a draft/tweet cite
+/// or overlapping subject, then returns a cite-locked brief (`digest_propose_brief`).
+///
+/// # Errors
+///
+/// Returns an operator-facing message when there is no open digest, or every usable
+/// digest item is already treated.
+pub fn resolve_web_propose_brief(
+    db_path: &Path,
+    surface: ProposeSurface,
+) -> Result<(String, String, String), String> {
+    let rec = match latest_open_digest(db_path) {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            return Err(
+                "No open digest. Run `/daily_digest` first so bare `/propose_draft` / `/propose_tweet` can pick an untreated web subject."
+                    .into(),
+            );
+        }
+        Err(e) => return Err(format!("Digest read failed: {e}")),
+    };
+    let used_subjects = load_used_propose_subjects(db_path);
+    let used_topics = load_used_propose_topic_fingerprints(db_path, surface);
+    let used_urls = load_used_propose_urls(db_path);
+    let surface_name = match surface {
+        ProposeSurface::Draft => "draft",
+        ProposeSurface::Tweet => "tweet",
+    };
+    for it in &rec.items {
+        if let Some((subject, instructions, url)) =
+            web_propose_candidate(it, &used_subjects, &used_topics, &used_urls)
+        {
+            return Ok((subject, instructions, url));
+        }
+    }
+    Err(format!(
+        "Every web digest item on `{}` already has an open/accepted/published {surface_name}, or lacks a publisher URL.\n\
+Run `/daily_digest` for a fresh scrape, or `/propose_{surface_name} N` with an explicit digest index.",
+        rec.digest_id
+    ))
+}
+
+fn web_propose_candidate(
+    it: &DigestItem,
+    used_subjects: &HashSet<String>,
+    used_topics: &[HashSet<String>],
+    used_urls: &HashSet<String>,
+) -> Option<(String, String, String)> {
+    if is_itc_lane(&it.lane) {
+        return None;
+    }
+    let url = it.url.as_deref().map(str::trim).filter(|u| !u.is_empty())?;
+    let scrubbed = scrub_https_url(url);
+    if scrubbed.is_empty() || is_junk_or_search_url(&scrubbed) {
+        return None;
+    }
+    let url_key = normalize_url_key(&scrubbed);
+    if used_urls.contains(&url_key) {
+        return None;
+    }
+    let (subject, instructions) = digest_propose_brief(it);
+    let key = subject.to_ascii_lowercase();
+    if used_subjects.contains(&key) {
+        return None;
+    }
+    let fp = topic_fingerprint(&subject);
+    if !fp.is_empty()
+        && used_topics
+            .iter()
+            .any(|used| topic_fingerprints_overlap(&fp, used))
+    {
+        return None;
+    }
+    Some((subject, instructions, scrubbed))
+}
+
+fn load_used_propose_urls(db_path: &Path) -> HashSet<String> {
+    let Ok(store) = DraftStore::open(db_path) else {
+        return HashSet::new();
+    };
+    let Ok(urls) = store.used_propose_source_urls(USED_SUBJECT_LIMIT) else {
+        return HashSet::new();
+    };
+    urls.into_iter()
+        .map(|u| normalize_url_key(&u))
+        .filter(|u| !u.is_empty())
+        .collect()
 }
 
 fn load_used_propose_subjects(db_path: &Path) -> HashSet<String> {
@@ -379,6 +476,7 @@ const OFF_ANGLE_MARKERS: &[&str] = &[
 mod tests {
     use super::*;
     use crate::bat::store::{status, stored_from_payload, DraftPayload, DraftStore};
+    use crate::sources::digest::{insert_digest, DigestItem};
     use crate::sources::store::InsertSource;
     use tempfile::tempdir;
 
@@ -679,5 +777,100 @@ Para three closes with builders who ship.";
         let body = "Line one still here.\nLine two still here.";
         let out = strip_slogan_mush_sentences(body);
         assert_eq!(out, "Line one still here. Line two still here");
+    }
+
+    #[test]
+    fn web_propose_picks_untreated_digest_press_item_with_cite() {
+        let dir = tempdir().expect("temp");
+        let path = dir.path().join("runtime.db");
+        let url = "https://labs.sogeti.com/the-hidden-cost-of-ai-coding";
+        insert_digest(
+            &path,
+            "DIGEST-20990101-000001",
+            &[
+                DigestItem {
+                    idx: 1,
+                    title: "ITC portfolio".into(),
+                    url: Some("https://github.com/Interchouette-ITC/evaluator".into()),
+                    subject: "evaluator".into(),
+                    lane: "itc_draft".into(),
+                    weight: 1,
+                    detail: "Catalog item.".into(),
+                },
+                DigestItem {
+                    idx: 2,
+                    title: "AI coding token tax".into(),
+                    url: Some(url.into()),
+                    subject: "AI coding token tax".into(),
+                    lane: "press".into(),
+                    weight: 10,
+                    detail: "Sogeti on low-overhead indexing and the LSP wait tax.".into(),
+                },
+            ],
+        )
+        .expect("digest");
+        let (subject, instructions, cite) =
+            resolve_web_propose_brief(&path, ProposeSurface::Draft).expect("web propose");
+        assert!(
+            subject.to_ascii_lowercase().contains("sogeti")
+                || subject.contains("LSP")
+                || subject.contains("token")
+                || subject.contains("indexing")
+                || instructions.contains("Sogeti"),
+            "subject={subject} instructions={instructions}"
+        );
+        assert_eq!(cite, url);
+        assert!(instructions.contains(url), "{instructions}");
+        assert!(!cite.contains("evaluator"));
+    }
+
+    #[test]
+    fn web_propose_skips_url_already_used_as_draft_source() {
+        let dir = tempdir().expect("temp");
+        let path = dir.path().join("runtime.db");
+        let url = "https://decrypt.co/376271/chatgpt-web-ai-written-pew";
+        insert_digest(
+            &path,
+            "DIGEST-20990101-000002",
+            &[DigestItem {
+                idx: 1,
+                title: "AI web pages study".into(),
+                url: Some(url.into()),
+                subject: "AI web pages study".into(),
+                lane: "press".into(),
+                weight: 10,
+                detail: "Pew / Decrypt on AI-authored pages.".into(),
+            }],
+        )
+        .expect("digest");
+        let store = DraftStore::open(&path).expect("drafts");
+        let mut row = stored_from_payload(DraftPayload {
+            draft_id: "DRAFT-20990101-000001".into(),
+            subject: "AI web pages study".into(),
+            body: "Already shipped this angle.".into(),
+            model: "mock".into(),
+            tokens_in: 1,
+            tokens_out: 1,
+            sources: vec![url.into()],
+            link_options: vec![url.into()],
+            research_pack: String::new(),
+        });
+        row.status = status::PUBLISHED.into();
+        store.upsert(&row).expect("upsert");
+        drop(store);
+        let err = resolve_web_propose_brief(&path, ProposeSurface::Draft).expect_err("treated");
+        assert!(
+            err.contains("already") || err.contains("daily_digest"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn web_propose_errors_without_open_digest() {
+        let dir = tempdir().expect("temp");
+        let path = dir.path().join("runtime.db");
+        let _ = SourceDb::open(&path).expect("open sources schema");
+        let err = resolve_web_propose_brief(&path, ProposeSurface::Tweet).expect_err("no digest");
+        assert!(err.contains("daily_digest"), "{err}");
     }
 }
