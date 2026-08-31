@@ -132,10 +132,20 @@ pub async fn probe_publisher_url(url: &str) -> Result<(), String> {
     let res = client.get(url).send().await.map_err(|e| e.to_string())?;
     let status = res.status().as_u16();
     let mut body = res.text().await.map_err(|e| e.to_string())?;
-    if body.len() > PROBE_BODY_CAP {
-        body.truncate(PROBE_BODY_CAP);
-    }
+    truncate_utf8_bytes(&mut body, PROBE_BODY_CAP);
     evaluate_publisher_probe(status, &body)
+}
+
+/// Cap HTTP body by bytes without slicing mid-UTF-8 (panic on `String::truncate`).
+fn truncate_utf8_bytes(s: &mut String, max_bytes: usize) {
+    if s.len() <= max_bytes {
+        return;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    s.truncate(end);
 }
 
 /// Keep only publisher URLs that respond with real article content.
@@ -312,6 +322,21 @@ mod tests {
         let err = evaluate_publisher_probe(404, "<html><body>404</body></html>")
             .expect_err("broken vercel slug pattern");
         assert!(err.contains("404"), "{err}");
+    }
+
+    #[test]
+    fn truncate_utf8_bytes_does_not_panic_mid_multibyte() {
+        // DRAFT-20260831-000135: probe body.truncate(cap) panicked on is_char_boundary
+        // when a multi-byte glyph straddled PROBE_BODY_CAP.
+        let emoji = "🦀"; // 4 bytes
+        assert_eq!(emoji.len(), 4);
+        let mut s = "a".repeat(10);
+        s.push_str(emoji);
+        s.push_str(&"b".repeat(10));
+        // Cap lands inside the emoji (byte 11 of "a"*10 + first byte of 🦀).
+        truncate_utf8_bytes(&mut s, 11);
+        assert_eq!(s, "aaaaaaaaaa");
+        assert!(s.is_char_boundary(s.len()));
     }
 
     #[tokio::test]
