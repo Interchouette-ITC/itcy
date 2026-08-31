@@ -42,9 +42,10 @@ pub mod x_reply;
 
 pub use digest::{
     build_daily_digest, clarify_bat_or_ship_error, digest_slack_messages, digest_slack_post,
-    format_bat_fail, format_digest_slack, format_org_draft_pr_notice, format_ship_fail,
-    format_ship_notice, get_digest, latest_open_digest, pick_items, shorten_ship_error,
-    DigestError, DigestItem, DigestRecord, DigestSlackPost,
+    format_bat_fail, format_digest_slack, format_org_draft_pr_notice,
+    format_playground_linkedin_ship_notice, format_ship_fail, format_ship_notice, get_digest,
+    latest_open_digest, pick_items, shorten_ship_error, DigestError, DigestItem, DigestRecord,
+    DigestSlackPost,
 };
 pub use embed::{build_embed_client, default_embed_model, EmbedClient, MockEmbedClient};
 pub use enrich::{
