@@ -55,6 +55,14 @@ pub fn extract_articleish_text(html: &str) -> Option<String> {
             }
         }
     }
+    // SPA shells (Angular/React) often ship only social cards in the first HTML.
+    // Title + meta/og description is enough to prove a real publisher page exists;
+    // fat chrome with no description still returns None.
+    if let Some(card) = extract_social_card_article_text(html) {
+        if card.chars().count() >= 120 {
+            return Some(card);
+        }
+    }
     if page_marked_as_article(&lower) {
         if let Some(blurb) = article_blurb(html) {
             if blurb.chars().count() >= 120 {
@@ -63,6 +71,53 @@ pub fn extract_articleish_text(html: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Title + meta/og/twitter description from a JS shell that has no `<article>` yet.
+fn extract_social_card_article_text(html: &str) -> Option<String> {
+    // Do not call `article_blurb` here: it falls back to `extract_page_text` and would recurse.
+    let desc = meta_description_only(html).and_then(|raw| usable_blurb(&raw))?;
+    let title = extract_document_title(html)
+        .map(|t| collapse_ws(&html_entities_basic(&t)))
+        .filter(|t| t.chars().count() >= 12);
+    let mut parts = Vec::new();
+    if let Some(t) = title {
+        let low = t.to_ascii_lowercase();
+        if !low.contains("404") && !low.contains("not found") && low != "home" {
+            parts.push(t);
+        }
+    }
+    parts.push(desc);
+    let joined = parts.join("\n\n");
+    (joined.chars().count() >= 120).then_some(joined)
+}
+
+fn meta_description_only(html: &str) -> Option<String> {
+    for (attr, key) in [
+        ("property", "og:description"),
+        ("property", "twitter:description"),
+        ("name", "twitter:description"),
+        ("name", "description"),
+    ] {
+        if let Some(raw) = meta_named(html, attr, key) {
+            let t = raw.trim();
+            if !t.is_empty() {
+                return Some(t.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn extract_document_title(html: &str) -> Option<String> {
+    let lower = html.to_ascii_lowercase();
+    let start = lower.find("<title")?;
+    let after = &lower[start..];
+    let gt = after.find('>')? + 1;
+    let rest = &html[start + gt..];
+    let end = rest.to_ascii_lowercase().find("</title>")?;
+    let t = rest[..end].trim();
+    (!t.is_empty()).then(|| t.to_string())
 }
 
 fn page_marked_as_article(lower: &str) -> bool {
@@ -656,5 +711,41 @@ mod tests {
         let text = extract_articleish_text(&html).expect("live scylladb fixture");
         assert!(text.chars().count() >= 120);
         assert!(text.to_ascii_lowercase().contains("rust"));
+    }
+
+    #[test]
+    fn google_bughunters_spa_shell_is_articleish_via_social_cards() {
+        // DRAFT-20260831-000134: probe rejected this as "no article body" while the
+        // page is a real Google Bug Hunters post (Angular <app-root> + meta only).
+        use crate::sources::publisher_url::evaluate_publisher_probe;
+        let html = r#"<!doctype html>
+<html lang="en-US">
+  <head>
+    <title>Blog: Scaling Memory Safety: AI-Assisted Rewrites of C/C++ Dependencies to Rust</title>
+    <meta name="description" content="This blog post describes how we used AI to help us rewrite a C library (giflib) to Rust to mitigate memory safety vulnerabilities." />
+    <meta property="og:description" content="This blog post describes how we used AI to help us rewrite a C library (giflib) to Rust to mitigate memory safety vulnerabilities." />
+    <meta property="og:url" content="https://bughunters.google.com/blog/scaling-memory-safety" />
+  </head>
+  <body class="mat-app-background">
+    <app-root></app-root>
+  </body>
+</html>"#;
+        let text =
+            extract_articleish_text(html).expect("SPA social cards must count as articleish");
+        assert!(text.to_ascii_lowercase().contains("giflib"), "{text}");
+        assert!(text.to_ascii_lowercase().contains("rust"), "{text}");
+        assert!(text.chars().count() >= 120, "len={}", text.chars().count());
+        evaluate_publisher_probe(200, html).expect("cite probe must accept bughunters SPA shell");
+    }
+
+    #[test]
+    fn spa_shell_without_meta_description_still_rejected() {
+        use crate::sources::publisher_url::evaluate_publisher_probe;
+        let html = r"<!doctype html>
+<html><head><title>App</title></head>
+<body><app-root></app-root></body></html>";
+        assert!(extract_articleish_text(html).is_none());
+        let err = evaluate_publisher_probe(200, html).expect_err("empty SPA");
+        assert!(err.contains("no article") || err.contains("thin"), "{err}");
     }
 }
