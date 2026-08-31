@@ -1007,13 +1007,13 @@ pub const fn help_text() -> &'static str {
      • `/ingest <url>` - ingest public article or LinkedIn Pulse (clearnet)\n\
      • `/handle_add <name> <@linkedin|url> <@x|url>` - append LinkedIn/X handles (last two must be @ or https; hot reload)\n\
      • `/daily_digest` - 20 press + 20 For you + 20 Following + 20 tweet searches + 10 Interchouette (5 draft / 5 tweet) into `#daily-digest`\n\
-     • `/propose_draft` - next untreated subject from latest `/daily_digest` scrape (cite locked)\n\
+     • `/propose_draft` - new draft from corpus (resolves a subject from LinkedIn/corpus memory)\n\
      • `/propose_draft <DIGEST-…>, <1|1,3>` or `/propose_draft <N>` - new drafts from that digest's propositions\n\
      • `/tweet_about <subject>, <instructions>` - tweet; a https in instructions locks the quote (X status) or the link (publisher)\n\
      • `/tweet_farce` or `/tweet_farce <theme hint>` - dad-joke / IT wordplay tagging @grok @cursor_ai @elonmusk (no cite)\n\
      • `/draft_tweet_about_itc` or `/draft_tweet_about_itc <subject>, <instructions>` - X tweet about Interchouette / our projects\n\
      • `/tweet_about_itcy` or `/tweet_about_itcy <instructions>` - X self-introduction tweet as ITCy (first-person, stack disclosure)\n\
-     • `/propose_tweet` - next untreated subject from latest `/daily_digest` scrape (cite locked)\n\
+     • `/propose_tweet` - new tweet from corpus (resolves a subject from LinkedIn/corpus memory)\n\
      • `/propose_tweet <DIGEST-…>, <1|1,3>` or `/propose_tweet <N>` - new tweets from that digest's propositions\n\
      • `/reply_comment <https://…>` - LinkedIn comment or X status → saved CREPLY-/XREPLY- draft; `/accept` ships (no BAT PR)\n\
      *Freeform chat:* anything else (informal / informational; tools OK). No draft/BAT/corpus ingest here."

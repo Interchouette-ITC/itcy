@@ -49,10 +49,6 @@ const USED_PROPOSE_TOPICS_SQL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../sql/drafts_used_propose_topics.sql"
 ));
-const USED_PROPOSE_SOURCES_SQL: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../sql/drafts_used_propose_sources.sql"
-));
 const DELETE_SQL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../sql/drafts_delete.sql"
@@ -337,30 +333,6 @@ impl DraftStore {
                 continue;
             }
             out.push((draft_id, sub.to_string()));
-        }
-        Ok(out)
-    }
-
-    /// Pack / cite URLs already used on open, accepted, or published drafts/tweets.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`DraftStoreError`] on `SQLite` failure.
-    pub fn used_propose_source_urls(&self, limit: usize) -> Result<Vec<String>, DraftStoreError> {
-        let cap = i64::try_from(limit.clamp(1, 500)).unwrap_or(200);
-        let mut stmt = self.conn.prepare(USED_PROPOSE_SOURCES_SQL)?;
-        let mut rows = stmt.query(params![cap])?;
-        let mut out = Vec::new();
-        while let Some(row) = rows.next()? {
-            let sources_json: String = row.get(0)?;
-            let urls: Vec<String> = serde_json::from_str(&sources_json).unwrap_or_default();
-            for u in urls {
-                let t = u.trim();
-                if t.is_empty() {
-                    continue;
-                }
-                out.push(t.to_string());
-            }
         }
         Ok(out)
     }
