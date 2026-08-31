@@ -865,6 +865,8 @@ pub async fn build_grounded_draft_with_cite(
         prefer.as_deref(),
     )
     .await;
+    crate::sources::publisher_url::require_link_options_floor(&link_options)
+        .map_err(RagError::Store)?;
     let body = crate::sources::draft_footer::compose_draft_message(&body, &draft_id, &link_options);
     info!(draft_id = %draft_id, links = link_options.len(), "load_draft: draft id + links attached");
     Ok(GroundedDraft {
@@ -964,6 +966,8 @@ pub async fn build_grounded_draft_from_pack(
     let prefer = crate::sources::tweet_footer::extract_brief_cite(subject);
     let (body, link_options) =
         finalize_draft_link_options(body, &urls, &refill_pool, subject, prefer.as_deref()).await;
+    crate::sources::publisher_url::require_link_options_floor(&link_options)
+        .map_err(RagError::Store)?;
     let body = crate::sources::draft_footer::compose_draft_message(&body, &draft_id, &link_options);
     Ok(GroundedDraft {
         subject: subject.to_string(),
@@ -1663,19 +1667,31 @@ https://example.com/policy";
 
         let mut clients: HashMap<String, Arc<dyn LlmClient>> = HashMap::new();
         clients.insert("mock".into(), Arc::new(OkClient));
-        let chains = TaskChains::new()
-            .with_chain(
-                TaskKind::Load,
-                vec![ChainCandidate::new("mock", "load-model")],
-            )
-            .with_chain(
-                TaskKind::Draft,
-                vec![ChainCandidate::new("mock", "draft-model")],
-            );
+        let chains = TaskChains::new().with_chain(
+            TaskKind::Draft,
+            vec![ChainCandidate::new("mock", "draft-model")],
+        );
         let router = FailoverRouter::new(clients, chains);
-        let reply = build_grounded_draft(&router, &db_path, &MockEmbedClient, "rust async", None)
-            .await
-            .expect("draft");
+        let pack = vec![
+            "https://alpha.itcy.test/rust-async".into(),
+            "https://beta.itcy.test/tokio".into(),
+            "https://gamma.itcy.test/queues".into(),
+        ];
+        let reply = build_grounded_draft_from_pack(
+            &router,
+            &db_path,
+            "rust async",
+            "## ResearchPack\nsubject: rust async\nsummary: mock pack\n",
+            &pack,
+            None,
+        )
+        .await
+        .expect("draft");
+        assert!(
+            reply.link_options.len() >= crate::sources::publisher_url::LINK_OPTIONS_MIN,
+            "floor 3: {:?}",
+            reply.link_options
+        );
         assert!(reply.body.contains("DRAFT commentary"));
         assert!(reply
             .body
@@ -1690,8 +1706,43 @@ https://example.com/policy";
             reply.body.contains('🦉') && reply.body.contains('🦀'),
             "owl + crab must survive the LinkedIn draft pipeline"
         );
-        assert!(reply.model.contains("load=mock/load-model"));
         assert!(reply.model.contains("draft=mock/draft-model"));
+    }
+
+    #[tokio::test]
+    async fn grounded_draft_refuses_fewer_than_three_link_options() {
+        let dir = TempDir::new().expect("temp");
+        let db_path = dir.path().join("s.db");
+        let mut clients: HashMap<String, Arc<dyn LlmClient>> = HashMap::new();
+        clients.insert("mock".into(), Arc::new(OkClient));
+        let chains = TaskChains::new().with_chain(
+            TaskKind::Draft,
+            vec![ChainCandidate::new("mock", "draft-model")],
+        );
+        let router = FailoverRouter::new(clients, chains);
+        let err = build_grounded_draft_from_pack(
+            &router,
+            &db_path,
+            "rust async",
+            "## ResearchPack\nsubject: rust async\n",
+            &[],
+            None,
+        )
+        .await
+        .expect_err("Link:0 must fail");
+        assert!(err.to_string().contains("at least 3"), "{err}");
+        let one = vec!["https://x.com/a/status/1".into()];
+        let err = build_grounded_draft_from_pack(
+            &router,
+            &db_path,
+            "rust async",
+            "## ResearchPack\nsubject: rust async\n",
+            &one,
+            None,
+        )
+        .await
+        .expect_err("one link must fail floor");
+        assert!(err.to_string().contains("at least 3"), "{err}");
     }
 
     #[test]
