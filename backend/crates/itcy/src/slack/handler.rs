@@ -696,94 +696,16 @@ Never claim you ran /change_url, /accept, or /rework."
         }
     }
 
-    /// Bare `/propose_draft`: resolve subject from corpus, one writer pass.
+    /// Bare `/propose_draft`: next untreated web digest subject (cite locked).
     async fn corpus_propose_draft_reply(&self) -> String {
-        use crate::sources::corpus_propose::{resolve_corpus_propose_brief, ProposeSurface};
-        let (subject, instructions) =
-            match resolve_corpus_propose_brief(&self.config.state_db_path, ProposeSurface::Draft) {
+        use crate::sources::corpus_propose::{resolve_web_propose_brief, ProposeSurface};
+        let (subject, instructions, cite) =
+            match resolve_web_propose_brief(&self.config.state_db_path, ProposeSurface::Draft) {
                 Ok(v) => v,
                 Err(e) => return e,
             };
-        match self
-            .corpus_propose_draft_attempt(&subject, &instructions)
+        self.draft_reply(&subject, &instructions, Some(cite.as_str()))
             .await
-        {
-            Ok(msg) => msg,
-            Err(first_err) => format!(
-                "Bare `/propose_draft` could not stay on corpus subject `{subject}`.\n\
-{first_err}\n\
-Try `/draft_about` with an explicit topic, or `/propose_draft N` from the digest."
-            ),
-        }
-    }
-
-    /// Build + persist one bare propose draft; Err when off-subject or build failed (no open row kept).
-    async fn corpus_propose_draft_attempt(
-        &self,
-        topic: &str,
-        instructions: &str,
-    ) -> Result<String, String> {
-        use crate::sources::corpus_propose::body_abandons_subject;
-        let operator_brief = compose_operator_brief(topic, instructions);
-        let draft_id = crate::sources::draft_footer::next_draft_id(&self.config.state_db_path)
-            .unwrap_or_else(|e| {
-                warn!(error = %e, "slack: draft id allocate failed; using fallback");
-                format!("DRAFT-{}-UNKNOWN", chrono::Local::now().format("%Y%m%d"))
-            });
-        if let Err(e) = DraftStore::open(&self.config.state_db_path)
-            .and_then(|s| s.upsert(&stored_building_stub(&draft_id, topic.trim())))
-        {
-            warn!(error = %e, draft_id = %draft_id, "slack: building stub persist failed");
-        }
-        let _ = self
-            .tools
-            .begin_research_session(&operator_brief, &draft_id)
-            .await;
-        match build_grounded_draft_with_cite(
-            &self.llm,
-            &self.config.state_db_path,
-            self.embed.as_ref(),
-            topic,
-            instructions,
-            Some(self.tools.as_ref()),
-            None,
-        )
-        .await
-        {
-            Ok(mut draft) => {
-                draft.subject = topic.trim().to_string();
-                if body_abandons_subject(&draft.body, topic) {
-                    let _ = DraftStore::open(&self.config.state_db_path)
-                        .ok()
-                        .and_then(|st| st.delete(&draft_id).ok());
-                    return Err(format!(
-                        "Writer abandoned corpus subject `{topic}` (draft `{draft_id}` discarded)."
-                    ));
-                }
-                if let Err(e) = self.persist_grounded_draft(&draft) {
-                    error!(error = %e, "slack draft store failed");
-                }
-                Ok(format!(
-                    "{body}\n\n\
-:floppy_disk: Saved as open draft. Ref `{id}`.\n\n\
-{next}",
-                    body = slack_paste_safe_linkedin_message(&draft.body),
-                    id = draft.draft_id,
-                    next = crate::slack::saved::next_slash_hints(&draft.draft_id, status::OPEN)
-                ))
-            }
-            Err(e) => {
-                let _ = DraftStore::open(&self.config.state_db_path)
-                    .ok()
-                    .and_then(|st| {
-                        st.mark_status_from(&draft_id, status::BUILDING, status::FAILED)
-                            .ok()
-                    });
-                Err(format!(
-                    "Build failed ({e}). Draft `{draft_id}` marked failed."
-                ))
-            }
-        }
     }
 
     async fn draft_reply(&self, topic: &str, instructions: &str, cite_url: Option<&str>) -> String {

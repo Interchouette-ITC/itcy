@@ -362,7 +362,7 @@ fn is_home_lane(lane: &str) -> bool {
     lane == "following" || lane == "for_you"
 }
 
-fn is_itc_lane(lane: &str) -> bool {
+pub(crate) fn is_itc_lane(lane: &str) -> bool {
     lane == "itc_draft" || lane == "itc_tweet"
 }
 
