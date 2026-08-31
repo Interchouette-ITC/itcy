@@ -171,10 +171,13 @@ pub fn host_looks_like_dns(url: &str) -> bool {
 }
 
 /// Drop SERP / placeholder URLs from pack / disclosure labels.
+///
+/// Also drops scheme-only junk (`http://`, `https://`) that soft-wrap / broken SERP
+/// chrome sometimes emits as EXTRACTED links (DRAFT-20260831-000137).
 #[must_use]
 pub fn filter_publisher_urls(urls: &[String]) -> Vec<String> {
     urls.iter()
-        .filter(|u| !is_junk_or_search_url(u))
+        .filter(|u| !is_junk_or_search_url(u) && host_looks_like_dns(u))
         .cloned()
         .collect()
 }
@@ -588,6 +591,22 @@ mod tests {
         assert!(kept.iter().any(|u| u.contains("pewresearch.org")));
         assert!(kept.iter().any(|u| u.contains("techcrunch.com")));
         assert!(!kept.iter().any(|u| is_shortener_url(u)));
+    }
+
+    #[test]
+    fn filter_publisher_urls_drops_scheme_only_serp_junk() {
+        // DRAFT-20260831-000137: DDG 50x / soft-wrap emitted url=http:// and url=https://
+        let urls = vec![
+            "http://".into(),
+            "https://".into(),
+            "https://".into(),
+            "https://sourcegraph.com/blog/agentic-coding".into(),
+        ];
+        let kept = filter_publisher_urls(&urls);
+        assert_eq!(
+            kept,
+            vec!["https://sourcegraph.com/blog/agentic-coding".to_string()]
+        );
     }
 
     #[test]

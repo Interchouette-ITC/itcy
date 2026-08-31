@@ -500,7 +500,7 @@ pub fn publisher_urls_from_tool_result(out: &str) -> Vec<String> {
             }
         }
     }
-    urls
+    crate::sources::url_hygiene::filter_publisher_urls(&urls)
 }
 
 #[cfg(test)]
