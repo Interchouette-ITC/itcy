@@ -277,14 +277,89 @@ impl SlackRuntime {
     }
 
     pub(crate) async fn corpus_propose_tweet_reply(&self) -> String {
-        use crate::sources::corpus_propose::{resolve_web_propose_brief, ProposeSurface};
-        let (subject, instructions, _cite) =
-            match resolve_web_propose_brief(&self.config.state_db_path, ProposeSurface::Tweet) {
+        use crate::sources::corpus_propose::{resolve_corpus_propose_brief, ProposeSurface};
+        let (subject, instructions) =
+            match resolve_corpus_propose_brief(&self.config.state_db_path, ProposeSurface::Tweet) {
                 Ok(v) => v,
                 Err(e) => return e,
             };
-        // Cite URL is already in instructions (digest_propose_brief); LOAD locks via brief cite.
-        self.tweet_reply(&subject, &instructions).await
+        match self
+            .corpus_propose_tweet_attempt(&subject, &instructions)
+            .await
+        {
+            Ok(msg) => msg,
+            Err(first_err) => format!(
+                "Bare `/propose_tweet` could not stay on corpus subject `{subject}`.\n\
+{first_err}\n\
+Try `/tweet_about` with an explicit topic, or `/propose_tweet N` from the digest."
+            ),
+        }
+    }
+
+    async fn corpus_propose_tweet_attempt(
+        &self,
+        topic: &str,
+        instructions: &str,
+    ) -> Result<String, String> {
+        use crate::sources::corpus_propose::body_abandons_subject;
+        let operator_brief = compose_operator_brief(topic, instructions);
+        let tweet_id = crate::sources::tweet_footer::next_tweet_id(&self.config.state_db_path)
+            .unwrap_or_else(|e| {
+                warn!(error = %e, "slack: tweet id allocate failed; using fallback");
+                format!("TWEET-{}-UNKNOWN", chrono::Local::now().format("%Y%m%d"))
+            });
+        if let Err(e) = DraftStore::open(&self.config.state_db_path)
+            .and_then(|s| s.upsert(&stored_building_stub(&tweet_id, topic.trim())))
+        {
+            warn!(error = %e, tweet_id = %tweet_id, "slack: tweet building stub persist failed");
+        }
+        let _ = self
+            .tools
+            .begin_research_session(&operator_brief, &tweet_id)
+            .await;
+        match build_grounded_tweet(
+            &self.llm,
+            &self.config.state_db_path,
+            self.embed.as_ref(),
+            &operator_brief,
+            Some(self.tools.as_ref()),
+        )
+        .await
+        {
+            Ok(mut draft) => {
+                draft.subject = topic.trim().to_string();
+                if body_abandons_subject(&draft.body, topic) {
+                    let _ = DraftStore::open(&self.config.state_db_path)
+                        .ok()
+                        .and_then(|st| st.delete(&tweet_id).ok());
+                    return Err(format!(
+                        "Writer abandoned corpus subject `{topic}` (tweet `{tweet_id}` discarded)."
+                    ));
+                }
+                if let Err(e) = self.persist_grounded_draft(&draft) {
+                    error!(error = %e, "slack tweet store failed");
+                }
+                Ok(format!(
+                    "{body}\n\n\
+:floppy_disk: Saved as open tweet. Ref `{id}`.\n\n\
+{next}",
+                    body = slack_tweet_body(&draft.body),
+                    id = draft.draft_id,
+                    next = open_tweet_next(&draft.draft_id)
+                ))
+            }
+            Err(e) => {
+                let _ = DraftStore::open(&self.config.state_db_path)
+                    .ok()
+                    .and_then(|st| {
+                        st.mark_status_from(&tweet_id, status::BUILDING, status::FAILED)
+                            .ok()
+                    });
+                Err(format!(
+                    "Build failed ({e}). Tweet `{tweet_id}` marked failed."
+                ))
+            }
+        }
     }
 
     pub(crate) async fn tweet_reply(&self, topic: &str, instructions: &str) -> String {
