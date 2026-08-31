@@ -1063,28 +1063,37 @@ fn normalize_token(w: &str) -> String {
 
 /// True when the draft pastes a long contiguous word-run from the operator subject.
 /// Structural only: no phrase allow/deny lists.
+///
+/// Short subjects (under 8 words) still count when the **entire** subject appears as a
+/// contiguous run (DRAFT-20260831-000137: "agentic coding 2026 practical guide big is…").
 fn body_copies_operator_subject(body: &str, subject: &str) -> bool {
     const MIN_RUN: usize = 8;
+    const MIN_SUBJECT_TOKENS: usize = 3;
     let subj: Vec<String> = subject
         .split_whitespace()
         .map(normalize_token)
         .filter(|t| !t.is_empty())
         .collect();
-    if subj.len() < MIN_RUN {
+    if subj.len() < MIN_SUBJECT_TOKENS {
         return false;
     }
+    let run = if subj.len() < MIN_RUN {
+        subj.len()
+    } else {
+        MIN_RUN
+    };
     let bod: Vec<String> = body
         .split_whitespace()
         .map(normalize_token)
         .filter(|t| !t.is_empty())
         .collect();
-    if bod.len() < MIN_RUN {
+    if bod.len() < run {
         return false;
     }
-    for i in 0..=subj.len() - MIN_RUN {
-        let needle = &subj[i..i + MIN_RUN];
-        for j in 0..=bod.len() - MIN_RUN {
-            if &bod[j..j + MIN_RUN] == needle {
+    for i in 0..=subj.len() - run {
+        let needle = &subj[i..i + run];
+        for j in 0..=bod.len() - run {
+            if &bod[j..j + run] == needle {
                 return true;
             }
         }
@@ -1474,6 +1483,20 @@ https://example.com/policy";
         ));
         assert!(!body_copies_operator_subject(
             "Leadership moves at Acme Labs matter for builders watching tooling mature.",
+            subject
+        ));
+    }
+
+    #[test]
+    fn subject_paste_detects_short_subject_lede() {
+        // DRAFT-20260831-000137: subject is 6 tokens; old MIN_RUN=8 skipped the check.
+        let subject = "agentic coding 2026 practical guide big";
+        assert!(body_copies_operator_subject(
+            "🦀 agentic coding 2026 practical guide big is the kind of tooling story builders should actually watch.",
+            subject
+        ));
+        assert!(!body_copies_operator_subject(
+            "🦀 Low-overhead indexing and a real resume-after-restart path is an engineering bet against the LSP tax.",
             subject
         ));
     }

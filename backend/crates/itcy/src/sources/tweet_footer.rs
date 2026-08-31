@@ -443,10 +443,19 @@ pub fn operator_brief(subject: &str, instructions: &str) -> String {
 }
 
 /// SERP query: full searchable text (space-join subject + instructions; not Slack comma).
+///
+/// `/propose_draft` / `/propose_tweet` instructions are long boilerplate + corpus grounding.
+/// Dumping them into `DuckDuckGo` turns the query into a wall of prompt text and yields junk
+/// EXTRACTED links (`http://`, `https://`). Use the subject angle only for those proposes.
 #[must_use]
 pub fn web_search_query(subject: &str, instructions: &str) -> String {
     let s = subject.trim();
     let i = instructions.trim();
+    let i = if instructions_are_corpus_propose(i) {
+        ""
+    } else {
+        i
+    };
     let mut q = if i.is_empty() {
         s.to_string()
     } else {
@@ -461,6 +470,13 @@ pub fn web_search_query(subject: &str, instructions: &str) -> String {
     } else {
         q
     }
+}
+
+fn instructions_are_corpus_propose(instructions: &str) -> bool {
+    let t = instructions.trim();
+    t.contains("Corpus grounding:")
+        || t.starts_with("Propose one company-page")
+        || t.starts_with("Propose one company X")
 }
 
 /// X query: first keyword AND (OR of the rest), e.g. `Alpha (Beta OR Gamma)`.
@@ -1105,6 +1121,20 @@ Link: 2
                 "Casper vs RWA and x402 payments, quote this and comment https://x.com/a/status/1"
             ),
             "Casper (RWA OR x402 OR payments)"
+        );
+        // DRAFT-20260831-000137: propose boilerplate must not pollute SERP.
+        let propose = "Propose one company-page LinkedIn post from corpus memory on this subject. \
+Stay on this subject. Do not invent a different story. \
+Use corpus_search for voice/history. Use web_search / browse_url only to support this subject \
+and find an on-topic publisher cite when useful.\n\n\
+Corpus grounding:\ncontext quality: with the right context, agents retry less.";
+        assert_eq!(
+            web_search_query("agentic coding 2026 practical guide big", propose),
+            "agentic coding 2026 practical guide big"
+        );
+        assert!(
+            !web_search_query("agentic coding 2026 practical guide big", propose)
+                .contains("Propose")
         );
     }
 

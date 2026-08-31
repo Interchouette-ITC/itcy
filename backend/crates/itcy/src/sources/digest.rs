@@ -549,6 +549,19 @@ pub fn format_ship_notice(post_id: &str, detail: &str) -> String {
     format!("*Ship notice* `{post_id}`\n{detail}")
 }
 
+/// Playground `LinkedIn` ship: operator must paste manually; include the fenced body.
+#[must_use]
+pub fn format_playground_linkedin_ship_notice(
+    post_id: &str,
+    paste_block: &str,
+    detail: &str,
+) -> String {
+    format!(
+        ":white_check_mark: *Playground ship* `{post_id}`\n\
+Fork BAT merged; status **published**. Paste on company Page:\n\n{paste_block}\n\n{detail}"
+    )
+}
+
 /// Second Slack link: org **`drafts`** PR from `/accept` (manual Approve on org).
 #[must_use]
 pub fn format_org_draft_pr_notice(draft_id: &str, pr_url: &str) -> String {
@@ -1966,6 +1979,20 @@ mod tests {
         let out = format_ship_fail("XPOST-20260829-000094", e);
         assert!(out.contains("duplicate"), "{out}");
         assert!(out.contains("Overflow reply"), "{out}");
+    }
+
+    #[test]
+    fn playground_linkedin_ship_notice_includes_paste_block() {
+        let paste = ":clipboard: LinkedIn paste (copy the block only; playground = paste on company Page):\n```\nHello\n```";
+        let out = format_playground_linkedin_ship_notice(
+            "POST-20260831-000136",
+            paste,
+            "playground ship ok pubs_pr=#65",
+        );
+        assert!(out.contains("*Playground ship*"), "{out}");
+        assert!(out.contains("**published**"), "{out}");
+        assert!(out.contains(paste), "{out}");
+        assert!(out.contains("pubs_pr=#65"), "{out}");
     }
 
     #[test]

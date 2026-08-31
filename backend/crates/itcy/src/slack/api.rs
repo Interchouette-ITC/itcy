@@ -110,22 +110,53 @@ fn retry_after_secs(headers: &reqwest::header::HeaderMap) -> Option<u64> {
         .and_then(|s| s.parse::<u64>().ok())
 }
 
-/// Ship notice to `#daily-digest` when that channel env is set (skipped in playground soft-ship).
+/// Ship notice to `#daily-digest` (and operator channel for playground `LinkedIn` paste).
 pub async fn post_ship_notice(post_id: &str, detail: &str) {
+    if post_id.starts_with("POST-") && crate::bat::github::is_playground_mode() {
+        let text = playground_linkedin_ship_slack_text(post_id, detail);
+        post_ship_slack(&text, true).await;
+        return;
+    }
     if skip_playground_ship_notice(post_id) {
         return;
     }
     post_ship_slack(&crate::sources::format_ship_notice(post_id, detail), false).await;
 }
 
+/// X playground soft-ship stays quiet (no Brave post); `LinkedIn` playground must notify paste.
 fn skip_playground_ship_notice(post_id: &str) -> bool {
-    if post_id.starts_with("POST-") {
-        return crate::bat::github::is_playground_mode();
-    }
     if post_id.starts_with("XPOST-") {
         return crate::bat::github::is_x_playground_mode();
     }
     false
+}
+
+fn playground_linkedin_ship_slack_text(post_id: &str, detail: &str) -> String {
+    let db_path = std::env::var("ITCY_STATE_DB")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .map_or_else(
+            || crate::paths::product_join("sql/runtime.db"),
+            std::path::PathBuf::from,
+        );
+    let draft_id = crate::bat::pack::post_id_to_draft_id(post_id)
+        .unwrap_or_else(|| format!("DRAFT-{post_id}"));
+    if let Ok(store) = crate::bat::store::DraftStore::open(&db_path) {
+        if let Ok(Some(row)) = store.get(&draft_id) {
+            let paste = crate::sources::draft_footer::linkedin_manual_paste_message(
+                &row.body,
+                &row.model,
+                row.tokens_in,
+                row.tokens_out,
+            );
+            return crate::sources::format_playground_linkedin_ship_notice(post_id, &paste, detail);
+        }
+    }
+    crate::sources::format_playground_linkedin_ship_notice(
+        post_id,
+        "(could not load draft body for paste; use /show)",
+        detail,
+    )
 }
 
 /// Ship failure to digest + operator channel.
@@ -228,4 +259,20 @@ pub async fn post_digest_channel(
     tokio::time::sleep(POST_GAP).await;
     post_thread(bot_token, channel, &post.itc_title, &post.itc_items).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn linkedin_post_playground_is_not_skipped_for_ship_notice() {
+        // Regression DRAFT-20260831-000136: #59 skipped playground POST notices so Slack
+        // never confirmed BAT after Approve (only the static /accept "waiting Approve" line).
+        assert!(!super::skip_playground_ship_notice("POST-20260831-000136"));
+    }
+
+    #[test]
+    fn xpost_playground_may_skip_ship_notice() {
+        // X soft-ship stays quiet when x_publish_mode is playground.
+        let _ = super::skip_playground_ship_notice("XPOST-1");
+    }
 }
