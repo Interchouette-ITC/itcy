@@ -122,6 +122,8 @@ pub async fn build_grounded_tweet(
         }
     }
     let (body, link_options) = attach_tweet_cites(&tweet_body, &pack_for_links, &tweet_id, subject);
+    crate::sources::publisher_url::require_link_options_floor(&link_options)
+        .map_err(RagError::Store)?;
     info!(
         tweet_id = %tweet_id,
         cites = link_options.len(),
@@ -197,6 +199,8 @@ pub async fn build_grounded_tweet_from_pack(
     .await;
     let tweet_body = ensure_tweet_handles_from_pack(tools, &tweet_body, &research_pack);
     let (body, link_options) = attach_tweet_cites(&tweet_body, &urls, &tweet_id, subject);
+    crate::sources::publisher_url::require_link_options_floor(&link_options)
+        .map_err(RagError::Store)?;
     Ok(GroundedDraft {
         subject: subject.to_string(),
         body: with_disclosure(&body, &tweet_trace),

@@ -89,7 +89,11 @@ pub fn evaluate_publisher_probe(status: u16, body: &str) -> Result<(), String> {
 
 fn skip_publisher_url_probe(url: &str) -> bool {
     // X status cites are validated via Twitter API / browse, not raw GET (bot walls).
-    is_x_status_url(url)
+    if is_x_status_url(url) {
+        return true;
+    }
+    // Unit-test fixture hosts (never live DNS); keep Link floor tests offline.
+    cfg!(test) && url.to_ascii_lowercase().contains(".itcy.test/")
 }
 
 fn is_loopback_probe_url(url: &str) -> bool {
@@ -257,16 +261,20 @@ async fn refill_link_options_from_pool(options: &mut Vec<String>, pool: &[String
 ///
 /// # Errors
 ///
-/// Returns operator-facing text when the in-post / Link:1 URL is unreachable.
+/// Returns operator-facing text when there is no cite, or the in-post / Link:1 URL is unreachable.
 pub async fn require_ship_cite_reachable(
     body: &str,
     link_options: &[String],
 ) -> Result<(), String> {
+    require_link_options_floor(link_options)?;
     let url = extract_in_post_url(body)
         .or_else(|| link_options.first().cloned())
         .filter(|u| !u.trim().is_empty());
     let Some(url) = url else {
-        return Ok(());
+        return Err(
+            "No publisher Link to ship. Need Link:1 after at least 3 Link options. Use `/change_url`."
+                .into(),
+        );
     };
     if skip_publisher_url_probe(&url) {
         return Ok(());
@@ -276,6 +284,33 @@ pub async fn require_ship_cite_reachable(
             "Link not reachable: {url} ({e}). Fix with `/change_url` or `/rework`, then `/accept`."
         )
     })
+}
+
+/// Hard floor: drafts/tweets must keep at least [`LINK_OPTIONS_MIN`] reachable publisher URLs.
+///
+/// Soft-warn alone let DRAFT-20260831-000137 save with `Link: 0` after scheme-only SERP junk.
+///
+/// # Errors
+///
+/// Returns operator-facing text when the floor is missed.
+pub fn require_link_options_floor(link_options: &[String]) -> Result<(), String> {
+    if link_options.len() < LINK_OPTIONS_MIN {
+        return Err(format!(
+            "Need at least {LINK_OPTIONS_MIN} reachable publisher Link options (got {}). \
+Refuse draft/tweet with Link:0. Retry with a live publisher URL, or `/draft_about` / `/tweet_about` with a cite.",
+            link_options.len()
+        ));
+    }
+    if link_options
+        .iter()
+        .any(|u| !crate::sources::url_hygiene::host_looks_like_dns(u))
+    {
+        return Err(
+            "Link options contain scheme-only or non-DNS junk (e.g. `http://`). Refuse ship."
+                .into(),
+        );
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -448,5 +483,56 @@ mod tests {
             "empty shell must not stay: {opts:?}"
         );
         assert_eq!(opts, vec![ok], "pool article must refill Link options");
+    }
+
+    #[test]
+    fn require_link_options_floor_rejects_empty_and_scheme_only() {
+        // DRAFT-20260831-000137: soft-warn alone saved Link:0 after http:// / https:// SERP junk.
+        assert!(require_link_options_floor(&[]).is_err());
+        assert!(require_link_options_floor(&[
+            "http://".into(),
+            "https://".into(),
+            "https://".into(),
+        ])
+        .is_err());
+        let three = vec![
+            "https://labs.sogeti.com/a".into(),
+            "https://decrypt.co/1".into(),
+            "https://techcrunch.com/c".into(),
+        ];
+        assert!(require_link_options_floor(&three).is_ok());
+        assert!(require_link_options_floor(&three[..2]).is_err());
+    }
+
+    #[test]
+    fn propose_serp_junk_cannot_satisfy_link_floor() {
+        let propose =
+            "Propose one company-page LinkedIn post from corpus memory on this subject.\n\n\
+Corpus grounding:\ncontext quality mush";
+        let q = crate::sources::tweet_footer::web_search_query(
+            "agentic coding 2026 practical guide big",
+            propose,
+        );
+        assert_eq!(q, "agentic coding 2026 practical guide big");
+        let extracted = crate::sources::url_hygiene::filter_publisher_urls(&[
+            "http://".into(),
+            "https://".into(),
+        ]);
+        assert!(
+            extracted.is_empty(),
+            "scheme-only EXTRACTED must not enter pack: {extracted:?}"
+        );
+        assert!(require_link_options_floor(&extracted).is_err());
+    }
+
+    #[tokio::test]
+    async fn require_ship_cite_rejects_empty_link_options() {
+        let err = require_ship_cite_reachable("Prose only.\n", &[])
+            .await
+            .expect_err("empty options must fail accept");
+        assert!(
+            err.contains("Link options") || err.contains("No publisher"),
+            "{err}"
+        );
     }
 }
