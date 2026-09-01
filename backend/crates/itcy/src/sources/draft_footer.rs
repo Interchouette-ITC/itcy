@@ -384,6 +384,152 @@ pub fn draft_prose_for_rework(body: &str) -> String {
     lines.join("\n").trim().to_string()
 }
 
+/// Split dense `LinkedIn` wall text into 2-4 paragraphs (`\n\n` between blocks).
+///
+/// Preserves existing paragraph breaks. Unlike X tweet aeration, each block stays
+/// multi-sentence (dense `LinkedIn` shape per Form craft).
+#[must_use]
+pub fn aerate_linkedin_draft(text: &str) -> String {
+    let text = crate::sources::tweet_footer::join_soft_wrap_lines(text.trim());
+    if text.is_empty() || text.contains("\n\n") {
+        return text;
+    }
+    let sentences = merge_trailing_decor_fragments(split_prose_sentences(&text));
+    if sentences.len() <= 1 {
+        return text;
+    }
+    let ranges = linkedin_paragraph_ranges(&sentences);
+    let mut out = String::new();
+    for (start, end) in ranges {
+        let block = sentences[start..end].join(" ");
+        if block.trim().is_empty() {
+            continue;
+        }
+        if !out.is_empty() {
+            out.push_str("\n\n");
+        }
+        out.push_str(block.trim());
+    }
+    if out.is_empty() {
+        text
+    } else {
+        out
+    }
+}
+
+fn split_prose_sentences(text: &str) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut sentences = Vec::new();
+    let mut start = 0usize;
+    let mut i = 0usize;
+    while i < chars.len() {
+        let ch = chars[i];
+        if matches!(ch, '.' | '!' | '?') {
+            let mut end = i + 1;
+            if end < chars.len() && matches!(chars[end], '"' | '\'') {
+                end += 1;
+            }
+            if end < chars.len() && chars[end] == ' ' {
+                let next = chars.get(end + 1).copied();
+                if next.is_some_and(sentence_starts_new_thought) {
+                    let remainder: String = chars[end + 1..].iter().collect();
+                    if is_trailing_decor_only(&remainder) {
+                        i += 1;
+                        continue;
+                    }
+                    let s: String = chars[start..end].iter().collect();
+                    let trimmed = s.trim();
+                    if !trimmed.is_empty() {
+                        sentences.push(trimmed.to_string());
+                    }
+                    start = end + 1;
+                    i = start;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+    let tail: String = chars[start..].iter().collect();
+    if !tail.trim().is_empty() {
+        sentences.push(tail.trim().to_string());
+    }
+    sentences
+}
+
+fn sentence_starts_new_thought(c: char) -> bool {
+    c.is_uppercase() || (!c.is_ascii() && !c.is_alphanumeric())
+}
+
+fn is_trailing_decor_only(text: &str) -> bool {
+    let t = text.trim();
+    !t.is_empty() && !t.chars().any(char::is_alphabetic)
+}
+
+fn merge_trailing_decor_fragments(mut sentences: Vec<String>) -> Vec<String> {
+    while sentences.len() >= 2 {
+        let last = sentences.last().expect("len >= 2");
+        if is_trailing_decor_only(last) {
+            let frag = sentences.pop().expect("len >= 2");
+            let prev = sentences.last_mut().expect("len >= 1");
+            if !prev.ends_with(' ') {
+                prev.push(' ');
+            }
+            prev.push_str(frag.trim());
+        } else {
+            break;
+        }
+    }
+    sentences
+}
+
+fn linkedin_paragraph_ranges(sentences: &[String]) -> Vec<(usize, usize)> {
+    let n = sentences.len();
+    if n <= 1 {
+        return vec![(0, n)];
+    }
+    if n == 2 {
+        return vec![(0, 1), (1, 2)];
+    }
+    let close_start = if sentences
+        .last()
+        .is_some_and(|s| linkedin_closing_sentence(s))
+        && n >= 4
+    {
+        n - 1
+    } else {
+        n
+    };
+    let open_end = if n >= 4 { 2 } else { 1 };
+    let mut ranges = Vec::new();
+    if open_end > 0 {
+        ranges.push((0, open_end.min(n)));
+    }
+    if close_start > open_end {
+        ranges.push((open_end, close_start));
+    }
+    if close_start < n {
+        ranges.push((close_start, n));
+    }
+    if ranges.is_empty() {
+        return vec![(0, n)];
+    }
+    if ranges.len() == 1 && n >= 3 {
+        let mid = n / 2;
+        return vec![(0, mid), (mid, n)];
+    }
+    ranges
+}
+
+fn linkedin_closing_sentence(s: &str) -> bool {
+    let t = s.trim();
+    t.starts_with("The future")
+        || t.starts_with("The lesson")
+        || t.starts_with("The takeaway")
+        || t.starts_with("Overall,")
+        || t.starts_with("In short,")
+}
+
 /// Drop Playwright a11y `Page Title:` lines so the writer cannot paste them as the lede.
 #[must_use]
 pub fn strip_browse_page_title_chrome(text: &str) -> String {
@@ -944,6 +1090,112 @@ https://byteiota.com/astro-64-satteri-rust-markdown-plugin-tradeoff\n";
                 && body_only.contains("Para two about native GFM")
                 && body_only.contains("\n\n"),
             "compose + rework extract must keep \\n\\n aeration: {body_only:?}"
+        );
+    }
+
+    #[test]
+    fn aerate_doordash_wall_splits_three_dense_paragraphs() {
+        use crate::sources::digest_propose_fixtures::FIXTURE_E_WALL_BODY;
+        let out = aerate_linkedin_draft(FIXTURE_E_WALL_BODY);
+        assert!(
+            out.contains("\n\n"),
+            "wall text must gain paragraph breaks: {out:?}"
+        );
+        assert!(
+            out.contains("130K tasks") && out.contains("Firecracker") && out.contains("The future"),
+            "all facts must remain: {out}"
+        );
+        let blocks: Vec<&str> = out.split("\n\n").collect();
+        assert_eq!(blocks.len(), 3, "expected hook / body / close: {out:?}");
+        assert!(
+            blocks[0].contains("audit-ready") && blocks[0].contains("weekly"),
+            "opening hook paragraph: {:?}",
+            blocks[0]
+        );
+        assert!(
+            blocks[1].contains("Firecracker") && blocks[1].contains("blueprint"),
+            "middle development paragraph: {:?}",
+            blocks[1]
+        );
+        assert!(
+            blocks[2].contains("The future of engineering"),
+            "closing paragraph: {:?}",
+            blocks[2]
+        );
+        for block in &blocks {
+            assert!(
+                block.split_whitespace().count() > 14,
+                "LinkedIn blocks must stay dense, not X one-liners: {block:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn aerate_preserves_existing_paragraph_breaks() {
+        let already = "Hook paragraph with enough words to stay dense on LinkedIn for builders who read carefully.\n\n\
+Second paragraph names the change and why teams care about the tradeoff in production.\n\n\
+https://example.com/article\n";
+        assert_eq!(aerate_linkedin_draft(already), already.trim());
+    }
+
+    #[test]
+    fn aerate_two_sentences_becomes_two_paragraphs() {
+        let wall = "First sentence names the entity and the concrete change for builders. \
+Second sentence develops why maintainers care about the tradeoff this week.";
+        let out = aerate_linkedin_draft(wall);
+        assert_eq!(out.matches("\n\n").count(), 1, "{out}");
+    }
+
+    #[test]
+    fn aerate_four_sentences_without_closer_splits_in_half() {
+        let wall = "One names the ship and the verb. Two adds context for builders. \
+Three develops the tradeoff. Four lands the peer consequence.";
+        let out = aerate_linkedin_draft(wall);
+        assert!(
+            out.contains("\n\n"),
+            "four-sentence wall must aerate: {out}"
+        );
+        assert_eq!(out.split("\n\n").count(), 2, "{out:?}");
+    }
+
+    #[test]
+    fn aerate_single_sentence_wall_unchanged() {
+        let one = "Only one sentence here.";
+        assert_eq!(aerate_linkedin_draft(one), one);
+    }
+
+    #[test]
+    fn split_prose_sentences_keeps_closing_emoji_on_same_sentence() {
+        let s = split_prose_sentences(
+            "The future of engineering is less about laptops and more about centralized systems. 📜",
+        );
+        assert_eq!(s.len(), 1, "trailing scroll emoji must not split: {s:?}");
+        assert!(s[0].contains("📜"), "{s:?}");
+    }
+
+    #[test]
+    fn split_prose_sentences_keeps_130k_and_colon_phrase() {
+        let s = split_prose_sentences(
+            "The numbers speak for themselves: 130K tasks automated in a single month, 25K code reviews weekly. \
+Next sentence starts here.",
+        );
+        assert_eq!(s.len(), 2, "{s:?}");
+        assert!(s[0].contains("130K"), "{s:?}");
+    }
+
+    #[test]
+    fn aerate_opens_new_paragraph_before_context_emoji_sentence() {
+        let wall = "Opening hook with enough words for LinkedIn readers who skim feeds quickly. \
+Still hooking with a second sentence before the technical turn. \
+🔧 Tooling detail sentence names Firecracker and scoped access for builders. \
+Closing names why teams care about audit trails in production.";
+        let out = aerate_linkedin_draft(wall);
+        let blocks: Vec<&str> = out.split("\n\n").collect();
+        assert!(
+            blocks
+                .iter()
+                .any(|b| b.contains('🔧') && b.contains("Firecracker")),
+            "emoji-led development must stay in a dense block: {out:?}"
         );
     }
 

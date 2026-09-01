@@ -90,6 +90,16 @@ For platform teams shipping internal agents, the interesting bet is whether cent
 and audit trails beat laptop sprawl when review volume scales. 🦀 I'm watching how playbooks and scoped \
 access change the cost curve before the next incident postmortem. 🦉";
 
+/// DRAFT-20260901-000139 wall text before `LinkedIn` aeration (single blob).
+pub const FIXTURE_E_WALL_BODY: &str =
+    "By centralizing agent workloads, DoorDash has transformed repetitive, error-prone manual tasks into a streamlined, audit-ready process. \
+The numbers speak for themselves: 130K tasks automated in a single month, 25K code reviews weekly. \
+🔧 Flux's use of Firecracker microVMs and scoped access ensures that each workflow runs in isolation, reducing security risks and improving compliance. \
+The MCP gateway and reusable playbooks add layers of control and consistency. \
+This is systems engineering at its finest, precise, secure, and built for scale. \
+🦉 For teams looking to modernize their CI/CD pipelines, DoorDash's approach offers a blueprint. \
+The future of engineering is less about individual laptops and more about centralized, auditable systems. 📜";
+
 /// Phrases from the deleted `fallback_commentary.md` static file (must never appear in drafts).
 pub const DELETED_FALLBACK_BANNED: &[&str] = &[
     "wait forever for the LSP",

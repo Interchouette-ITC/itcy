@@ -640,6 +640,7 @@ pub(crate) fn scrub_and_validate_writer_body(
         body = ensure_draft_emoji_bar(&stripped);
     }
     body = strip_spurious_period_after_emoji(&body);
+    body = crate::sources::draft_footer::aerate_linkedin_draft(&body);
     Ok(body)
 }
 
@@ -1548,6 +1549,20 @@ https://example.com/policy";
             "Leaders note alpha beta gamma delta epsilon zeta eta theta today.",
             long
         ));
+    }
+
+    #[test]
+    fn scrub_aerates_doordash_wall_into_three_paragraphs() {
+        use crate::sources::digest_propose_fixtures::{fixture_e_topic, FIXTURE_E_WALL_BODY};
+        let topic = fixture_e_topic();
+        let out = scrub_and_validate_writer_body(FIXTURE_E_WALL_BODY, &[], &topic)
+            .expect("DoorDash wall must pass scrub");
+        let blocks: Vec<&str> = out.split("\n\n").collect();
+        assert_eq!(blocks.len(), 3, "scrub must aerate LinkedIn wall: {out:?}");
+        assert!(
+            blocks[0].contains("130K") && blocks[2].contains("The future"),
+            "hook and close must land in first and last blocks: {out:?}"
+        );
     }
 
     #[test]
