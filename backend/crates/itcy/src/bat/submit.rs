@@ -142,10 +142,23 @@ async fn accept_surface(
 ) -> Result<BatSubmitResult, BatSubmitError> {
     let draft = load_draft(db_path, draft_id)?;
     gate_accept_draft(draft_id, &draft)?;
-    if let Err(reason) =
-        crate::sources::publisher_url::require_ship_cite_reachable(&draft.body, &draft.link_options)
+    if let Err(reason) = match surface {
+        BatSurface::LinkedIn => {
+            crate::sources::publisher_url::require_ship_cite_reachable(
+                &draft.body,
+                &draft.link_options,
+            )
             .await
-    {
+        }
+        BatSurface::Tweet => {
+            crate::sources::publisher_url::require_tweet_ship_cite_reachable(
+                &draft.subject,
+                &draft.body,
+                &draft.link_options,
+            )
+            .await
+        }
+    } {
         return Err(BatSubmitError::Gate(reason));
     }
     let cfg = BatGithubConfig::from_env()?;

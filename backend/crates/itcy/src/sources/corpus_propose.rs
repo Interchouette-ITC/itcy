@@ -325,6 +325,8 @@ const SLOGAN_MUSH_NEEDLES: &[&str] = &[
     "it is not about",
     "it's not just",
     "it is not just",
+    "that's not just",
+    "that is not just",
     "isn't just about",
     "isn't just a",
     "isn't just another",
@@ -646,6 +648,9 @@ Builders care about stewardship without swallowing the community around the stac
         ));
         assert!(body_has_slogan_mush(
             "This isn't just a shift in how open-source projects evolve."
+        ));
+        assert!(body_has_slogan_mush(
+            "22.1k on GitHub? That's not just code, it's a new way to build."
         ));
         assert!(!body_has_slogan_mush(
             "Mozilla shipped JPEG XL after a Rust decoder rewrite landed in Firefox."

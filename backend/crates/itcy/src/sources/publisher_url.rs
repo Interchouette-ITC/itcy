@@ -258,7 +258,7 @@ async fn refill_link_options_from_pool(options: &mut Vec<String>, pool: &[String
     }
 }
 
-/// Gate BAT accept: the cite that ships must not 404.
+/// Gate BAT accept for `LinkedIn` drafts: cite must be reachable; need 3 Link options.
 ///
 /// # Errors
 ///
@@ -268,12 +268,33 @@ pub async fn require_ship_cite_reachable(
     link_options: &[String],
 ) -> Result<(), String> {
     require_link_options_floor(link_options)?;
+    require_ship_cite_url_reachable(body, link_options).await
+}
+
+/// Gate BAT accept for tweets: X-locked cite may ship with one Link option.
+///
+/// # Errors
+///
+/// Returns operator-facing text when the floor is missed or the ship cite is unreachable.
+pub async fn require_tweet_ship_cite_reachable(
+    brief: &str,
+    body: &str,
+    link_options: &[String],
+) -> Result<(), String> {
+    require_tweet_link_options_floor(brief, link_options)?;
+    require_ship_cite_url_reachable(body, link_options).await
+}
+
+async fn require_ship_cite_url_reachable(
+    body: &str,
+    link_options: &[String],
+) -> Result<(), String> {
     let url = extract_in_post_url(body)
         .or_else(|| link_options.first().cloned())
         .filter(|u| !u.trim().is_empty());
     let Some(url) = url else {
         return Err(
-            "No publisher Link to ship. Need Link:1 after at least 3 Link options. Use `/change_url`."
+            "No publisher Link to ship. Pick Link:1 with `/change_url`, or `/rework` with a cite."
                 .into(),
         );
     };
@@ -588,5 +609,16 @@ Corpus grounding:\ncontext quality mush";
             err.contains("Link options") || err.contains("No publisher"),
             "{err}"
         );
+    }
+
+    #[tokio::test]
+    async fn tweet_ship_accepts_one_x_locked_link_option() {
+        let x = "https://x.com/nineshoot/status/2094567713113059575";
+        let brief = format!("Obscura Rust browser, cite {x}");
+        let body = format!("Commentary beats.\n\n#Rust\n\n{x}\n");
+        let opts = vec![x.to_string()];
+        require_tweet_ship_cite_reachable(&brief, &body, &opts)
+            .await
+            .expect("X locked cite ships with one Link option");
     }
 }
