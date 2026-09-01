@@ -429,20 +429,87 @@ async function resolveAfterPost(page, excludeIds, beforeId, toastHref) {
   return null;
 }
 
-async function postReply(page, replyText, parent, excludeIds) {
-  await page.goto(parent.url, {
+async function postReply(replyPage, replyText, parent, excludeIds) {
+  await replyPage.goto(parent.url, {
     waitUntil: "domcontentloaded",
     timeout: 60000,
   });
-  await page.waitForTimeout(1000);
-  const btn = page.locator('[data-testid="reply"]').first();
+  await replyPage.waitForTimeout(1000);
+  if (looksLoggedOut(replyPage.url(), await replyPage.content())) {
+    fail("logged out on reply status page");
+  }
+  const btn = replyPage.locator('[data-testid="reply"]').first();
   await btn.waitFor({ state: "visible", timeout: 20000 });
   await btn.click();
-  await page.waitForTimeout(800);
-  await fillComposer(page, replyText);
-  const toastHref = await clickPost(page);
+  await replyPage.waitForTimeout(800);
+  await fillComposer(replyPage, replyText);
+  const toastHref = await clickPost(replyPage);
   const skip = excludeIds.concat([parent.id]);
-  return resolveAfterPost(page, skip, parent.id, toastHref);
+  return resolveAfterPost(replyPage, skip, parent.id, toastHref);
+}
+
+/** One root tab; close stray CDP tabs from profile restore. */
+async function prepareRootTab(context) {
+  const pages = context.pages();
+  const rootPage = pages[0] || (await context.newPage());
+  for (const page of pages.slice(1)) {
+    await page.close().catch(() => {});
+  }
+  return rootPage;
+}
+
+async function closeShipTabs(rootPage, replyPage) {
+  if (replyPage) {
+    await replyPage.close().catch(() => {});
+  }
+  if (rootPage) {
+    await rootPage.close().catch(() => {});
+  }
+}
+
+async function postRootTweet(rootPage, text, quoteId, excludeIds, beforeId) {
+  let rootToastHref = null;
+  if (quoteId) {
+    const scope = await openQuoteComposer(rootPage, quoteId);
+    await fillComposer(rootPage, text, scope);
+    rootToastHref = await clickPost(scope);
+  } else {
+    await clickProfilePost(rootPage);
+    if (looksLoggedOut(rootPage.url(), await rootPage.content())) {
+      fail("logged out on compose");
+    }
+    if (isStatusPermalink(rootPage.url())) {
+      fail(
+        "compose landed on a status permalink; refusing to type into that reply box"
+      );
+    }
+    const dialog = rootPage
+      .locator('[role="dialog"]')
+      .filter({ has: rootPage.locator('[data-testid="tweetTextarea_0"]') })
+      .first();
+    const scope = (await dialog.isVisible().catch(() => false))
+      ? dialog
+      : rootPage;
+    await fillComposer(rootPage, text, scope);
+    rootToastHref = await clickPost(scope);
+  }
+
+  const found = await resolveAfterPost(
+    rootPage,
+    excludeIds,
+    beforeId,
+    rootToastHref
+  );
+  if (!found) {
+    const cap = await captureOverlay(rootPage, "resolve-miss");
+    fail(
+      `posted but could not resolve status (toast=${rootToastHref || "none"}; no newer own than ${beforeId}). screenshot=${relArtifact(cap.png)}`
+    );
+  }
+  if (!statusIdNewer(found.id, beforeId)) {
+    fail(`resolve picked non-newer id ${found.id} (before=${beforeId})`);
+  }
+  return found;
 }
 
 async function main() {
@@ -465,21 +532,23 @@ async function main() {
 
   const browser = await chromium.connectOverCDP(cdpUrl);
   const context = browser.contexts()[0] || (await browser.newContext());
-  const page = context.pages()[0] || (await context.newPage());
+  let rootPage = await prepareRootTab(context);
+  let replyPage = null;
 
   try {
-    await goProfile(page);
-    const before = await latestOwnOnProfile(page, [], "");
+    await goProfile(rootPage);
+    const before = await latestOwnOnProfile(rootPage, [], "");
     const beforeId = before && before.id ? before.id : "0";
 
     if (inReplyToId) {
+      replyPage = await context.newPage();
       const parent = {
         id: inReplyToId,
         url: `https://x.com/i/web/status/${inReplyToId}`,
       };
-      const found = await postReply(page, text, parent, []);
+      const found = await postReply(replyPage, text, parent, []);
       if (!found) {
-        const cap = await captureOverlay(page, "in-reply-resolve-miss");
+        const cap = await captureOverlay(replyPage, "in-reply-resolve-miss");
         fail(
           `reply posted but could not resolve status under ${inReplyToId}. screenshot=${relArtifact(cap.png)}`
         );
@@ -487,53 +556,21 @@ async function main() {
       if (!statusIdNewer(found.id, beforeId)) {
         fail(`resolve picked non-newer id ${found.id} (before=${beforeId})`);
       }
+      await closeShipTabs(rootPage, replyPage);
+      replyPage = null;
       ok(found.id, found.url, `brave in-reply ok (parent=${inReplyToId})`, null);
       return;
     }
 
     const excludeIds = quoteId ? [quoteId] : [];
 
-    let rootToastHref = null;
-    if (quoteId) {
-      const scope = await openQuoteComposer(page, quoteId);
-      await fillComposer(page, text, scope);
-      rootToastHref = await clickPost(scope);
-    } else {
-      await clickProfilePost(page);
-      if (looksLoggedOut(page.url(), await page.content())) {
-        fail("logged out on compose");
-      }
-      if (isStatusPermalink(page.url())) {
-        fail(
-          "compose landed on a status permalink; refusing to type into that reply box"
-        );
-      }
-      const dialog = page
-        .locator('[role="dialog"]')
-        .filter({ has: page.locator('[data-testid="tweetTextarea_0"]') })
-        .first();
-      const scope = (await dialog.isVisible().catch(() => false))
-        ? dialog
-        : page;
-      await fillComposer(page, text, scope);
-      rootToastHref = await clickPost(scope);
-    }
-
-    const found = await resolveAfterPost(
-      page,
+    const found = await postRootTweet(
+      rootPage,
+      text,
+      quoteId,
       excludeIds,
-      beforeId,
-      rootToastHref
+      beforeId
     );
-    if (!found) {
-      const cap = await captureOverlay(page, "resolve-miss");
-      fail(
-        `posted but could not resolve status (toast=${rootToastHref || "none"}; no newer own than ${beforeId}). screenshot=${relArtifact(cap.png)}`
-      );
-    }
-    if (!statusIdNewer(found.id, beforeId)) {
-      fail(`resolve picked non-newer id ${found.id} (before=${beforeId})`);
-    }
 
     let replyFound = null;
     if (replyFile) {
@@ -546,14 +583,18 @@ async function main() {
       if (!replyText) {
         fail("overflow reply file empty (root would ship without tags/URL)");
       }
-      replyFound = await postReply(page, replyText, found, excludeIds);
+      replyPage = await context.newPage();
+      replyFound = await postReply(replyPage, replyText, found, excludeIds);
       if (!replyFound) {
-        const cap = await captureOverlay(page, "reply-resolve-miss");
+        const cap = await captureOverlay(replyPage, "reply-resolve-miss");
         fail(
           `root ${found.id} live but overflow reply did not resolve. screenshot=${relArtifact(cap.png)}`
         );
       }
     }
+    await closeShipTabs(rootPage, replyPage);
+    rootPage = null;
+    replyPage = null;
     ok(
       found.id,
       found.url,
@@ -561,6 +602,7 @@ async function main() {
       replyFound
     );
   } catch (e) {
+    await closeShipTabs(rootPage, replyPage).catch(() => {});
     fail(e && e.message ? e.message : String(e));
   }
   // Do not call Playwright browser teardown here: on CDP that kills Brave while

@@ -105,9 +105,9 @@ RUN_ROOT="${ITCY_TWITTER_RUN_DIR:-${ROOT}/pw/profile-x-run}"
 . "${ROOT}/scripts/lib/twitter-brave-lock.sh"
 twitter_brave_acquire_lock "${RUN_ROOT}" || exit 1
 WORK="${RUN_ROOT}/run-$$"
-# Prefer explicit env; otherwise pick a free port (never attach to a stale :9224).
-CDP_PORT="$(twitter_brave_pick_cdp_port "${ITCY_TWITTER_CDP_PORT:-}")"
 BRAVE_PID=""
+CDP_PORT=""
+BRAVE_LOG="/tmp/itcy-twitter-brave-$$.log"
 
 cleanup() {
   if [[ -n "${BRAVE_PID}" ]] && kill -0 "${BRAVE_PID}" 2>/dev/null; then
@@ -163,9 +163,8 @@ fi
 
 # Headed by default (X is hostile to headless). Override with ITCY_TWITTER_HEADLESS=1.
 HEADLESS="${ITCY_TWITTER_HEADLESS:-0}"
-BRAVE_ARGS=(
+BRAVE_ARGS_BASE=(
   --user-data-dir="${WORK}"
-  --remote-debugging-port="${CDP_PORT}"
   --no-first-run
   --no-default-browser-check
   --disable-session-crashed-bubble
@@ -173,26 +172,53 @@ BRAVE_ARGS=(
   --no-startup-window
 )
 if [[ "${HEADLESS}" == "1" ]]; then
-  BRAVE_ARGS+=(--headless=new)
+  BRAVE_ARGS_BASE+=(--headless=new)
 fi
 
-nohup "${BROWSER_BIN}" "${BRAVE_ARGS[@]}" \
-  >/tmp/itcy-twitter-brave-$$.log 2>&1 &
-BRAVE_PID=$!
+PREFERRED_PORT="${ITCY_TWITTER_CDP_PORT:-}"
+PORT_CANDIDATES=()
+if [[ -n "${PREFERRED_PORT}" ]]; then
+  PORT_CANDIDATES+=("${PREFERRED_PORT}")
+fi
+for p in $(seq 9230 9299); do
+  PORT_CANDIDATES+=("${p}")
+done
 
 ready=0
-for _ in $(seq 1 50); do
-  if ! kill -0 "${BRAVE_PID}" 2>/dev/null; then
+for try_port in "${PORT_CANDIDATES[@]}"; do
+  if ! twitter_brave_port_free "${try_port}"; then
+    continue
+  fi
+  : >"${BRAVE_LOG}"
+  nohup "${BROWSER_BIN}" \
+    "${BRAVE_ARGS_BASE[@]}" \
+    --remote-debugging-port="${try_port}" \
+    >"${BRAVE_LOG}" 2>&1 &
+  BRAVE_PID=$!
+  for _ in $(seq 1 50); do
+    if ! kill -0 "${BRAVE_PID}" 2>/dev/null; then
+      break
+    fi
+    if twitter_brave_cdp_ready "${try_port}"; then
+      ready=1
+      CDP_PORT="${try_port}"
+      break
+    fi
+    sleep 0.2
+  done
+  if [[ "${ready}" == "1" ]]; then
     break
   fi
-  if curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1; then
-    ready=1
-    break
+  if [[ -n "${BRAVE_PID}" ]] && kill -0 "${BRAVE_PID}" 2>/dev/null; then
+    kill -TERM "${BRAVE_PID}" 2>/dev/null || true
   fi
-  sleep 0.2
+  BRAVE_PID=""
+  pkill -TERM -f "user-data-dir=${WORK}" 2>/dev/null || true
+  sleep 0.3
 done
+
 if [[ "${ready}" != "1" ]]; then
-  echo "Brave CDP not ready on :${CDP_PORT} (see /tmp/itcy-twitter-brave-$$.log)" >&2
+  echo "Brave CDP not ready on any port 9230-9299 (see ${BRAVE_LOG})" >&2
   exit 1
 fi
 

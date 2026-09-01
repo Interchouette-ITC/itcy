@@ -40,11 +40,11 @@ export function detectPostRejectReason(pageText) {
   const body = String(pageText || "").replace(/\s+/g, " ").trim();
   if (!body) return null;
   const patterns = [
-    /It looks like you already said that![^.]*\./i,
-    /Wait a little while before you post again[^.]*\./i,
-    /Something went wrong\.?\s*Try again[^.]*\./i,
-    /You are over the character limit[^.]*\./i,
-    /Whoops!\s*You already said that[^.]*\./i,
+    /It looks like you already said that/i,
+    /Wait a little while before you post again/i,
+    /Something went wrong\.?\s*Try again/i,
+    /You are over the character limit/i,
+    /Whoops!\s*You already said that/i,
   ];
   for (const re of patterns) {
     const m = body.match(re);
