@@ -54,6 +54,9 @@
 /sql/enrich-wall-stop.txt
 /sql/enrich-linkedin-urls.pid
 
+# Obscura release binaries (local install or copy from release)
+/tools/obscura/
+
 # Browser profile and scrape working dirs
 /pw/mcp/
 /sql/pw-mcp/
