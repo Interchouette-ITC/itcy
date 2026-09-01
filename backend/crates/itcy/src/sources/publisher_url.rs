@@ -258,7 +258,7 @@ async fn refill_link_options_from_pool(options: &mut Vec<String>, pool: &[String
     }
 }
 
-/// Gate BAT accept for `LinkedIn` drafts: cite must be reachable; need 3 Link options.
+/// Gate BAT `/accept`: ship cite must exist and be reachable (not a 3-link build rule).
 ///
 /// # Errors
 ///
@@ -267,21 +267,19 @@ pub async fn require_ship_cite_reachable(
     body: &str,
     link_options: &[String],
 ) -> Result<(), String> {
-    require_link_options_floor(link_options)?;
     require_ship_cite_url_reachable(body, link_options).await
 }
 
-/// Gate BAT accept for tweets: X-locked cite may ship with one Link option.
+/// Tweet BAT accept: same ship-cite gate as [`require_ship_cite_reachable`] (no link count).
 ///
 /// # Errors
 ///
-/// Returns operator-facing text when the floor is missed or the ship cite is unreachable.
+/// Same as [`require_ship_cite_reachable`].
 pub async fn require_tweet_ship_cite_reachable(
-    brief: &str,
+    _brief: &str,
     body: &str,
     link_options: &[String],
 ) -> Result<(), String> {
-    require_tweet_link_options_floor(brief, link_options)?;
     require_ship_cite_url_reachable(body, link_options).await
 }
 
@@ -328,7 +326,7 @@ pub fn require_tweet_link_options_floor(
     brief: &str,
     link_options: &[String],
 ) -> Result<(), String> {
-    let min = tweet_link_options_min(brief);
+    let min = tweet_link_options_min(brief, link_options);
     let hint = if min == 1 {
         Some(
             "Operator locked an X status cite; Link:1 is the quote card. \
@@ -340,7 +338,10 @@ Add a publisher https in the brief for extra Link options.",
     require_link_options_floor_min(min, link_options, hint)
 }
 
-fn tweet_link_options_min(brief: &str) -> usize {
+/// Minimum Link options for tweets: 1 when operator brief locks an X status cite.
+#[must_use]
+pub fn tweet_link_options_min(brief: &str, link_options: &[String]) -> usize {
+    let _ = link_options;
     if extract_brief_cite(brief).is_some_and(|u| is_x_status_url(&u)) {
         1
     } else {
@@ -606,19 +607,18 @@ Corpus grounding:\ncontext quality mush";
             .await
             .expect_err("empty options must fail accept");
         assert!(
-            err.contains("Link options") || err.contains("No publisher"),
+            err.contains("No publisher Link") || err.contains("Link options"),
             "{err}"
         );
     }
 
     #[tokio::test]
-    async fn tweet_ship_accepts_one_x_locked_link_option() {
+    async fn accept_ship_one_x_link_option_without_three_in_pool() {
         let x = "https://x.com/nineshoot/status/2094567713113059575";
-        let brief = format!("Obscura Rust browser, cite {x}");
         let body = format!("Commentary beats.\n\n#Rust\n\n{x}\n");
         let opts = vec![x.to_string()];
-        require_tweet_ship_cite_reachable(&brief, &body, &opts)
+        require_ship_cite_reachable(&body, &opts)
             .await
-            .expect("X locked cite ships with one Link option");
+            .expect("accept only checks ship cite, not link count");
     }
 }
