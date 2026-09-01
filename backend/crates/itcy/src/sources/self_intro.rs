@@ -170,7 +170,7 @@ pub async fn build_itcy_self_tweet(
             return Err(e.into());
         }
     };
-    let mut body = crate::sources::tweet::scrub_tweet_body(&response.message.content);
+    let mut body = crate::sources::tweet::scrub_and_validate_tweet_body(&response.message.content)?;
     if tweet_body_exploded(&body) {
         warn!("self_tweet: writer dump coerced to tweet shape (no retry)");
         body = coerce_tweet_body(&body, subject);

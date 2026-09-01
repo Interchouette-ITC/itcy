@@ -420,7 +420,7 @@ async fn run_tweet_rework_llm(
 }
 
 fn scrub_rework_tweet_body(raw: &str) -> String {
-    crate::llm::sanitize_itcy_text(raw.trim())
+    crate::sources::tweet::scrub_tweet_body(raw)
 }
 
 fn strip_leading_draft_id(body: &str) -> String {
