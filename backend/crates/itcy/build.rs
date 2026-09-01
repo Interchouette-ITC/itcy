@@ -27,7 +27,6 @@ const PROMPT_FILES: &[&str] = &[
     "draft_user.md",
     "tweet_user.md",
     "tweet_farce_user.md",
-    "fallback_commentary.md",
     "draft_rework_user.md",
     "tweet_rework_user.md",
     "tweet_rework_user_tools.md",
@@ -97,7 +96,6 @@ fn stub_body(name: &str) -> &'static str {
         "load_user.md" | "rework_empty_pack.md" => "{subject}\n",
         "draft_user.md" | "tweet_user.md" => "{research_pack}\n{pack_note}\n{subject}\n",
         "tweet_farce_user.md" => "{theme}\n",
-        "fallback_commentary.md" => "{topic}\n",
         "draft_rework_user.md" => "{instructions}\n{id}\n{subject}\n{pack}\n{body}\n{url_lock}\n",
         "tweet_rework_user.md" => "{instructions}\n{id}\n{subject}\n{commentary}\n{cite}\n",
         "tweet_rework_user_tools.md" => {

@@ -39,7 +39,7 @@ pub use crate::prompts::{
     LOAD_SYSTEM_CORE, WHO_IS_WHO,
 };
 
-use crate::prompts::{draft_pack_note, draft_user_message, fallback_commentary, load_user_message};
+use crate::prompts::{draft_pack_note, draft_user_message, load_user_message};
 
 /// Full load system prompt including today's date.
 #[must_use]
@@ -469,7 +469,12 @@ struct DraftPhaseCtx<'a> {
     tools: Option<&'a ItcyTools>,
     brief_has_cite: bool,
     session_dir: Option<&'a PathBuf>,
+    extra_pack_note: Option<&'a str>,
 }
+
+const DRAFT_SCRUB_RETRY_NOTE: &str =
+    "HARD REWRITE: Write only from ResearchPack. Name entities and numbers from the cite page. \
+Do not paste the brief opening. No planning monologue. Dense LinkedIn paragraphs with emoji.";
 
 async fn run_draft_phase(
     ctx: &DraftPhaseCtx<'_>,
@@ -490,11 +495,15 @@ async fn run_draft_phase(
 
     log_pipeline_banner("DRAFT (writer)");
 
-    let pack_note = draft_pack_note(ctx.pack_urls.is_empty(), ctx.brief_has_cite);
+    let base_note = draft_pack_note(ctx.pack_urls.is_empty(), ctx.brief_has_cite);
+    let pack_note = match ctx.extra_pack_note {
+        Some(extra) if !extra.trim().is_empty() => format!("{base_note}\n\n{extra}"),
+        _ => base_note.to_string(),
+    };
     let user = if ctx.brief_has_cite {
-        crate::prompts::draft_user_message_subject_https(ctx.research_pack, pack_note, ctx.subject)
+        crate::prompts::draft_user_message_subject_https(ctx.research_pack, &pack_note, ctx.subject)
     } else {
-        draft_user_message(ctx.research_pack, pack_note, ctx.subject)
+        draft_user_message(ctx.research_pack, &pack_note, ctx.subject)
     };
     let draft_messages = vec![
         LlmMessage::system(draft_system_prompt()),
@@ -578,8 +587,7 @@ pub(crate) async fn checkpoint_building_pack(
 pub(crate) fn scrub_and_validate_writer_body(
     body_raw: &str,
     pack_urls: &[String],
-    subject: &str,
-    brief_has_cite: bool,
+    paste_subject: &str,
 ) -> Result<String, RagError> {
     info!(
         draft_chars = body_raw.trim().len(),
@@ -595,52 +603,94 @@ pub(crate) fn scrub_and_validate_writer_body(
     body = crate::sources::draft_url::strip_sources_section(&body);
     body = crate::sources::draft_footer::strip_leading_page_title_lede(&body);
     if looks_like_writer_scratchpad(&body) {
-        if brief_has_cite {
-            let primary = pack_urls.first().cloned();
-            warn!(
-                prose_words = prose_word_count(&body),
-                "load_draft: planning/monologue on cite path; injecting subject-safe fallback prose"
-            );
-            body = fallback_subject_commentary(subject, primary.as_deref());
-        } else {
-            warn!(
-                prose_words = prose_word_count(&body),
-                "load_draft: writer returned planning/monologue; refusing to post"
-            );
+        warn!(
+            prose_words = prose_word_count(&body),
+            "load_draft: writer returned planning/monologue; refusing to post"
+        );
+        return Err(RagError::Store(
+            "writer returned planning monologue instead of a LinkedIn post".into(),
+        ));
+    }
+    if body_copies_operator_subject(&body, paste_subject) {
+        let stripped = strip_leading_subject_paste(&body, paste_subject);
+        if stripped.trim().is_empty() || body_copies_operator_subject(&stripped, paste_subject) {
             return Err(RagError::Store(
-                "writer returned planning monologue instead of a LinkedIn post".into(),
+                "writer pasted the subject without adding commentary".into(),
             ));
         }
+        warn!("load_draft: stripped leading subject paste from writer body");
+        body = stripped;
     }
-    let words = prose_word_count(&body);
-    let x_shaped = looks_like_x_shaped_linkedin(&body);
-    if words < 120 || x_shaped || body_copies_operator_subject(&body, subject) {
-        let primary = pack_urls.first().cloned();
-        warn!(
-            prose_words = words,
-            x_shaped,
-            subject_paste = body_copies_operator_subject(&body, subject),
-            "load_draft: thin/x-shaped/subject-paste writer body; injecting subject-safe fallback prose"
-        );
-        body = fallback_subject_commentary(subject, primary.as_deref());
+    if looks_like_x_shaped_linkedin(&body) {
+        return Err(RagError::Store(
+            "writer returned X-shaped LinkedIn (blank-line beats or hashtag lines)".into(),
+        ));
     }
     body = ensure_draft_emoji_bar(&body);
     if crate::sources::corpus_propose::body_has_slogan_mush(&body) {
-        let primary = pack_urls.first().cloned();
         let stripped = crate::sources::corpus_propose::strip_slogan_mush_sentences(&body);
-        if prose_word_count(&stripped) >= 80
-            && !crate::sources::corpus_propose::body_has_slogan_mush(&stripped)
+        if stripped.trim().is_empty()
+            || crate::sources::corpus_propose::body_has_slogan_mush(&stripped)
         {
-            warn!("load_draft: slogan mush stripped from writer body");
-            body = ensure_draft_emoji_bar(&stripped);
-        } else {
-            warn!("load_draft: slogan mush; subject-safe fallback prose");
-            body = fallback_subject_commentary(subject, primary.as_deref());
-            body = ensure_draft_emoji_bar(&body);
+            return Err(RagError::Store(
+                "writer kept banned LinkedIn slogan mush after salvage".into(),
+            ));
         }
+        warn!("load_draft: slogan mush stripped from writer body");
+        body = ensure_draft_emoji_bar(&stripped);
     }
     body = strip_spurious_period_after_emoji(&body);
     Ok(body)
+}
+
+async fn draft_body_with_scrub_retry(
+    ctx: &DraftPhaseCtx<'_>,
+    paste_subject: &str,
+) -> Result<(String, CompletionTrace), RagError> {
+    let (draft_response, draft_trace) = run_draft_phase(ctx).await?;
+    match scrub_and_validate_writer_body(
+        &draft_response.message.content,
+        ctx.pack_urls,
+        paste_subject,
+    ) {
+        Ok(body) => Ok((body, draft_trace)),
+        Err(first_err) => {
+            warn!(error = %first_err, "load_draft: scrub failed; retrying writer once");
+            let retry_ctx = DraftPhaseCtx {
+                extra_pack_note: Some(DRAFT_SCRUB_RETRY_NOTE),
+                router: ctx.router,
+                subject: ctx.subject,
+                research_pack: ctx.research_pack,
+                pack_urls: ctx.pack_urls,
+                tools: ctx.tools,
+                brief_has_cite: ctx.brief_has_cite,
+                session_dir: ctx.session_dir,
+            };
+            let (retry_response, retry_trace) = run_draft_phase(&retry_ctx).await?;
+            let body = scrub_and_validate_writer_body(
+                &retry_response.message.content,
+                ctx.pack_urls,
+                paste_subject,
+            )?;
+            Ok((body, draft_trace.accumulate(&retry_trace)))
+        }
+    }
+}
+
+/// First line / clause of a subject string for subject-paste detection (not the full operator brief).
+#[must_use]
+pub(crate) fn paste_subject_line(subject: &str) -> String {
+    let mut s = subject.trim().to_string();
+    for u in extract_http_urls(&s) {
+        s = s.replace(&u, " ");
+    }
+    let s = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    let clause = s.split([',', ';', '\n']).next().unwrap_or(&s).trim();
+    if clause.is_empty() {
+        s.chars().take(120).collect()
+    } else {
+        clause.to_string()
+    }
 }
 
 /// `LinkedIn` drafts: at least two unique emoji glyphs (same bar as tweets).
@@ -815,15 +865,19 @@ pub async fn build_grounded_draft_with_cite(
 
     checkpoint_building_pack(db_path, tools, &operator_brief, &research_pack, &pack_urls).await;
 
-    let (draft_response, draft_trace) = run_draft_phase(&DraftPhaseCtx {
-        router,
-        subject: &operator_brief,
-        research_pack: &research_pack,
-        pack_urls: &pack_urls,
-        tools,
-        brief_has_cite,
-        session_dir: session_dir.as_ref(),
-    })
+    let (body, draft_trace) = draft_body_with_scrub_retry(
+        &DraftPhaseCtx {
+            router,
+            subject: &operator_brief,
+            research_pack: &research_pack,
+            pack_urls: &pack_urls,
+            tools,
+            brief_has_cite,
+            session_dir: session_dir.as_ref(),
+            extra_pack_note: None,
+        },
+        topic.trim(),
+    )
     .await?;
 
     info!(
@@ -849,12 +903,7 @@ pub async fn build_grounded_draft_with_cite(
         load_trace.model_label(),
         draft_trace.model_label()
     );
-    let mut body = scrub_and_validate_writer_body(
-        &draft_response.message.content,
-        &pack_urls,
-        &operator_brief,
-        brief_has_cite,
-    )?;
+    let mut body = body;
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = ensure_body_handles_from_pack(tools, &body, &research_pack);
     let (body, link_options) = finalize_draft_link_options(
@@ -934,15 +983,20 @@ pub async fn build_grounded_draft_from_pack(
     let mut research_pack = research_pack.to_string();
     apply_pack_handles(tools, subject, &mut research_pack);
     checkpoint_building_pack(db_path, tools, subject, &research_pack, &urls).await;
-    let (draft_response, draft_trace) = run_draft_phase(&DraftPhaseCtx {
-        router,
-        subject,
-        research_pack: &research_pack,
-        pack_urls: &urls,
-        tools,
-        brief_has_cite,
-        session_dir: session_dir.as_ref(),
-    })
+    let paste_subject = paste_subject_line(subject);
+    let (body, draft_trace) = draft_body_with_scrub_retry(
+        &DraftPhaseCtx {
+            router,
+            subject,
+            research_pack: &research_pack,
+            pack_urls: &urls,
+            tools,
+            brief_has_cite,
+            session_dir: session_dir.as_ref(),
+            extra_pack_note: None,
+        },
+        &paste_subject,
+    )
     .await?;
     let draft_id = resolve_session_draft_id(tools, db_path).await;
     let refill_pool = draft_link_refill_pool(tools, &urls).await;
@@ -955,12 +1009,7 @@ pub async fn build_grounded_draft_from_pack(
         ),
     )
     .await;
-    let mut body = scrub_and_validate_writer_body(
-        &draft_response.message.content,
-        &urls,
-        subject,
-        brief_has_cite,
-    )?;
+    let mut body = body;
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = ensure_body_handles_from_pack(tools, &body, &research_pack);
     let prefer = crate::sources::tweet_footer::extract_brief_cite(subject);
@@ -1065,39 +1114,30 @@ fn normalize_token(w: &str) -> String {
         .collect()
 }
 
-/// True when the draft pastes a long contiguous word-run from the operator subject.
+/// True when the draft pastes a long contiguous word-run from the paste subject.
 /// Structural only: no phrase allow/deny lists.
-///
-/// Short subjects (under 8 words) still count when the **entire** subject appears as a
-/// contiguous run (DRAFT-20260831-000137: "agentic coding 2026 practical guide big is…").
 fn body_copies_operator_subject(body: &str, subject: &str) -> bool {
     const MIN_RUN: usize = 8;
-    const MIN_SUBJECT_TOKENS: usize = 3;
     let subj: Vec<String> = subject
         .split_whitespace()
         .map(normalize_token)
         .filter(|t| !t.is_empty())
         .collect();
-    if subj.len() < MIN_SUBJECT_TOKENS {
+    if subj.len() < MIN_RUN {
         return false;
     }
-    let run = if subj.len() < MIN_RUN {
-        subj.len()
-    } else {
-        MIN_RUN
-    };
     let bod: Vec<String> = body
         .split_whitespace()
         .map(normalize_token)
         .filter(|t| !t.is_empty())
         .collect();
-    if bod.len() < run {
+    if bod.len() < MIN_RUN {
         return false;
     }
-    for i in 0..=subj.len() - run {
-        let needle = &subj[i..i + run];
-        for j in 0..=bod.len() - run {
-            if &bod[j..j + run] == needle {
+    for i in 0..=subj.len() - MIN_RUN {
+        let needle = &subj[i..i + MIN_RUN];
+        for j in 0..=bod.len() - MIN_RUN {
+            if &bod[j..j + MIN_RUN] == needle {
                 return true;
             }
         }
@@ -1105,33 +1145,35 @@ fn body_copies_operator_subject(body: &str, subject: &str) -> bool {
     false
 }
 
-/// Compact topic for fallback: first clause, word-capped (no phrase lists, no URLs).
-#[must_use]
-fn short_topic_for_fallback(subject: &str) -> String {
-    let mut s = subject.trim().to_string();
-    for u in extract_http_urls(&s) {
-        s = s.replace(&u, " ");
+/// Drop a leading word-run copied from the paste subject when the body opens with the brief lede.
+fn strip_leading_subject_paste(body: &str, paste_subject: &str) -> String {
+    const MIN_RUN: usize = 8;
+    let bod_words: Vec<&str> = body.split_whitespace().collect();
+    let subj: Vec<String> = paste_subject
+        .split_whitespace()
+        .map(normalize_token)
+        .filter(|t| !t.is_empty())
+        .collect();
+    if subj.len() < MIN_RUN || bod_words.len() < MIN_RUN {
+        return body.to_string();
     }
-    let s = s.split_whitespace().collect::<Vec<_>>().join(" ");
-    let clause = s.split([',', ';', '\n']).next().unwrap_or(&s).trim();
-    let words: Vec<_> = clause.split_whitespace().take(10).collect();
-    let t = words.join(" ");
-    if t.is_empty() {
-        s.chars().take(60).collect()
-    } else {
-        t
+    let mut best_strip = 0usize;
+    for i in 0..=subj.len() - MIN_RUN {
+        let mut k = 0usize;
+        while k < bod_words.len() && i + k < subj.len() {
+            if normalize_token(bod_words[k]) != subj[i + k] {
+                break;
+            }
+            k += 1;
+        }
+        if k >= MIN_RUN && k > best_strip {
+            best_strip = k;
+        }
     }
-}
-
-/// Subject-locked commentary when the writer returns empty / URL-only / leaked text.
-fn fallback_subject_commentary(subject: &str, primary: Option<&str>) -> String {
-    let topic = short_topic_for_fallback(subject);
-    let mut out = fallback_commentary(&topic);
-    if let Some(u) = primary {
-        out.push_str("\n\n");
-        out.push_str(u);
+    if best_strip == 0 {
+        return body.to_string();
     }
-    out
+    bod_words[best_strip..].join(" ")
 }
 
 /// End research session if one was opened (always detach product.log tee).
@@ -1470,12 +1512,12 @@ https://example.com/policy";
     }
 
     #[test]
-    fn short_topic_takes_first_clause() {
-        let t = short_topic_for_fallback(
-            "acme labs new CEO, then a long briefing with many extra words about research",
+    fn paste_subject_line_uses_first_clause_not_full_brief() {
+        let line = paste_subject_line(
+            "DoorDash Flux platform, DoorDash has moved engineering agent workloads from laptops to Flux with Firecracker microVMs https://infoq.com/x",
         );
-        assert_eq!(t, "acme labs new CEO");
-        assert!(!t.contains("briefing"));
+        assert_eq!(line, "DoorDash Flux platform");
+        assert!(!line.contains("Firecracker"));
     }
 
     #[test]
@@ -1492,17 +1534,37 @@ https://example.com/policy";
     }
 
     #[test]
-    fn subject_paste_detects_short_subject_lede() {
-        // DRAFT-20260831-000137: subject is 6 tokens; old MIN_RUN=8 skipped the check.
+    fn subject_paste_requires_eight_word_run() {
         let subject = "agentic coding 2026 practical guide big";
+        assert!(
+            !body_copies_operator_subject(
+                "🦀 agentic coding 2026 practical guide big is commentary on the release.",
+                subject
+            ),
+            "six-token subject must not trigger paste detection"
+        );
+        let long = "alpha beta gamma delta epsilon zeta eta theta iota kappa";
         assert!(body_copies_operator_subject(
-            "🦀 agentic coding 2026 practical guide big is the kind of tooling story builders should actually watch.",
-            subject
+            "Leaders note alpha beta gamma delta epsilon zeta eta theta today.",
+            long
         ));
-        assert!(!body_copies_operator_subject(
-            "🦀 Low-overhead indexing and a real resume-after-restart path is an engineering bet against the LSP tax.",
-            subject
-        ));
+    }
+
+    #[test]
+    fn strip_leading_subject_paste_keeps_commentary() {
+        use crate::sources::digest_propose_fixtures::{fixture_e_topic, FIXTURE_E_GOOD_BODY};
+        let topic = fixture_e_topic();
+        let out = scrub_and_validate_writer_body(FIXTURE_E_GOOD_BODY, &[], &topic)
+            .expect("digest lede plus article commentary must survive scrub");
+        assert!(out.contains("Firecracker"));
+        assert!(out.contains("130,000"));
+        for banned in crate::sources::digest_propose_fixtures::DELETED_FALLBACK_BANNED {
+            assert!(
+                !out.to_ascii_lowercase()
+                    .contains(&banned.to_ascii_lowercase()),
+                "must not contain deleted fallback phrase {banned}: {out}"
+            );
+        }
     }
 
     #[cfg(itcy_kitchen_prompts)]
@@ -1763,8 +1825,7 @@ I'm watching 🦉 how this lands for systems teams that want polish without a se
             prose_word_count(body) >= 120,
             "fixture must stay above thin-body fallback"
         );
-        let out =
-            scrub_and_validate_writer_body(body, &[], "gpui rust desktop", false).expect("ok");
+        let out = scrub_and_validate_writer_body(body, &[], "gpui rust desktop").expect("ok");
         assert!(
             crate::llm::tweet_emoji_ok(&out),
             "scrub must keep >=2 glyphs"
@@ -1789,7 +1850,7 @@ Maintainers who measure compile graphs and cache hits will notice the gap first 
             "fixture must stay above thin-body fallback (got {})",
             prose_word_count(body)
         );
-        let out = scrub_and_validate_writer_body(body, &[], "Sätteri Astro Markdown Rust", false)
+        let out = scrub_and_validate_writer_body(body, &[], "Sätteri Astro Markdown Rust")
             .expect("scrub must not fail clean multi-paragraph prose");
         assert!(
             out.contains("\n\n"),
@@ -1817,7 +1878,7 @@ Maintainers who measure compile graphs and cache hits will notice the gap first 
             "fixture must stay above thin-body fallback (got {})",
             prose_word_count(body)
         );
-        let out = scrub_and_validate_writer_body(body, &[], "Sätteri Astro Markdown Rust", false)
+        let out = scrub_and_validate_writer_body(body, &[], "Sätteri Astro Markdown Rust")
             .expect("mush salvage must deliver open prose, not Err");
         assert!(
             !crate::sources::corpus_propose::body_has_slogan_mush(&out),
@@ -1874,8 +1935,8 @@ Builders get fewer moving parts and a cleaner dependency tree when content pipel
 That matters when CI time is the bottleneck before a release window closes and reviewers want diffs not drama.\n\n\
 I'm watching how Astro 7 teams adopt the swap without rewriting every remark plugin they already trust. 🦉 \
 Maintainers who measure compile graphs and cache hits will notice the gap first on large content trees.";
-        let out = scrub_and_validate_writer_body(body, &[], "Sätteri Astro Markdown Rust", false)
-            .expect("ok");
+        let out =
+            scrub_and_validate_writer_body(body, &[], "Sätteri Astro Markdown Rust").expect("ok");
         assert!(
             !linkedin_draft_has_emoji_dot_glue(&out),
             "writer-woven emoji must not get dot glue: {out:?}"
@@ -1918,9 +1979,8 @@ core; it's not about which cloud wins mindshare in a keynote slide.";
             prose_word_count(body) >= 120,
             "fixture must stay above thin-body fallback"
         );
-        let out =
-            scrub_and_validate_writer_body(body, &[], "Cloudflare durable object pricing", false)
-                .expect("mush must coerce, not fail");
+        let out = scrub_and_validate_writer_body(body, &[], "Cloudflare durable object pricing")
+            .expect("mush must coerce, not fail");
         assert!(
             !crate::sources::corpus_propose::body_has_slogan_mush(&out),
             "salvaged body must not keep mush"
@@ -1929,34 +1989,51 @@ core; it's not about which cloud wins mindshare in a keynote slide.";
     }
 
     #[test]
-    fn scrub_injects_emoji_when_fallback_or_writer_omits_them() {
-        let pack = ["https://x.com/a/status/1".to_string()];
-        let out =
-            scrub_and_validate_writer_body("short", &pack, "Rust Glancer LSP", false).expect("ok");
+    fn scrub_injects_emoji_when_writer_omits_them() {
+        let thin = "Teams shipping internal agent platforms need honest audit trails and scoped credentials before they trust automated code review at scale.";
+        let out = scrub_and_validate_writer_body(thin, &[], "DoorDash Flux agent platform")
+            .expect("short writer prose must pass scrub");
         assert!(
             crate::llm::tweet_emoji_ok(&out),
-            "fallback/scrub must force emoji bar: {out}"
+            "scrub must weave emoji bar onto writer text: {out}"
         );
         assert!(out.contains('🦉') && out.contains('🦀'), "{out}");
+        for banned in crate::sources::digest_propose_fixtures::DELETED_FALLBACK_BANNED {
+            assert!(
+                !out.to_ascii_lowercase()
+                    .contains(&banned.to_ascii_lowercase()),
+                "must not inject deleted fallback: {out}"
+            );
+        }
     }
 
     #[test]
-    fn scratchpad_on_cite_path_uses_fallback_not_err() {
+    fn scratchpad_on_cite_path_returns_err_not_static_prose() {
         use crate::sources::digest_propose_fixtures::{fixture_c_brief, FIXTURE_C_BAD_BODY};
         let pack = ["https://www.infoq.com/news/2026/08/aws-bench-agent-evaluation".to_string()];
-        let out =
-            scrub_and_validate_writer_body(FIXTURE_C_BAD_BODY, &pack, &fixture_c_brief(), true)
-                .expect("cite path must deliver fallback prose, not Err");
+        let paste = paste_subject_line(&fixture_c_brief());
+        let err = scrub_and_validate_writer_body(FIXTURE_C_BAD_BODY, &pack, &paste)
+            .expect_err("scratchpad must fail scrub, not inject static prose");
+        assert!(err.to_string().contains("planning monologue"), "{err}");
+    }
+
+    #[test]
+    fn failed_scrub_subject_only_returns_err_not_static_prose() {
+        use crate::sources::digest_propose_fixtures::{fixture_e_topic, FIXTURE_E_LEDE};
+        let topic = fixture_e_topic();
+        let err = scrub_and_validate_writer_body(FIXTURE_E_LEDE, &[], &topic)
+            .expect_err("subject lede without commentary must fail scrub");
+        let msg = err.to_string().to_ascii_lowercase();
         assert!(
-            !out.to_ascii_lowercase().contains("corpus search returned"),
-            "fallback must not keep monologue: {out}"
+            msg.contains("pasted the subject") || msg.contains("empty"),
+            "{err}"
         );
-        assert!(
-            out.to_ascii_lowercase().contains("aws")
-                || out.to_ascii_lowercase().contains("bench")
-                || out.to_ascii_lowercase().contains("agent"),
-            "fallback should stay on brief topic: {out}"
-        );
+        for banned in crate::sources::digest_propose_fixtures::DELETED_FALLBACK_BANNED {
+            assert!(
+                !msg.contains(&banned.to_ascii_lowercase()),
+                "error must not contain deleted fallback phrase: {err}"
+            );
+        }
     }
 
     #[test]
@@ -1965,7 +2042,6 @@ core; it's not about which cloud wins mindshare in a keynote slide.";
             "The corpus search returned hits. I will write a LinkedIn post.",
             &[],
             "some subject",
-            false,
         )
         .expect_err("non-cite path keeps hard fail on monologue");
         assert!(err.to_string().contains("planning monologue"), "{err}");

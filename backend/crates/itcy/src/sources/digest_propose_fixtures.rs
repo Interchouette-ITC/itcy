@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Interchouette-ITC
 // SPDX-License-Identifier: BUSL-1.1
 
-//! Transcript-exact fixtures for `/propose_draft` regression tests (Cases A-D).
+//! Transcript-exact fixtures for `/propose_draft` regression tests (Cases A-E).
 
 use crate::sources::digest::{digest_propose_brief, DigestItem};
 
@@ -78,6 +78,48 @@ pub fn fixture_d_item() -> DigestItem {
     }
 }
 
+pub const FIXTURE_E_LEDE: &str =
+    "DoorDash has moved engineering agent workloads from developer laptops to its Flux cloud platform.";
+
+pub const FIXTURE_E_GOOD_BODY: &str =
+    "DoorDash has moved engineering agent workloads from developer laptops to its Flux cloud platform. \
+The platform automated 130,000 engineering tasks in one month and supports more than 25,000 automated \
+code reviews weekly. Flux uses isolated Firecracker microVMs, an MCP gateway, reusable playbooks, \
+and multiple invocation surfaces to run agent workflows with scoped access and centralized auditing. \
+For platform teams shipping internal agents, the interesting bet is whether centralized microVM isolation \
+and audit trails beat laptop sprawl when review volume scales. 🦀 I'm watching how playbooks and scoped \
+access change the cost curve before the next incident postmortem. 🦉";
+
+/// Phrases from the deleted `fallback_commentary.md` static file (must never appear in drafts).
+pub const DELETED_FALLBACK_BANNED: &[&str] = &[
+    "wait forever for the LSP",
+    "resume-after-restart path",
+    "abandoned analyzer fork",
+    "kind of tooling story builders should actually watch",
+];
+
+#[must_use]
+pub fn fixture_e_item() -> DigestItem {
+    DigestItem {
+        idx: 66,
+        title: "DoorDash Flux cloud agent platform".into(),
+        url: Some("https://www.infoq.com/news/2026/08/doordash-flux-cloud-agent".into()),
+        subject: "doordash flux cloud agent engineering workloads".into(),
+        lane: "live_site".into(),
+        weight: 1,
+        detail: "DoorDash has moved engineering agent workloads from developer laptops to its Flux cloud platform.\n\n\
+The platform automated 130,000 engineering tasks in one month and supports more than 25,000 automated \
+code reviews weekly. Flux uses isolated Firecracker microVMs, an MCP gateway, reusable playbooks, \
+and multiple invocation surfaces to run agent workflows with scoped access and centralized auditing."
+            .into(),
+    }
+}
+
+#[must_use]
+pub fn fixture_e_topic() -> String {
+    digest_propose_brief(&fixture_e_item()).0
+}
+
 #[must_use]
 pub fn fixture_a_brief() -> String {
     digest_propose_brief(&fixture_a_item()).1
@@ -128,6 +170,13 @@ mod tests {
         let brief = fixture_d_brief();
         assert!(brief.to_ascii_lowercase().contains("opus"));
         assert!(brief.contains("infoworld.com"));
+    }
+
+    #[test]
+    fn fixture_e_topic_matches_doordash_lede() {
+        let topic = fixture_e_topic();
+        assert!(topic.contains("DoorDash"));
+        assert!(topic.contains("Flux cloud platform"));
     }
 
     #[test]

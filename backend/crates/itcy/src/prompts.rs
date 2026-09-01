@@ -55,7 +55,6 @@ const LOAD_USER_TMPL: &str = prompt!("load_user.md");
 const DRAFT_USER_TMPL: &str = prompt!("draft_user.md");
 const TWEET_USER_TMPL: &str = prompt!("tweet_user.md");
 const TWEET_FARCE_USER_TMPL: &str = prompt!("tweet_farce_user.md");
-const FALLBACK_COMMENTARY_TMPL: &str = prompt!("fallback_commentary.md");
 const DRAFT_REWORK_USER_TMPL: &str = prompt!("draft_rework_user.md");
 const TWEET_REWORK_USER_TMPL: &str = prompt!("tweet_rework_user.md");
 const TWEET_REWORK_USER_TOOLS_TMPL: &str = prompt!("tweet_rework_user_tools.md");
@@ -172,12 +171,6 @@ pub fn comment_reply_user_message(
 pub fn tweet_reply_user_message(tweet_author: &str, tweet_body: &str) -> String {
     let s = fill(TWEET_REPLY_USER_TMPL, "tweet_author", tweet_author);
     fill(&s, "tweet_body", tweet_body)
-}
-
-/// Subject-locked fallback when the writer returns thin / scratchpad text.
-#[must_use]
-pub fn fallback_commentary(topic: &str) -> String {
-    FALLBACK_COMMENTARY_TMPL.replace(concat!("{", "topic", "}"), topic)
 }
 
 /// Empty `ResearchPack` stub when a rework has no stored pack.
@@ -518,13 +511,6 @@ mod tests {
         let farce = tweet_farce_user_message("Mars Wi-Fi");
         assert!(farce.contains("Mars Wi-Fi"));
         assert!(!farce.contains("{theme}"));
-        let f = fallback_commentary("topic-x");
-        assert!(f.contains("topic-x"));
-        assert!(!f.contains("{topic}"));
-        assert!(
-            f.contains('🦉') && f.contains('🦀'),
-            "fallback must meet emoji bar: {f}"
-        );
         let dr =
             draft_rework_user_message("shorter", "DRAFT-1", "subj", "PACK", "body", "https://a");
         assert!(dr.contains("shorter") && dr.contains("DRAFT-1") && dr.contains("PACK"));
