@@ -64,6 +64,15 @@ impl ItcyTools {
             .clone()
     }
 
+    /// Registry for draft/tweet paths: in-memory (hot `/handle_add`) when tools exist.
+    #[must_use]
+    pub fn runtime_handles(tools: Option<&Self>) -> HandlesIndex {
+        tools.map_or_else(
+            || crate::sources::handles::load_handles().unwrap_or_default(),
+            Self::handles_index,
+        )
+    }
+
     /// Parse + append `handles.toml` + hot-reload memory (no process restart).
     ///
     /// # Errors

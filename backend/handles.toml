@@ -304,7 +304,7 @@ x = "@david_dossett"
 x_url = "https://x.com/david_dossett"
 
 [[handle]]
-name = "code"
+name = "VS Code"
 x = "@code"
 x_url = "https://x.com/code"
 
@@ -7564,3 +7564,10 @@ linkedin = "@scylladb"
 x = "@ScyllaDB"
 linkedin_url = "https://www.linkedin.com/company/scylladb/"
 x_url = "https://x.com/ScyllaDB"
+
+[[handle]]
+name = "DoorDash @DoorDash"
+linkedin = "@doordash"
+x = "@DoorDash"
+linkedin_url = "https://www.linkedin.com/company/doordash/"
+x_url = "https://x.com/DoorDash"
