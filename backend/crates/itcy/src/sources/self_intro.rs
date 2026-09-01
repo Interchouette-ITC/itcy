@@ -108,8 +108,7 @@ pub async fn build_itcy_self_draft(
     let body = crate::sources::rag::scrub_and_validate_writer_body(
         &response.message.content,
         &pack_urls,
-        subject,
-        false,
+        &crate::sources::rag::paste_subject_line(subject),
     )?;
     let body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     let mut link_options = crate::sources::draft_footer::pick_link_options(&pack_urls, &body);
