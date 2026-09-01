@@ -34,10 +34,10 @@ test("XPOST-094 clickPost must not re-submit root after Control+Enter", () => {
   const body = m[0];
   assert.match(body, /Control\+Enter/);
   assert.equal((body.match(/btn\.click/g) || []).length, 0);
-  assert.match(src, /postReply\(page,\s*replyText,\s*found/);
+  assert.match(src, /postReply\(replyPage,\s*replyText,\s*found/);
 });
 
-test("XPOST-095 first pass: one Brave session posts root then reply (no CDP close)", () => {
+test("XPOST-095 first pass: one Brave session, root tab then reply tab (no CDP close)", () => {
   const src = fs.readFileSync(
     fileURLToPath(new URL("./post-twitter.mjs", import.meta.url)),
     "utf8"
@@ -46,10 +46,23 @@ test("XPOST-095 first pass: one Brave session posts root then reply (no CDP clos
   assert.equal((src.match(/browser\.close\(/g) || []).length, 0);
   assert.match(src, /process\.exit\(0\)/);
   assert.match(src, /overflow reply file empty/);
-  assert.equal(/findTimelineRoot|timelineLooksLikeRoot|ALREADY_SAID/.test(src), false);
-  const rootThenReply = src.indexOf("rootToastHref = await clickPost");
-  const replyCall = src.indexOf("postReply(page, replyText, found");
-  assert.ok(rootThenReply > 0 && replyCall > rootThenReply, "root Post then reply");
+  assert.equal(/findOwnPostMatchingText|findTimelineRoot|timelineLooksLikeRoot|ALREADY_SAID/.test(src), false);
+  assert.match(src, /prepareRootTab/);
+  assert.match(src, /replyPage = await context\.newPage\(\)/);
+  const rootThenReply =
+    src.indexOf("await postRootTweet(") >= 0 ||
+    src.indexOf("rootToastHref = await clickPost") >= 0;
+  const replyCall = src.indexOf("postReply(replyPage, replyText, found");
+  assert.ok(rootThenReply && replyCall > 0, "root Post then reply on separate tab");
+});
+
+test("brave lock clears stale file only when flock is free", () => {
+  const src = fs.readFileSync(
+    fileURLToPath(new URL("./lib/twitter-brave-lock.sh", import.meta.url)),
+    "utf8"
+  );
+  assert.match(src, /twitter_brave_lock_unheld/);
+  assert.match(src, /exec 9<>"\$\{lock\}"/);
 });
 
 test("ship scripts take brave.lock (no concurrent CDP steal)", () => {
@@ -63,7 +76,11 @@ test("ship scripts take brave.lock (no concurrent CDP steal)", () => {
       "utf8"
     );
     assert.match(src, /twitter_brave_acquire_lock/, name);
-    assert.match(src, /twitter_brave_pick_cdp_port/, name);
+    assert.match(
+      src,
+      /twitter_brave_port_free|twitter_brave_cdp_ready|twitter_brave_pick_cdp_port/,
+      name
+    );
     assert.equal(
       /CDP_PORT="\$\{ITCY_TWITTER_CDP_PORT:-9224\}"/.test(src),
       false,
