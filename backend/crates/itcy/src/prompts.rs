@@ -585,6 +585,29 @@ mod tests {
     }
 
     #[test]
+    fn x_craft_bans_not_just_broader_trend_mush() {
+        assert!(
+            CREATIVE_X.contains("it's not about") || CREATIVE_X.contains("not just another tool"),
+            "Creative X must ban not-just / not-about slogan class"
+        );
+        assert!(
+            CREATIVE_X.contains("broader trend"),
+            "Creative X must ban broader-trend mush"
+        );
+        assert!(
+            FORM_CRAFT_X.contains("not just")
+                || FORM_CRAFT_X.contains("not-about")
+                || FORM_CRAFT_X.contains("broader trend"),
+            "Form craft X must forbid not-just mush"
+        );
+        let tweet_user = TWEET_USER_TMPL;
+        assert!(
+            tweet_user.contains("Slogan mush") || tweet_user.contains("broader trend"),
+            "tweet user must forbid slogan mush"
+        );
+    }
+
+    #[test]
     fn linkedin_craft_bans_not_just_broader_trend_mush() {
         assert!(
             CREATIVE_LINKEDIN.contains("it's not about")

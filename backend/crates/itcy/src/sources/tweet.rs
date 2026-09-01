@@ -28,6 +28,11 @@ use crate::tools::ItcyTools;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
+const TWEET_SCRUB_RETRY_NOTE: &str =
+    "HARD REWRITE: Write only from ResearchPack. Name entities and numbers from the cite. \
+Do not paste the brief opening. Forbidden: not-just / not-about contrast lines \
+(\"It's not just X, it's Y\"). 3-4 aerated beats with 2-3 unique emoji.";
+
 fn tweet_system_prompt() -> String {
     format!(
         "{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}",
@@ -218,6 +223,17 @@ pub async fn build_grounded_tweet_from_pack(
     })
 }
 
+struct TweetWriterCtx<'a> {
+    router: &'a FailoverRouter,
+    subject: &'a str,
+    research_pack: &'a str,
+    pack_urls: &'a [String],
+    subject_https: bool,
+    session_dir: Option<&'a PathBuf>,
+    tools: Option<&'a ItcyTools>,
+    extra_pack_note: Option<&'a str>,
+}
+
 async fn run_tweet_phase(
     router: &FailoverRouter,
     subject: &str,
@@ -228,32 +244,81 @@ async fn run_tweet_phase(
     tools: Option<&ItcyTools>,
 ) -> Result<(String, CompletionTrace), RagError> {
     crate::sources::rag::log_pipeline_banner("TWEET (writer)");
-    // Pack already grounded by LOAD. Writer must not re-search / corpus-drift.
-    let user = tweet_user_message(
-        research_pack,
-        tweet_pack_note(pack_urls.is_empty(), subject_https),
+    let base = TweetWriterCtx {
+        router,
         subject,
-    );
+        research_pack,
+        pack_urls,
+        subject_https,
+        session_dir,
+        tools,
+        extra_pack_note: None,
+    };
+    let (content, trace) = complete_tweet_writer(&base).await?;
+    match finalize_tweet_writer_body(&content, subject) {
+        Ok(body) => Ok((body, trace)),
+        Err(first_err) => {
+            warn!(error = %first_err, "load_tweet: scrub failed; retrying writer once");
+            let retry_ctx = TweetWriterCtx {
+                extra_pack_note: Some(TWEET_SCRUB_RETRY_NOTE),
+                ..base
+            };
+            let (retry_content, retry_trace) = complete_tweet_writer(&retry_ctx).await?;
+            let body = finalize_tweet_writer_body(&retry_content, subject)?;
+            Ok((body, trace.accumulate(&retry_trace)))
+        }
+    }
+}
+
+async fn complete_tweet_writer(
+    ctx: &TweetWriterCtx<'_>,
+) -> Result<(String, CompletionTrace), RagError> {
+    let mut pack_note = tweet_pack_note(ctx.pack_urls.is_empty(), ctx.subject_https).to_string();
+    if let Some(note) = ctx.extra_pack_note {
+        pack_note.push_str("\n\n");
+        pack_note.push_str(note);
+    }
+    let user = tweet_user_message(ctx.research_pack, &pack_note, ctx.subject);
     let messages = vec![
         LlmMessage::system(tweet_system_prompt()),
         LlmMessage::user(user),
     ];
-    let (response, trace) = match router
+    match ctx
+        .router
         .complete_with_tools(TaskKind::Draft, &messages, None, 0)
         .await
     {
-        Ok(v) => v,
+        Ok((response, trace)) => Ok((response.message.content, trace)),
         Err(e) => {
-            end_session_best_effort(tools, session_dir, &format!("tweet writer failed: {e}")).await;
-            return Err(e.into());
+            end_session_best_effort(
+                ctx.tools,
+                ctx.session_dir,
+                &format!("tweet writer failed: {e}"),
+            )
+            .await;
+            Err(e.into())
         }
-    };
-    let body = scrub_tweet_body(&response.message.content);
+    }
+}
+
+fn finalize_tweet_writer_body(content: &str, subject: &str) -> Result<String, RagError> {
+    let body = scrub_and_validate_tweet_body(content)?;
     if tweet_body_exploded(&body) {
         warn!("load_tweet: writer dump coerced to tweet shape (no retry)");
-        return Ok((coerce_tweet_body(&body, subject), trace));
+        return Ok(coerce_tweet_body(&body, subject));
     }
-    Ok((body, trace))
+    Ok(body)
+}
+
+fn tweet_has_commentary_beats(body: &str) -> bool {
+    body.split("\n\n").any(|para| {
+        let t = para.trim();
+        if t.is_empty() || t.starts_with("https://") {
+            return false;
+        }
+        !t.split_whitespace()
+            .all(|tok| tok.starts_with('#') && tok.len() > 1)
+    })
 }
 
 pub(crate) fn attach_tweet_cites(
@@ -296,10 +361,41 @@ pub(crate) fn attach_tweet_cites(
     )
 }
 
+/// Sanitize tweet writer output and drop banned slogan-mush beats (salvage-only).
+#[must_use]
 pub(crate) fn scrub_tweet_body(raw: &str) -> String {
     let raw = crate::llm::sanitize_itcy_text(raw);
     let raw = crate::sources::draft_url::strip_sources_section(&raw);
-    crate::sources::tweet_footer::strip_own_x_handle(&raw)
+    let raw = crate::sources::tweet_footer::strip_own_x_handle(&raw);
+    if crate::sources::corpus_propose::body_has_slogan_mush(&raw) {
+        let stripped = crate::sources::corpus_propose::strip_slogan_mush_sentences(&raw);
+        if !stripped.trim().is_empty() {
+            warn!("load_tweet: slogan mush stripped from writer body");
+            return stripped;
+        }
+    }
+    raw
+}
+
+/// Writer path: sanitize, salvage mush, hard-fail when mush or empty body remains.
+pub(crate) fn scrub_and_validate_tweet_body(raw: &str) -> Result<String, RagError> {
+    let body = scrub_tweet_body(raw);
+    if body.trim().is_empty() {
+        return Err(RagError::Store(
+            "writer returned empty tweet after scrub".into(),
+        ));
+    }
+    if crate::sources::corpus_propose::body_has_slogan_mush(&body) {
+        return Err(RagError::Store(
+            "writer kept banned X slogan mush after salvage".into(),
+        ));
+    }
+    if !tweet_has_commentary_beats(&body) {
+        return Err(RagError::Store(
+            "writer left no commentary beats after scrub".into(),
+        ));
+    }
+    Ok(body)
 }
 
 fn ensure_tweet_handles_from_pack(tools: Option<&ItcyTools>, body: &str, pack: &str) -> String {
@@ -314,6 +410,42 @@ fn ensure_tweet_handles_from_pack(tools: Option<&ItcyTools>, body: &str, pack: &
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scrub_tweet_body_strips_not_just_mush_keeps_other_beats() {
+        let raw = "\
+🚀 @DoorDash shifted 130k tasks to Flux, no more laptop clutter.
+
+🤖 Firecracker microVMs + MCP gateways? Scoped access beats laptop sprawl.
+
+🦉 25k code reviews weekly. It's not just automation, it's control.
+
+#DevOps #CloudNative #AIInfra";
+        let out = scrub_tweet_body(raw);
+        assert!(
+            out.contains("130k tasks"),
+            "concrete hook beat must survive: {out}"
+        );
+        assert!(
+            out.contains("Firecracker"),
+            "angle beat must survive: {out}"
+        );
+        assert!(
+            !out.contains("not just automation"),
+            "mush beat must drop: {out}"
+        );
+        assert!(out.contains("#DevOps"), "hashtag line must survive: {out}");
+    }
+
+    #[test]
+    fn scrub_and_validate_tweet_body_fails_when_only_mush_remains() {
+        let raw = "It's not just automation, it's control.\n\n#DevOps";
+        let err = scrub_and_validate_tweet_body(raw).unwrap_err();
+        assert!(
+            err.to_string().contains("commentary beats"),
+            "expected empty-commentary failure: {err}"
+        );
+    }
 
     #[test]
     fn locked_x_cite_puts_x_url_in_body_no_sources() {
