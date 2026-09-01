@@ -1093,33 +1093,43 @@ impl GithubClient {
         branch: &str,
         file: &RepoFile,
     ) -> Result<(), GithubError> {
+        const SHA_CONFLICT_RETRIES: u32 = 3;
         let url = format!(
             "https://api.github.com/repos/{}/{}/contents/{}",
             owner, self.cfg.repo, file.path
         );
         let b64 = base64::engine::general_purpose::STANDARD.encode(file.content.as_bytes());
-        let mut payload = json!({
-            "message": format!("ITCy: {}", file.path),
-            "content": b64,
-            "branch": branch,
-        });
-        if let Some(sha) = self.existing_file_sha(owner, branch, &file.path).await? {
-            payload["sha"] = json!(sha);
-        }
-        let resp = self
-            .http
-            .put(&url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.cfg.token))
-            .json(&payload)
-            .send()
-            .await?;
-        if !resp.status().is_success() {
-            let body = resp.text().await.unwrap_or_default();
+        let mut last_body = String::new();
+        for attempt in 0..SHA_CONFLICT_RETRIES {
+            let mut payload = json!({
+                "message": format!("ITCy: {}", file.path),
+                "content": b64,
+                "branch": branch,
+            });
+            if let Some(sha) = self.existing_file_sha(owner, branch, &file.path).await? {
+                payload["sha"] = json!(sha);
+            }
+            let resp = self
+                .http
+                .put(&url)
+                .header(AUTHORIZATION, format!("Bearer {}", self.cfg.token))
+                .json(&payload)
+                .send()
+                .await?;
+            if resp.status().is_success() {
+                return Ok(());
+            }
+            last_body = resp.text().await.unwrap_or_default();
+            if contents_put_sha_conflict(&last_body) && attempt + 1 < SHA_CONFLICT_RETRIES {
+                continue;
+            }
             return Err(GithubError::Api(format_contents_put_error(
-                &file.path, &body,
+                &file.path, &last_body,
             )));
         }
-        Ok(())
+        Err(GithubError::Api(format_contents_put_error(
+            &file.path, &last_body,
+        )))
     }
 
     async fn existing_file_sha(
@@ -1559,6 +1569,14 @@ pub fn contents_put_blocked_by_branch_protection(api_body: &str) -> bool {
         || (b.contains("\"status\":\"409\"") && b.contains("pull request"))
 }
 
+/// True when a Contents update used a stale blob SHA (409 concurrent org `drafts` sync).
+#[must_use]
+pub fn contents_put_sha_conflict(api_body: &str) -> bool {
+    api_body.contains("is at ")
+        && api_body.contains(" but expected ")
+        && api_body.contains("\"status\":\"409\"")
+}
+
 /// Operator-facing Contents put error (playground `LinkedIn` BAT mirrors onto org `drafts`).
 #[must_use]
 pub fn format_contents_put_error(path: &str, api_body: &str) -> String {
@@ -1566,6 +1584,11 @@ pub fn format_contents_put_error(path: &str, api_body: &str) -> String {
         format!(
             "put {path}: Contents API blocked - branch protection requires a pull request. \
              Playground LinkedIn BAT mirrors with a direct put onto org `drafts`; that branch must not require PRs."
+        )
+    } else if contents_put_sha_conflict(api_body) {
+        format!(
+            "put {path}: Contents API SHA conflict (concurrent org `drafts` update). \
+             Retries exhausted; `/retry_bat` is safe when POST is already on `posts`."
         )
     } else {
         format!("put {path}: {api_body}")
@@ -1847,6 +1870,17 @@ mod tests {
             "put failed: 500 boom"
         ));
         assert_eq!(format_contents_put_error("x.md", "nope"), "put x.md: nope");
+    }
+
+    #[test]
+    fn contents_put_sha_conflict_detects_stale_blob_409() {
+        // DRAFT-20260901-000138: org `drafts` mirror PUT raced; merge ok, sync aborted BAT.
+        let api = r#"{"message":"is at 5fd8c11ecd6e55466742d8ea626b83915e28e5f2 but expected fb3383a4729939701700d5fd2c31928b45c16a8d","documentation_url":"https://docs.github.com/rest/repos/contents#create-or-update-file-contents","status":"409"}"#;
+        assert!(contents_put_sha_conflict(api));
+        assert!(!contents_put_blocked_by_branch_protection(api));
+        let msg = format_contents_put_error("2026/09/01/DRAFT-20260901-000138/body.md", api);
+        assert!(msg.contains("SHA conflict"), "{msg}");
+        assert!(msg.contains("/retry_bat"), "{msg}");
     }
 
     #[test]
