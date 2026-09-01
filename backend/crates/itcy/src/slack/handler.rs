@@ -1095,7 +1095,14 @@ Status: **published**.",
             Ok(s) => s,
             Err(e) => return format!("Could not open draft store: {e}"),
         };
-        match rework_stored_draft(&self.llm, &stored, instructions, Some(self.tools.as_ref())).await
+        match rework_stored_draft(
+            &self.llm,
+            &stored,
+            instructions,
+            Some(self.tools.as_ref()),
+            &self.tools.handles_index(),
+        )
+        .await
         {
             Ok(rew) => {
                 let mut row = stored_from_payload(DraftPayload {

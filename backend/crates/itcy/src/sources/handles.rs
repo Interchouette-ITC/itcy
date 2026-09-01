@@ -204,6 +204,9 @@ pub fn resolve_handles_path() -> Option<PathBuf> {
 
 /// Load the handle registry. Returns an empty index when the file is not found.
 ///
+/// Prefer passing [`ItcyTools::handles_index`] at runtime when tools are wired
+/// (includes `/handle_add` hot reload without restart).
+///
 /// # Errors
 ///
 /// Returns [`HandlesError`] when the file exists but cannot be read or parsed.
@@ -810,8 +813,10 @@ fn ensure_named_handle_in_body(
         HandleMatch::X => e.x.eq_ignore_ascii_case(handle),
     });
     if let Some(entry) = entry {
-        if let Some((start, end)) = find_phrase_outside_url(body, &entry.name) {
-            return replace_range(body, start, end, handle);
+        for label in name_labels_for_body_match(&entry.name) {
+            if let Some((start, end)) = find_phrase_outside_url(body, &label) {
+                return replace_range(body, start, end, handle);
+            }
         }
     }
     let trimmed = body.trim_start();
@@ -829,6 +834,17 @@ fn ensure_named_handle_in_body(
         }
         HandleMatch::X => body.to_string(),
     }
+}
+
+fn name_labels_for_body_match(name: &str) -> Vec<String> {
+    let name = name.trim();
+    let mut out = vec![name.to_string()];
+    if let Some(first) = name.split_whitespace().next() {
+        if first != name && first.len() >= 5 {
+            out.push(first.to_string());
+        }
+    }
+    out
 }
 
 fn use_publisher_name_lead(entry: &HandleEntry) -> bool {
@@ -927,6 +943,9 @@ fn upsert_handles_line(pack: &str, line: &str) -> String {
 fn find_phrase_outside_url(hay: &str, phrase: &str) -> Option<(usize, usize)> {
     let hay_l = hay.to_ascii_lowercase();
     let needle = phrase.to_ascii_lowercase();
+    if needle.len() < 5 && !needle.contains(' ') {
+        return None;
+    }
     let mut from = 0usize;
     while from < hay_l.len() {
         let Some(rel) = hay_l.get(from..).and_then(|s| s.find(needle.as_str())) else {
@@ -1115,6 +1134,49 @@ mod tests {
         );
         assert!(named.starts_with("@isaacsacolick lists"));
         assert!(!named.contains("Isaac Sacolick"));
+    }
+
+    #[test]
+    fn short_handle_names_do_not_match_inside_common_phrases() {
+        let mut idx = HandlesIndex::default();
+        idx.upsert_entry(HandleEntry {
+            name: "code".into(),
+            linkedin: String::new(),
+            x: "@code".into(),
+            linkedin_url: String::new(),
+            x_url: "https://x.com/code".into(),
+        });
+        let pack = "handles: x=@code\n";
+        let body = "25k code reviews weekly on the platform.";
+        let out = ensure_x_handle_from_pack(body, pack, &idx);
+        assert!(
+            !out.contains("@code"),
+            "short name 'code' must not tag inside 'code reviews': {out}"
+        );
+    }
+
+    #[test]
+    fn vs_code_handle_does_not_tag_code_reviews() {
+        let mut idx = HandlesIndex::default();
+        idx.upsert_entry(HandleEntry {
+            name: "VS Code".into(),
+            linkedin: String::new(),
+            x: "@code".into(),
+            linkedin_url: String::new(),
+            x_url: "https://x.com/code".into(),
+        });
+        idx.upsert_entry(HandleEntry {
+            name: "DoorDash @DoorDash".into(),
+            linkedin: "@doordash".into(),
+            x: "@DoorDash".into(),
+            linkedin_url: "https://www.linkedin.com/company/doordash/".into(),
+            x_url: "https://x.com/DoorDash".into(),
+        });
+        let pack = "subject: DoorDash Flux\nhandles: x=@DoorDash\n";
+        let body = "🚀 DoorDash shifted 130k tasks. 25k code reviews weekly.";
+        let out = ensure_x_handle_from_pack(body, pack, &idx);
+        assert!(out.contains("@DoorDash"), "{out}");
+        assert!(!out.contains("@code"), "{out}");
     }
 
     #[test]

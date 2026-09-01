@@ -19,6 +19,7 @@ use crate::sources::draft_footer::{
     compose_draft_message, ensure_primary_link_line, pick_link_options,
 };
 use crate::sources::draft_url::{extract_in_post_url, promote_link_option, set_single_in_post_url};
+use crate::sources::handles::HandlesIndex;
 use crate::sources::tweet_farce::{ensure_farce_mentions, stored_is_farce};
 use crate::sources::tweet_footer::{
     aerate_tweet_commentary, coerce_tweet_body, compose_tweet_message, ensure_operator_https_lines,
@@ -75,6 +76,7 @@ pub async fn rework_stored_draft(
     stored: &StoredDraft,
     instructions: &str,
     tools: Option<&dyn ToolProvider>,
+    handles: &HandlesIndex,
 ) -> Result<ReworkedDraft, ReworkError> {
     if stored.status != "open" {
         return Err(ReworkError::NotOpen(
@@ -100,9 +102,8 @@ pub async fn rework_stored_draft(
     let prose = crate::llm::sanitize_itcy_text(
         &crate::sources::draft_footer::draft_prose_for_rework(&stored.body),
     );
-    let handles = crate::sources::handles::load_handles().unwrap_or_default();
     let brief_for_handles = format!("{}\n{instructions}\n{prose}", stored.subject);
-    crate::sources::handles::apply_brief_handles_to_pack(&mut pack, &brief_for_handles, &handles);
+    crate::sources::handles::apply_brief_handles_to_pack(&mut pack, &brief_for_handles, handles);
     let user = draft_rework_user_message(
         instructions,
         &stored.draft_id,
@@ -150,7 +151,7 @@ pub async fn rework_stored_draft(
         .await;
     body = strip_leading_draft_id(&body);
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
-    body = crate::sources::handles::ensure_linkedin_handle_from_pack(&body, &pack, &handles);
+    body = crate::sources::handles::ensure_linkedin_handle_from_pack(&body, &pack, handles);
     let body = compose_draft_message(&body, &stored.draft_id, &link_options);
     let body = with_disclosure(&body, &trace);
     info!(
@@ -328,6 +329,7 @@ pub async fn rework_stored_tweet(
     stored: &StoredDraft,
     instructions: &str,
     tools: Option<&dyn ToolProvider>,
+    handles: &HandlesIndex,
 ) -> Result<ReworkedDraft, ReworkError> {
     if stored.status != "open" {
         return Err(ReworkError::NotOpen(
@@ -342,11 +344,10 @@ pub async fn rework_stored_tweet(
     } else {
         stored.research_pack.clone()
     };
-    let handles = crate::sources::handles::load_handles().unwrap_or_default();
     crate::sources::handles::apply_brief_handles_to_pack(
         &mut pack,
         &format!("{}\n{instructions}", stored.subject),
-        &handles,
+        handles,
     );
     let current = stored.link_options.first().cloned().unwrap_or_else(|| {
         crate::sources::draft_url::extract_in_post_url(&stored.body).unwrap_or_default()
@@ -374,7 +375,7 @@ pub async fn rework_stored_tweet(
     if farce {
         body = ensure_farce_mentions(&body);
     }
-    body = crate::sources::handles::ensure_x_handle_from_pack(&body, &pack, &handles);
+    body = crate::sources::handles::ensure_x_handle_from_pack(&body, &pack, handles);
     let pack_urls = stored.sources.clone();
     let (body, link_options) =
         finalize_rework_tweet_output(body, stored, &pack_urls, &current, instructions, farce);

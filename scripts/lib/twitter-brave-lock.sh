@@ -5,15 +5,40 @@
 # One Brave CDP session at a time; pick a free debugging port (never steal :9224).
 # shellcheck shell=bash
 
+twitter_brave_stale_lock_pid() {
+  local lock="${1:?}"
+  [[ -f "${lock}" ]] || return 1
+  local pid
+  pid="$(tr -dc '0-9' <"${lock}" 2>/dev/null || true)"
+  [[ -n "${pid}" ]] || return 1
+  kill -0 "${pid}" 2>/dev/null
+}
+
+twitter_brave_clear_stale_lock() {
+  local lock="${1:?}"
+  if [[ -f "${lock}" ]] && ! twitter_brave_stale_lock_pid "${lock}"; then
+    rm -f "${lock}"
+  fi
+}
+
 twitter_brave_acquire_lock() {
   local run_root="${1:?run root}"
+  local wait_secs="${2:-180}"
   mkdir -p "${run_root}"
   local lock="${run_root}/brave.lock"
-  exec 9>"${lock}"
-  if ! flock -n 9; then
-    echo "another X Brave session holds ${lock}; wait or stop the other ship/pulse/status run" >&2
-    return 1
-  fi
+  local deadline=$((SECONDS + wait_secs))
+  while (( SECONDS < deadline )); do
+    twitter_brave_clear_stale_lock "${lock}"
+    exec 9>"${lock}"
+    if flock -n 9; then
+      echo "$$" >&9
+      return 0
+    fi
+    exec 9>&- || true
+    sleep 2
+  done
+  echo "another X Brave session holds ${lock}; wait or stop the other ship/pulse/status run" >&2
+  return 1
 }
 
 twitter_brave_pick_cdp_port() {
