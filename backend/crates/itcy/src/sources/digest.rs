@@ -606,8 +606,11 @@ Unprotect that staging branch on Interchouette-ITC/itcy-publications (keep `post
 Ship did not run."
             .into();
     }
-    if crate::bat::github::contents_put_sha_conflict(e) || e.contains("Contents API SHA conflict") {
-        return "Org `drafts` mirror hit a concurrent Contents update (stale SHA). \
+    if crate::bat::github::contents_put_sha_retryable(e)
+        || e.contains("Contents API SHA race")
+        || e.contains("Contents API SHA conflict")
+    {
+        return "Org `drafts` mirror hit a concurrent Contents update (SHA race). \
 If POST is already on fork `posts`, `/retry_bat` re-syncs and ships. Ship did not run on this wake."
             .into();
     }
@@ -1984,7 +1987,18 @@ mod tests {
         let api = r#"github api: put 2026/09/01/DRAFT-20260901-000138/body.md: {"message":"is at 5fd8c11ecd6e55466742d8ea626b83915e28e5f2 but expected fb3383a4729939701700d5fd2c31928b45c16a8d","documentation_url":"https://docs.github.com/rest/repos/contents#create-or-update-file-contents","status":"409"}"#;
         let out = format_bat_fail(66, api);
         assert!(out.starts_with("*BAT failed* PR #66"), "{out}");
-        assert!(out.contains("stale SHA"), "{out}");
+        assert!(out.contains("SHA race"), "{out}");
+        assert!(out.contains("/retry_bat"), "{out}");
+        assert!(!out.contains("documentation_url"), "{out}");
+    }
+
+    #[test]
+    fn bat_fail_slack_names_org_drafts_missing_sha() {
+        // DRAFT-20260901-000141: meta PUT create raced; POST merge ok, sync aborted BAT.
+        let api = r#"github api: put 2026/09/01/DRAFT-20260901-000141/meta.toml: {"message":"Invalid request.\n\n\"sha\" wasn't supplied.","documentation_url":"https://docs.github.com/rest/repos/contents#create-or-update-file-contents","status":"422"}"#;
+        let out = format_bat_fail(73, api);
+        assert!(out.starts_with("*BAT failed* PR #73"), "{out}");
+        assert!(out.contains("SHA race"), "{out}");
         assert!(out.contains("/retry_bat"), "{out}");
         assert!(!out.contains("documentation_url"), "{out}");
     }

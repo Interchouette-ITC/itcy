@@ -1093,14 +1093,15 @@ impl GithubClient {
         branch: &str,
         file: &RepoFile,
     ) -> Result<(), GithubError> {
-        const SHA_CONFLICT_RETRIES: u32 = 3;
+        const SHA_RETRY_ATTEMPTS: u32 = 3;
+        let encoded_path = github_contents_path(&file.path);
         let url = format!(
             "https://api.github.com/repos/{}/{}/contents/{}",
-            owner, self.cfg.repo, file.path
+            owner, self.cfg.repo, encoded_path
         );
         let b64 = base64::engine::general_purpose::STANDARD.encode(file.content.as_bytes());
         let mut last_body = String::new();
-        for attempt in 0..SHA_CONFLICT_RETRIES {
+        for attempt in 0..SHA_RETRY_ATTEMPTS {
             let mut payload = json!({
                 "message": format!("ITCy: {}", file.path),
                 "content": b64,
@@ -1120,7 +1121,7 @@ impl GithubClient {
                 return Ok(());
             }
             last_body = resp.text().await.unwrap_or_default();
-            if contents_put_sha_conflict(&last_body) && attempt + 1 < SHA_CONFLICT_RETRIES {
+            if contents_put_sha_retryable(&last_body) && attempt + 1 < SHA_RETRY_ATTEMPTS {
                 continue;
             }
             return Err(GithubError::Api(format_contents_put_error(
@@ -1138,9 +1139,10 @@ impl GithubClient {
         branch: &str,
         path: &str,
     ) -> Result<Option<String>, GithubError> {
+        let encoded_path = github_contents_path(path);
         let url = format!(
             "https://api.github.com/repos/{}/{}/contents/{}?ref={}",
-            owner, self.cfg.repo, path, branch
+            owner, self.cfg.repo, encoded_path, branch
         );
         let resp = self
             .http
@@ -1152,7 +1154,11 @@ impl GithubClient {
             return Ok(None);
         }
         if !resp.status().is_success() {
-            return Ok(None);
+            let body = resp.text().await.unwrap_or_default();
+            return Err(GithubError::Api(format!(
+                "get contents sha {path} on {owner}/{}:{branch}: {body}",
+                self.cfg.repo
+            )));
         }
         let meta: ContentMeta = resp.json().await?;
         Ok(Some(meta.sha))
@@ -1577,6 +1583,36 @@ pub fn contents_put_sha_conflict(api_body: &str) -> bool {
         && api_body.contains("\"status\":\"409\"")
 }
 
+/// True when Contents create ran against an existing blob (422; concurrent org `drafts` sync).
+#[must_use]
+pub fn contents_put_missing_sha(api_body: &str) -> bool {
+    (api_body.contains("\"status\":\"422\"") || api_body.contains("\"status\":422"))
+        && (api_body.contains(r#""sha" wasn't supplied"#)
+            || api_body.contains(r#"\"sha\" wasn't supplied"#))
+}
+
+/// True when a Contents put should re-fetch blob SHA and retry.
+#[must_use]
+pub fn contents_put_sha_retryable(api_body: &str) -> bool {
+    contents_put_sha_conflict(api_body) || contents_put_missing_sha(api_body)
+}
+
+/// Percent-encode a repo path segment for GitHub Contents API URLs.
+fn github_contents_path(path: &str) -> String {
+    path.split('/')
+        .map(|segment| {
+            segment
+                .chars()
+                .map(|c| match c {
+                    'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
+                    _ => format!("%{:02X}", u32::from(c)),
+                })
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// Operator-facing Contents put error (playground `LinkedIn` BAT mirrors onto org `drafts`).
 #[must_use]
 pub fn format_contents_put_error(path: &str, api_body: &str) -> String {
@@ -1585,9 +1621,9 @@ pub fn format_contents_put_error(path: &str, api_body: &str) -> String {
             "put {path}: Contents API blocked - branch protection requires a pull request. \
              Playground LinkedIn BAT mirrors with a direct put onto org `drafts`; that branch must not require PRs."
         )
-    } else if contents_put_sha_conflict(api_body) {
+    } else if contents_put_sha_retryable(api_body) {
         format!(
-            "put {path}: Contents API SHA conflict (concurrent org `drafts` update). \
+            "put {path}: Contents API SHA race (concurrent org `drafts` update). \
              Retries exhausted; `/retry_bat` is safe when POST is already on `posts`."
         )
     } else {
@@ -1877,10 +1913,33 @@ mod tests {
         // DRAFT-20260901-000138: org `drafts` mirror PUT raced; merge ok, sync aborted BAT.
         let api = r#"{"message":"is at 5fd8c11ecd6e55466742d8ea626b83915e28e5f2 but expected fb3383a4729939701700d5fd2c31928b45c16a8d","documentation_url":"https://docs.github.com/rest/repos/contents#create-or-update-file-contents","status":"409"}"#;
         assert!(contents_put_sha_conflict(api));
+        assert!(!contents_put_missing_sha(api));
+        assert!(contents_put_sha_retryable(api));
         assert!(!contents_put_blocked_by_branch_protection(api));
         let msg = format_contents_put_error("2026/09/01/DRAFT-20260901-000138/body.md", api);
-        assert!(msg.contains("SHA conflict"), "{msg}");
+        assert!(msg.contains("SHA race"), "{msg}");
         assert!(msg.contains("/retry_bat"), "{msg}");
+    }
+
+    #[test]
+    fn contents_put_missing_sha_detects_existing_blob_422() {
+        // DRAFT-20260901-000141: org `drafts` meta PUT raced (create without sha on existing file).
+        let api = r#"{"message":"Invalid request.\n\n\"sha\" wasn't supplied.","documentation_url":"https://docs.github.com/rest/repos/contents#create-or-update-file-contents","status":"422"}"#;
+        assert!(contents_put_missing_sha(api));
+        assert!(!contents_put_sha_conflict(api));
+        assert!(contents_put_sha_retryable(api));
+        let msg = format_contents_put_error("2026/09/01/DRAFT-20260901-000141/meta.toml", api);
+        assert!(msg.contains("SHA race"), "{msg}");
+        assert!(msg.contains("/retry_bat"), "{msg}");
+    }
+
+    #[test]
+    fn github_contents_path_encodes_segments() {
+        assert_eq!(
+            github_contents_path("2026/09/01/DRAFT-20260901-000141/meta.toml"),
+            "2026/09/01/DRAFT-20260901-000141/meta.toml"
+        );
+        assert_eq!(github_contents_path("a b/c"), "a%20b/c");
     }
 
     #[test]
