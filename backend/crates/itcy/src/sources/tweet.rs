@@ -127,7 +127,7 @@ pub async fn build_grounded_tweet(
         }
     }
     let (body, link_options) = attach_tweet_cites(&tweet_body, &pack_for_links, &tweet_id, subject);
-    crate::sources::publisher_url::require_link_options_floor(&link_options)
+    crate::sources::publisher_url::require_tweet_link_options_floor(subject, &link_options)
         .map_err(RagError::Store)?;
     info!(
         tweet_id = %tweet_id,
@@ -204,7 +204,7 @@ pub async fn build_grounded_tweet_from_pack(
     .await;
     let tweet_body = ensure_tweet_handles_from_pack(tools, &tweet_body, &research_pack);
     let (body, link_options) = attach_tweet_cites(&tweet_body, &urls, &tweet_id, subject);
-    crate::sources::publisher_url::require_link_options_floor(&link_options)
+    crate::sources::publisher_url::require_tweet_link_options_floor(subject, &link_options)
         .map_err(RagError::Store)?;
     Ok(GroundedDraft {
         subject: subject.to_string(),
@@ -478,6 +478,23 @@ Sources:
             "publisher not in tweet body: {api}"
         );
         assert!(api.contains("tinyboot"));
+    }
+
+    #[test]
+    fn locked_x_status_cite_passes_link_floor_with_one_option() {
+        let x = "https://x.com/nineshoot/status/2094567713113059575";
+        let brief = format!("Obscura Rust browser, cite {x}");
+        let pack = vec![x.to_string()];
+        let (_out, opts) = attach_tweet_cites(
+            "🚀 Obscura ships Rust + V8 + CDP.\n\n#Rust #Browser\n",
+            &pack,
+            "TWEET-098",
+            &brief,
+        );
+        crate::sources::publisher_url::require_tweet_link_options_floor(&brief, &opts)
+            .expect("locked X cite with one Link option");
+        assert_eq!(opts.len(), 1);
+        assert_eq!(opts[0], x);
     }
 
     #[test]

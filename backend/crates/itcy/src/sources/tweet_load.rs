@@ -15,6 +15,8 @@ use std::fmt::Write;
 use tracing::{info, warn};
 
 const PACK_CAP: usize = crate::sources::publisher_url::LINK_OPTIONS_CAP;
+/// Extra X statuses to pad Link options when the cite is a locked X status (no SERP).
+const LINK_OPTIONS_PAD: usize = crate::sources::publisher_url::LINK_OPTIONS_MIN - 1;
 /// Pack summary budget for the browsed cite page. X accessibility trees are verbose; the
 /// JPEG XL card `/url:` sat past 2k (~3.5k). Publisher URLs are still taken from the **full**
 /// browse before this clip.
@@ -58,11 +60,14 @@ pub async fn run_short_cite_load(
     };
 
     crate::sources::rag::log_pipeline_step("4/4 X search");
+    let x_q = x_search_query(subject);
     let (x_extra, x_hits) = if x_cite_only {
-        info!("load_tweet: subject is X status; skip X keyword search");
-        (None, 0)
+        info!(
+            query = %x_q,
+            "load_tweet: X query (pad Link options without SERP)"
+        );
+        extra_x_statuses(&x_q, subject_url, LINK_OPTIONS_PAD).await
     } else {
-        let x_q = x_search_query(subject);
         info!(query = %x_q, "load_tweet: X query");
         let pair = extra_x_status(&x_q, subject_url).await;
         info!(
@@ -71,7 +76,7 @@ pub async fn run_short_cite_load(
             picked = pair.0.as_deref().unwrap_or("(none)"),
             "load_tweet: X results"
         );
-        pair
+        (pair.0.into_iter().collect::<Vec<_>>(), pair.1)
     };
 
     let session = session_publisher_urls(tools, x_cite_only).await;
@@ -150,7 +155,7 @@ struct PackAssemble<'a> {
     cite_text: &'a str,
     overview: &'a str,
     session: &'a [String],
-    x_extra: Option<String>,
+    x_extra: Vec<String>,
 }
 
 async fn assemble_and_probe_pack(
@@ -165,9 +170,7 @@ async fn assemble_and_probe_pack(
         parts.overview,
         parts.session,
     );
-    if let Some(u) = parts.x_extra.clone() {
-        push_unique(&mut urls, std::iter::once(u));
-    }
+    push_unique(&mut urls, parts.x_extra.iter().cloned());
     info!(
         before_probe = urls.len(),
         urls = %urls.iter().take(12).cloned().collect::<Vec<_>>().join(" | "),
@@ -252,24 +255,42 @@ async fn brave_and_extra_browse(
 }
 
 async fn extra_x_status(query: &str, subject_url: &str) -> (Option<String>, usize) {
+    let (extras, hits) = extra_x_statuses(query, subject_url, 1).await;
+    (extras.into_iter().next(), hits)
+}
+
+async fn extra_x_statuses(query: &str, subject_url: &str, max: usize) -> (Vec<String>, usize) {
+    if max == 0 {
+        return (Vec::new(), 0);
+    }
     let Ok(tool) = TwitterTool::from_disk() else {
         warn!("load_tweet: X search skipped (no creds)");
-        return (None, 0);
+        return (Vec::new(), 0);
     };
     let hits = match tool.search(&[query.to_string()]).await {
         Ok(h) => h,
         Err(e) => {
             warn!(error = %e, query = %query, "load_tweet: X search failed");
-            return (None, 0);
+            return (Vec::new(), 0);
         }
     };
     let n = hits.len();
     let subject_id = x_status_id(subject_url);
-    let picked = hits
-        .into_iter()
-        .map(|h| h.url)
-        .find(|u| is_x_status_url(u) && x_status_id(u) != subject_id);
-    (picked, n)
+    let mut extras = Vec::new();
+    for h in hits {
+        let u = h.url;
+        if !is_x_status_url(&u) || x_status_id(&u) == subject_id {
+            continue;
+        }
+        if extras.iter().any(|x| x == &u) {
+            continue;
+        }
+        extras.push(u);
+        if extras.len() >= max {
+            break;
+        }
+    }
+    (extras, n)
 }
 
 fn first_extra_publisher(extracted: &[String], subject_url: &str) -> Option<String> {

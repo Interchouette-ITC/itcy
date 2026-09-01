@@ -6,6 +6,7 @@
 use crate::sources::draft_footer::ensure_primary_link_line;
 use crate::sources::draft_url::{extract_in_post_url, set_single_in_post_url};
 use crate::sources::html::extract_articleish_text;
+use crate::sources::tweet_footer::extract_brief_cite;
 use crate::sources::url_hygiene::{
     is_allowed_tweet_cite, is_junk_or_search_url, is_x_status_url, same_publisher_domain,
     scrub_https_url,
@@ -294,12 +295,54 @@ pub async fn require_ship_cite_reachable(
 ///
 /// Returns operator-facing text when the floor is missed.
 pub fn require_link_options_floor(link_options: &[String]) -> Result<(), String> {
-    if link_options.len() < LINK_OPTIONS_MIN {
-        return Err(format!(
-            "Need at least {LINK_OPTIONS_MIN} reachable publisher Link options (got {}). \
+    require_link_options_floor_min(LINK_OPTIONS_MIN, link_options, None)
+}
+
+/// Tweet floor: locked X status cite needs only the operator URL; publisher cites need three.
+///
+/// # Errors
+///
+/// Returns operator-facing text when the floor is missed.
+pub fn require_tweet_link_options_floor(
+    brief: &str,
+    link_options: &[String],
+) -> Result<(), String> {
+    let min = tweet_link_options_min(brief);
+    let hint = if min == 1 {
+        Some(
+            "Operator locked an X status cite; Link:1 is the quote card. \
+Add a publisher https in the brief for extra Link options.",
+        )
+    } else {
+        None
+    };
+    require_link_options_floor_min(min, link_options, hint)
+}
+
+fn tweet_link_options_min(brief: &str) -> usize {
+    if extract_brief_cite(brief).is_some_and(|u| is_x_status_url(&u)) {
+        1
+    } else {
+        LINK_OPTIONS_MIN
+    }
+}
+
+fn require_link_options_floor_min(
+    min: usize,
+    link_options: &[String],
+    hint: Option<&str>,
+) -> Result<(), String> {
+    if link_options.len() < min {
+        let mut msg = format!(
+            "Need at least {min} reachable publisher Link options (got {}). \
 Refuse draft/tweet with Link:0. Retry with a live publisher URL, or `/draft_about` / `/tweet_about` with a cite.",
             link_options.len()
-        ));
+        );
+        if let Some(h) = hint {
+            msg.push(' ');
+            msg.push_str(h);
+        }
+        return Err(msg);
     }
     if link_options
         .iter()
@@ -502,6 +545,17 @@ mod tests {
         ];
         assert!(require_link_options_floor(&three).is_ok());
         assert!(require_link_options_floor(&three[..2]).is_err());
+    }
+
+    #[test]
+    fn tweet_link_floor_one_when_operator_locked_x_status_cite() {
+        let x = "https://x.com/nineshoot/status/2094567713113059575";
+        let brief = format!("Obscura Rust browser, Short punchy take, Link cite {x}");
+        let one = vec![x.to_string()];
+        assert!(require_tweet_link_options_floor(&brief, &one).is_ok());
+        assert!(require_link_options_floor(&one).is_err());
+        let publisher_brief = "Obscura Rust browser, cite https://labs.sogeti.com/obscura";
+        assert!(require_tweet_link_options_floor(publisher_brief, &one).is_err());
     }
 
     #[test]
