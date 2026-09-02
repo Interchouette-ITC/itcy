@@ -91,6 +91,23 @@ pub async fn rework_stored_draft(
         instructions = %instructions.trim(),
         "rework: start"
     );
+    if matches!(
+        crate::sources::draft_footer::classify_rework_mode(instructions),
+        crate::sources::draft_footer::ReworkMode::Replace
+    ) {
+        return apply_draft_replacement(stored, instructions, handles, current_url).await;
+    }
+    rework_stored_draft_llm(router, stored, instructions, tools, handles, current_url).await
+}
+
+async fn rework_stored_draft_llm(
+    router: &FailoverRouter,
+    stored: &StoredDraft,
+    instructions: &str,
+    tools: Option<&dyn ToolProvider>,
+    handles: &HandlesIndex,
+    current_url: Option<String>,
+) -> Result<ReworkedDraft, ReworkError> {
     let mut pack = if stored.research_pack.trim().is_empty() {
         rework_empty_pack(&stored.subject)
     } else {
@@ -121,6 +138,7 @@ pub async fn rework_stored_draft(
         .await?;
     let mut body = crate::llm::sanitize_itcy_text(response.message.content.trim());
     body = crate::sources::draft_footer::strip_leading_page_title_lede(&body);
+    body = crate::sources::draft_footer::strip_leading_cite_instruction(&body);
     body = crate::sources::draft_footer::strip_rework_quoted_removals(&body, instructions);
     body = crate::sources::draft_footer::aerate_linkedin_draft(&body);
     let pack_urls = stored.sources.clone();
@@ -167,6 +185,79 @@ pub async fn rework_stored_draft(
         model: format!("rework={}", trace.model_label()),
         tokens_in: trace.prompt_tokens,
         tokens_out: trace.completion_tokens,
+        sources: pack_urls,
+        link_options,
+        research_pack: pack,
+    })
+}
+
+/// Apply a pasted full `LinkedIn` draft as `/rework` replace (no LLM).
+async fn apply_draft_replacement(
+    stored: &StoredDraft,
+    instructions: &str,
+    handles: &HandlesIndex,
+    current_url: Option<String>,
+) -> Result<ReworkedDraft, ReworkError> {
+    let mut pack = if stored.research_pack.trim().is_empty() {
+        rework_empty_pack(&stored.subject)
+    } else {
+        stored.research_pack.clone()
+    };
+    let brief_for_handles = format!("{}\n{instructions}", stored.subject);
+    crate::sources::handles::apply_brief_handles_to_pack(&mut pack, &brief_for_handles, handles);
+    let mut body = crate::llm::sanitize_itcy_text(instructions.trim());
+    body = crate::sources::draft_footer::strip_leading_page_title_lede(&body);
+    body = crate::sources::draft_footer::strip_leading_cite_instruction(&body);
+    body = crate::sources::draft_footer::aerate_linkedin_draft(&body);
+    let pack_urls = stored.sources.clone();
+    let mut link_options = if stored.link_options.is_empty() {
+        pick_link_options(&pack_urls, &body)
+    } else {
+        stored.link_options.clone()
+    };
+    if link_options.is_empty() {
+        link_options = pick_link_options(&pack_urls, &body);
+    }
+    let primary = current_url
+        .clone()
+        .or_else(|| link_options.first().cloned())
+        .unwrap_or_default();
+    if primary.is_empty() {
+        body = ensure_primary_link_line(&body, link_options.first().map(String::as_str));
+    } else {
+        promote_link_option(&mut link_options, &primary);
+        body = set_single_in_post_url(&body, &primary);
+    }
+    (body, link_options) =
+        crate::sources::publisher_url::finalize_reachable_link_options_from_pool(
+            &body,
+            link_options,
+            &pack_urls,
+        )
+        .await;
+    body = strip_leading_draft_id(&body);
+    body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
+    body = crate::sources::handles::ensure_linkedin_handle_from_pack(&body, &pack, handles);
+    let body = compose_draft_message(&body, &stored.draft_id, &link_options);
+    let trace = crate::llm::client::CompletionTrace {
+        provider: "operator".into(),
+        model: "rework-replace".into(),
+        prompt_tokens: 0,
+        completion_tokens: 0,
+    };
+    let body = with_disclosure(&body, &trace);
+    info!(
+        draft_id = %stored.draft_id,
+        in_post = %primary,
+        "rework: replace applied (no LLM)"
+    );
+    Ok(ReworkedDraft {
+        draft_id: stored.draft_id.clone(),
+        subject: stored.subject.clone(),
+        body,
+        model: format!("rework={}", trace.model_label()),
+        tokens_in: 0,
+        tokens_out: 0,
         sources: pack_urls,
         link_options,
         research_pack: pack,

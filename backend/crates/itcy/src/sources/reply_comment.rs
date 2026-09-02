@@ -11,8 +11,10 @@ use crate::llm::client::LlmMessage;
 use crate::llm::router::{FailoverRouter, TaskKind};
 use crate::llm::sanitize::sanitize_itcy_text;
 use crate::prompts::{
-    comment_reply_user_message, tweet_reply_user_message, COMMENT_REPLY_SYSTEM_CORE,
-    TWEET_REPLY_SYSTEM_CORE,
+    reply_rework_instruction_user_message, reply_rework_refresh_user_message,
+    tweet_reply_rework_instruction_user_message, tweet_reply_rework_refresh_user_message,
+    REPLY_REWORK_INSTRUCTION_SYSTEM_CORE, REPLY_REWORK_REFRESH_SYSTEM_CORE,
+    TWEET_REPLY_REWORK_INSTRUCTION_SYSTEM_CORE, TWEET_REPLY_REWORK_REFRESH_SYSTEM_CORE,
 };
 use crate::publish::{
     activity_post_urn, parent_comment_urn, resolve_publish_mode_agile, ship_x_post,
@@ -389,35 +391,181 @@ async fn rewrite_reply(
     prior: &str,
     instructions: &str,
 ) -> Result<(String, crate::llm::client::CompletionTrace), String> {
-    let (system, base_user) = if meta.is_x() {
-        (
-            TWEET_REPLY_SYSTEM_CORE,
-            tweet_reply_user_message(&meta.author, &meta.parent_body),
-        )
+    use crate::sources::draft_footer::{
+        classify_rework_mode, rework_collapsed_too_much, rework_verbatim_ban_phrases, ReworkMode,
+    };
+    let banned = rework_verbatim_ban_phrases(prior, instructions);
+    match classify_rework_mode(instructions) {
+        ReworkMode::Replace => apply_replacement_reply(meta, instructions, &banned),
+        ReworkMode::Refresh => {
+            rewrite_reply_llm(llm, meta, prior, instructions, &banned, true).await
+        }
+        ReworkMode::Instruction => {
+            let (reply, trace) =
+                rewrite_reply_llm(llm, meta, prior, instructions, &banned, false).await?;
+            if rework_collapsed_too_much(prior, &reply, instructions) {
+                return Err(
+                    "rework collapsed into a stub; say what to change, or paste the full replacement reply"
+                        .into(),
+                );
+            }
+            Ok((reply, trace))
+        }
+    }
+}
+
+fn apply_replacement_reply(
+    meta: &ReplyMeta,
+    instructions: &str,
+    banned: &[String],
+) -> Result<(String, crate::llm::client::CompletionTrace), String> {
+    use crate::sources::draft_footer::body_copies_rework_ban;
+    let mut reply = ensure_one_emoji(&sanitize_itcy_text(instructions.trim()));
+    for phrase in banned {
+        if phrase.chars().count() >= 24 {
+            reply = reply.replace(phrase, "");
+        }
+    }
+    reply = collapse_reply_ws(&reply);
+    reply = ensure_one_emoji(&reply);
+    if reply.trim().is_empty() {
+        return Err("replacement draft emptied after scrub".into());
+    }
+    if body_copies_rework_ban(&reply, banned) {
+        return Err(
+            "replacement draft still contains old reply sentences; edit those out and /rework again"
+                .into(),
+        );
+    }
+    if meta.is_x() && !fits_x_limit(&reply) {
+        return Err(format!(
+            "replacement draft is {} weighted chars (X limit {X_CHAR_LIMIT})",
+            x_weighted_len(&reply)
+        ));
+    }
+    Ok((
+        reply,
+        crate::llm::client::CompletionTrace {
+            provider: "operator".into(),
+            model: "rework-replace".into(),
+            prompt_tokens: 0,
+            completion_tokens: 0,
+        },
+    ))
+}
+
+fn reply_rework_ban_block(banned: &[String]) -> String {
+    if banned.is_empty() {
+        return String::new();
+    }
+    let mut b = String::from(
+        "\n\nHARD: Do NOT copy these phrases verbatim; rewrite them in new wording:\n",
+    );
+    for phrase in banned {
+        b.push_str("- ");
+        b.push_str(phrase);
+        b.push('\n');
+    }
+    b
+}
+
+fn reply_rework_messages(
+    meta: &ReplyMeta,
+    prior: &str,
+    instructions: &str,
+    banned: &[String],
+    refresh: bool,
+) -> (String, String) {
+    let ban_block = reply_rework_ban_block(banned);
+    if meta.is_x() {
+        if refresh {
+            (
+                TWEET_REPLY_REWORK_REFRESH_SYSTEM_CORE.to_string(),
+                tweet_reply_rework_refresh_user_message(&meta.author, &meta.parent_body, prior),
+            )
+        } else {
+            (
+                TWEET_REPLY_REWORK_INSTRUCTION_SYSTEM_CORE.to_string(),
+                tweet_reply_rework_instruction_user_message(
+                    instructions,
+                    &meta.author,
+                    &meta.parent_body,
+                    prior,
+                    &ban_block,
+                ),
+            )
+        }
     } else {
         let comment = if meta.target_body.trim().is_empty() {
             meta.parent_body.as_str()
         } else {
             meta.target_body.as_str()
         };
-        (
-            COMMENT_REPLY_SYSTEM_CORE,
-            comment_reply_user_message(&meta.parent_body, &meta.author, comment),
-        )
-    };
-    let user = format!(
-        "{base_user}\n\nPrevious reply:\n{prior}\n\nOperator instructions (must follow):\n{instructions}\n\nWrite the reply only."
-    );
-    let messages = [LlmMessage::system(system), LlmMessage::user(user)];
-    let (resp, trace) = llm
-        .complete(TaskKind::Freeform, &messages)
+        if refresh {
+            (
+                REPLY_REWORK_REFRESH_SYSTEM_CORE.to_string(),
+                reply_rework_refresh_user_message(&meta.parent_body, &meta.author, comment, prior),
+            )
+        } else {
+            (
+                REPLY_REWORK_INSTRUCTION_SYSTEM_CORE.to_string(),
+                reply_rework_instruction_user_message(
+                    instructions,
+                    &meta.parent_body,
+                    &meta.author,
+                    comment,
+                    prior,
+                    &ban_block,
+                ),
+            )
+        }
+    }
+}
+
+async fn rewrite_reply_llm(
+    llm: &Arc<FailoverRouter>,
+    meta: &ReplyMeta,
+    prior: &str,
+    instructions: &str,
+    banned: &[String],
+    refresh: bool,
+) -> Result<(String, crate::llm::client::CompletionTrace), String> {
+    use crate::sources::draft_footer::body_copies_rework_ban;
+    let (system, user) = reply_rework_messages(meta, prior, instructions, banned, refresh);
+    let messages = [
+        LlmMessage::system(system.as_str()),
+        LlmMessage::user(user.clone()),
+    ];
+    // Draft route (same chef chain as writers), not Freeform short-reply chain.
+    let (resp, mut trace) = llm
+        .complete(TaskKind::Draft, &messages)
         .await
         .map_err(|e| format!("LLM failed: {e}"))?;
-    let raw = resp.message.content.trim();
-    if raw.is_empty() {
+    let mut reply = ensure_one_emoji(&sanitize_itcy_text(resp.message.content.trim()));
+    if !banned.is_empty() && body_copies_rework_ban(&reply, banned) {
+        let retry_user = format!(
+            "{user}\n\nRETRY: your previous draft still copied banned phrases. \
+Rewrite those parts only; do not paste them again."
+        );
+        let retry_messages = [
+            LlmMessage::system(system.as_str()),
+            LlmMessage::user(retry_user),
+        ];
+        let (resp2, trace2) = llm
+            .complete(TaskKind::Draft, &retry_messages)
+            .await
+            .map_err(|e| format!("LLM failed: {e}"))?;
+        trace = trace2;
+        reply = ensure_one_emoji(&sanitize_itcy_text(resp2.message.content.trim()));
+    }
+    if reply.trim().is_empty() {
         return Err("LLM returned an empty reply".into());
     }
-    let reply = ensure_one_emoji(&sanitize_itcy_text(raw));
+    if !banned.is_empty() && body_copies_rework_ban(&reply, banned) {
+        return Err("rework still copied the text you asked to reformulate; \
+quote the exact sentences and try /rework again"
+            .into());
+    }
     if meta.is_x() && !fits_x_limit(&reply) {
         return Err(format!(
             "LLM reply is {} weighted chars (X limit {X_CHAR_LIMIT})",
@@ -425,6 +573,14 @@ async fn rewrite_reply(
         ));
     }
     Ok((reply, trace))
+}
+
+fn collapse_reply_ws(s: &str) -> String {
+    s.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace(" .", ".")
+        .replace(" ,", ",")
 }
 
 /// `/accept` on `CREPLY-` / `XREPLY-`: ship direct (no BAT PR).
