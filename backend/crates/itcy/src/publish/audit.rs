@@ -23,6 +23,10 @@ const GET_SQL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../sql/publish_audit_get.sql"
 ));
+const LATEST_OK_SQL: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../sql/publish_audit_latest_ok.sql"
+));
 
 /// One row in `publish_audit`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,6 +185,39 @@ impl PublishAuditStore {
             .optional()?;
         Ok(row)
     }
+
+    /// Latest successful ship for this artefact id and/or publications PR (BAT dedupe).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PublishAuditError::Open`] on `SQLite` failure.
+    pub fn latest_ok(
+        &self,
+        draft_id: Option<&str>,
+        pubs_pr_number: Option<u64>,
+    ) -> Result<Option<PublishAuditRow>, PublishAuditError> {
+        let pubs = pubs_pr_number.map(u64::cast_signed);
+        let mut stmt = self.conn.prepare(LATEST_OK_SQL)?;
+        let row = stmt
+            .query_row(params![draft_id, pubs], |r| {
+                Ok(PublishAuditRow {
+                    id: r.get(0)?,
+                    draft_id: r.get(1)?,
+                    pubs_pr_number: r.get::<_, Option<i64>>(2)?.map(i64::cast_unsigned),
+                    mode: r.get(3)?,
+                    status: r.get(4)?,
+                    linkedin_urn: r.get(5)?,
+                    linkedin_url: r.get(6)?,
+                    error: r.get(7)?,
+                    body_preview: r.get(8)?,
+                    body_sha256: r.get(9)?,
+                    detail: r.get(10)?,
+                    created_at: r.get(11)?,
+                })
+            })
+            .optional()?;
+        Ok(row)
+    }
 }
 
 fn body_preview(body: &str, max_chars: usize) -> String {
@@ -255,5 +292,39 @@ mod tests {
         assert_eq!(got.status, "error");
         assert_eq!(got.mode, "production");
         assert!(got.error.as_deref().unwrap_or("").contains("no token"));
+    }
+
+    #[test]
+    fn latest_ok_matches_draft_or_pubs_pr() {
+        let dir = TempDir::new().expect("temp");
+        let store = PublishAuditStore::open(dir.path().join("d.db")).expect("open");
+        let request = PublishRequest {
+            draft_id: Some("XPOST-20260902-000107".into()),
+            pubs_pr_number: Some(116),
+            body: "ship once".into(),
+        };
+        let result = PublishResult {
+            mode: PublishMode::Production,
+            linkedin_urn: Some("2095144454436864241".into()),
+            linkedin_url: Some("https://x.com/interchouette/status/2095144454436864241".into()),
+            detail: "https://x.com/interchouette/status/2095144454436864241".into(),
+        };
+        store
+            .insert(&PublishAuditWrite::from_ok(&request, &result))
+            .expect("insert");
+        let by_id = store
+            .latest_ok(Some("XPOST-20260902-000107"), None)
+            .expect("query")
+            .expect("row");
+        assert_eq!(by_id.pubs_pr_number, Some(116));
+        let by_pr = store
+            .latest_ok(None, Some(116))
+            .expect("query")
+            .expect("row");
+        assert_eq!(by_pr.draft_id.as_deref(), Some("XPOST-20260902-000107"));
+        assert!(store
+            .latest_ok(Some("OTHER"), Some(999))
+            .expect("q")
+            .is_none());
     }
 }
