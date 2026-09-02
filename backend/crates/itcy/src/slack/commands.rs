@@ -460,6 +460,8 @@ fn extract_inline_slash(text: &str) -> Option<(String, String)> {
 fn slash_args_look_like_usage_chrome(cmd: &str, args: &str) -> bool {
     match cmd {
         "change_url" => args.contains("<0|1|2|3"),
+        // Bot Next: footers still show `<instructions>` as a placeholder token.
+        "rework" => args.contains('<') && args.contains("instructions"),
         _ => false,
     }
 }
