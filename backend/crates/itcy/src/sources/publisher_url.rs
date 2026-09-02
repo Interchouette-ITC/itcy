@@ -404,7 +404,7 @@ mod tests {
     fn cite_probe_soft_fail_bot_wall_and_cloudflare() {
         assert!(cite_probe_soft_fail("HTTP 403"));
         assert!(cite_probe_soft_fail(
-            "Cloudflare bot check (headed browser retry still blocked)"
+            "Cloudflare bot check page (ingest blocked)"
         ));
         assert!(!cite_probe_soft_fail("HTTP 404"));
     }

@@ -512,13 +512,66 @@ pub fn parse_handle_add(raw: &str) -> Result<HandleEntry, String> {
     if name.is_empty() {
         return Err("could not derive a display name; pass a name before the URL/@".into());
     }
-    Ok(HandleEntry {
+    Ok(sanitize_handle_entry(HandleEntry {
         name,
         linkedin,
         x,
         linkedin_url,
         x_url,
-    })
+    }))
+}
+
+/// Strip Slack markdown `*` from names and handle slugs (operator typo on `/handle_add`).
+fn sanitize_handle_entry(mut entry: HandleEntry) -> HandleEntry {
+    entry.name = strip_markdown_stars(&entry.name);
+    entry.linkedin = normalize_at_handle(&entry.linkedin);
+    entry.x = normalize_at_handle(&entry.x);
+    if !entry.linkedin_url.is_empty() {
+        entry.linkedin_url = sanitize_profile_url(&entry.linkedin_url);
+    }
+    if !entry.x_url.is_empty() {
+        entry.x_url = sanitize_profile_url(&entry.x_url);
+    }
+    if entry.linkedin.is_empty() {
+        if let Some(slug) = linkedin_slug_from_url(&entry.linkedin_url) {
+            entry.linkedin = format!("@{slug}");
+        }
+    }
+    if entry.x.is_empty() {
+        if let Some(slug) = x_slug_from_url(&entry.x_url) {
+            entry.x = format!("@{slug}");
+        }
+    }
+    entry
+}
+
+fn strip_markdown_stars(s: &str) -> String {
+    s.split_whitespace()
+        .map(|w| w.trim_matches('*'))
+        .filter(|w| !w.is_empty() && !w.starts_with('@'))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn normalize_at_handle(raw: &str) -> String {
+    let body = raw.trim().trim_start_matches('@').trim_matches('*').trim();
+    if body.is_empty() {
+        return String::new();
+    }
+    format!("@{body}")
+}
+
+fn sanitize_profile_url(url: &str) -> String {
+    let scrubbed = crate::sources::url_hygiene::scrub_https_url(url);
+    if let Some(slug) = linkedin_slug_from_url(&scrubbed) {
+        let slug = slug.trim_matches('*');
+        return format!("https://www.linkedin.com/company/{slug}/");
+    }
+    if let Some(slug) = x_slug_from_url(&scrubbed) {
+        let slug = slug.trim_matches('*');
+        return format!("https://x.com/{slug}");
+    }
+    scrubbed.replace('*', "")
 }
 
 /// Last two tokens must each be `@handle` or `https://…` (else noop).
@@ -1239,6 +1292,16 @@ mod tests {
         assert_eq!(e.name, "Rust Bytes");
         assert_eq!(e.linkedin, "@rust-bytes");
         assert_eq!(e.x, "@rustaceans_rs");
+    }
+
+    #[test]
+    fn handle_add_strips_slack_markdown_stars() {
+        let e = parse_handle_add("*SeggWat @*seggwat @seggwat").expect("parse");
+        assert_eq!(e.name, "SeggWat");
+        assert_eq!(e.linkedin, "@seggwat");
+        assert_eq!(e.x, "@seggwat");
+        assert_eq!(e.linkedin_url, "https://www.linkedin.com/company/seggwat/");
+        assert_eq!(e.x_url, "https://x.com/seggwat");
     }
 
     #[test]
