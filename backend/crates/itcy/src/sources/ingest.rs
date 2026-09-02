@@ -362,8 +362,8 @@ fn reject_cloudflare_challenge(url: &str, html: &str) -> Result<(), IngestError>
     if crate::sources::html::looks_like_cloudflare_challenge(html) {
         warn!(url = %url, "ingest: Cloudflare challenge page after fetch");
         return Err(IngestError::Fetch(
-            "Cloudflare bot check (headed browser retry still blocked). \
-Pass the checkbox in the Brave window on this host, or use an open-access mirror URL."
+            "Cloudflare bot check page (ingest blocked). \
+Set ITCY_PUBLIC_FETCH_HEADED=1 and pass the checkbox once, or use another URL."
                 .into(),
         ));
     }

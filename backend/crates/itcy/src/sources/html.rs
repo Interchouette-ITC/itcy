@@ -600,14 +600,31 @@ fn content_tokens(text: &str, stop: &[&str]) -> Vec<String> {
 }
 
 /// True when HTML is a Cloudflare/Turnstile interstitial, not publisher content.
+///
+/// Sites behind Cloudflare often load `/cdn-cgi/challenge-platform/scripts/jsd/` on real
+/// pages; that alone is not a bot wall.
 #[must_use]
 pub fn looks_like_cloudflare_challenge(html: &str) -> bool {
     let lower = html.to_ascii_lowercase();
-    lower.contains("challenges.cloudflare.com")
-        || lower.contains("cdn-cgi/challenge-platform")
-        || lower.contains("just a moment")
+    if lower.contains("just a moment")
         || lower.contains("un instant")
         || lower.contains("performing security verification")
+    {
+        return true;
+    }
+    // Active interstitial markup (not background jsd on a normal 200 page).
+    if lower.contains("cdn-cgi/challenge-platform/h/")
+        || lower.contains("cf-challenge-running")
+        || lower.contains("id=\"challenge-form\"")
+        || lower.contains("id='challenge-form'")
+    {
+        return true;
+    }
+    if lower.contains("challenges.cloudflare.com") {
+        let text = html_to_text(html);
+        return text.chars().count() < 400;
+    }
+    false
 }
 
 #[cfg(test)]
@@ -619,6 +636,14 @@ mod tests {
         let html = r#"<html><head><title>Just a moment...</title></head>
 <body><script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script></body></html>"#;
         assert!(looks_like_cloudflare_challenge(html));
+    }
+
+    #[test]
+    fn cloudflare_jsd_on_real_page_is_not_challenge() {
+        let html = r#"<html><head><title>SeggWat: Reviews | Uneed</title></head>
+<body><p>One widget for feedback, features and bugs.</p>
+<script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script></body></html>"#;
+        assert!(!looks_like_cloudflare_challenge(html));
     }
 
     #[test]
