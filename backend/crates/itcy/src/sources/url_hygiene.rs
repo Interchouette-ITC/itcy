@@ -55,6 +55,28 @@ pub fn canonicalize_ingest_url(url: &str) -> String {
     format!("{scheme}{}", path_and_host.trim_end_matches('/'))
 }
 
+/// Alternate URL to try when ingest gets HTTP 404 (some sites only serve `path/`).
+#[must_use]
+pub fn ingest_trailing_slash_variant(url: &str) -> Option<String> {
+    let t = url.trim();
+    if t.is_empty() || t.ends_with('/') {
+        return None;
+    }
+    let after_scheme = t
+        .strip_prefix("https://")
+        .or_else(|| t.strip_prefix("http://"))?;
+    let slash = after_scheme.find('/')?;
+    let path = &after_scheme[slash..];
+    if path == "/" {
+        return None;
+    }
+    let last = path.rsplit('/').next().unwrap_or("");
+    if last.contains('.') {
+        return None;
+    }
+    Some(format!("{t}/"))
+}
+
 fn url_path_lower(url_lower: &str) -> Option<&str> {
     let rest = url_lower
         .strip_prefix("https://")
@@ -738,6 +760,22 @@ mod tests {
         assert_eq!(
             canonicalize_ingest_url("https://labs.sogeti.com/a/"),
             "https://labs.sogeti.com/a"
+        );
+    }
+
+    #[test]
+    fn ingest_trailing_slash_variant_for_directory_paths() {
+        assert_eq!(
+            ingest_trailing_slash_variant("https://cot.rs/guide/master/framework-comparison"),
+            Some("https://cot.rs/guide/master/framework-comparison/".into())
+        );
+        assert_eq!(
+            ingest_trailing_slash_variant("https://cot.rs/guide/master/framework-comparison/"),
+            None
+        );
+        assert_eq!(
+            ingest_trailing_slash_variant("https://example.com/doc.pdf"),
+            None
         );
     }
 
