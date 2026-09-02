@@ -474,7 +474,8 @@ struct DraftPhaseCtx<'a> {
 
 const DRAFT_SCRUB_RETRY_NOTE: &str =
     "HARD REWRITE: Write only from ResearchPack. Name entities and numbers from the cite page. \
-Do not paste the brief opening. No planning monologue. Dense LinkedIn paragraphs with emoji.";
+Do not paste the brief opening. Never start with the word cite (that is instruction vocabulary). \
+No planning monologue. Dense LinkedIn paragraphs with emoji.";
 
 async fn run_draft_phase(
     ctx: &DraftPhaseCtx<'_>,
@@ -602,6 +603,7 @@ pub(crate) fn scrub_and_validate_writer_body(
     body = scrub_urls_outside_pack(&body, pack_urls);
     body = crate::sources::draft_url::strip_sources_section(&body);
     body = crate::sources::draft_footer::strip_leading_page_title_lede(&body);
+    body = crate::sources::draft_footer::strip_leading_cite_instruction(&body);
     if looks_like_writer_scratchpad(&body) {
         warn!(
             prose_words = prose_word_count(&body),
@@ -1571,6 +1573,27 @@ https://example.com/policy";
             blocks[0].contains("130K") && blocks[2].contains("The future"),
             "hook and close must land in first and last blocks: {out:?}"
         );
+    }
+
+    #[test]
+    fn scrub_strips_leading_cite_instruction_leak() {
+        let body = "\
+cite 📜 @seggwat is a tool that's built for the modern product builder, SaaS teams, \
+indie hackers, and product managers who need a way to collect and ship feedback. 🚀 \
+The widget stays out of the way while the inbox stays centralized for triage. 🦉\n\n\
+Second paragraph keeps builders on one script and one inbox without leaving the workflow. \
+That matters when feature requests and bugs land from multiple surfaces at once.";
+        let out = scrub_and_validate_writer_body(
+            body,
+            &[],
+            "SeggWat is a feedback platform for SaaS teams, cite https://www.uneed.best/tool/seggwat",
+        )
+        .expect("cite-prefix leak must scrub clean");
+        assert!(
+            !out.trim_start().to_ascii_lowercase().starts_with("cite"),
+            "must not open with cite: {out}"
+        );
+        assert!(out.contains("@seggwat") || out.contains("seggwat"), "{out}");
     }
 
     #[test]

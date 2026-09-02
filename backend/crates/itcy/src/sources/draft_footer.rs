@@ -561,6 +561,62 @@ pub fn strip_leading_page_title_lede(body: &str) -> String {
     lines.join("\n").trim().to_string()
 }
 
+/// Drop a leading `cite` instruction leak (`cite 📜 @handle…`, `Cite: https://…`).
+///
+/// Operator briefs use `, cite https://…`; the writer must not open the post with that word.
+#[must_use]
+pub fn strip_leading_cite_instruction(body: &str) -> String {
+    let trimmed = body.trim_start();
+    let Some(rest_after_cite) = strip_cite_prefix(trimmed) else {
+        return body.to_string();
+    };
+    let rest = rest_after_cite.trim_start_matches([':', ',', '-', ' ']);
+    let rest = rest.trim_start();
+    if !leading_cite_looks_like_meta(rest) {
+        return body.to_string();
+    }
+    rest.to_string()
+}
+
+fn strip_cite_prefix(s: &str) -> Option<&str> {
+    let mut chars = s.chars();
+    let first = chars.next()?;
+    if !first.eq_ignore_ascii_case(&'c') {
+        return None;
+    }
+    let second = chars.next()?;
+    if !second.eq_ignore_ascii_case(&'i') {
+        return None;
+    }
+    let third = chars.next()?;
+    if !third.eq_ignore_ascii_case(&'t') {
+        return None;
+    }
+    let fourth = chars.next()?;
+    if !fourth.eq_ignore_ascii_case(&'e') {
+        return None;
+    }
+    let rest = chars.as_str();
+    match rest.chars().next() {
+        None => Some(""),
+        Some(c) if c.is_alphanumeric() => None, // cited / citation / …
+        Some(_) => Some(rest),
+    }
+}
+
+fn leading_cite_looks_like_meta(rest: &str) -> bool {
+    let t = rest.trim_start();
+    if t.is_empty() {
+        return false;
+    }
+    if t.starts_with('@') || t.starts_with("http://") || t.starts_with("https://") {
+        return true;
+    }
+    t.chars()
+        .next()
+        .is_some_and(|c| !c.is_ascii_alphanumeric() && c != '#' && !c.is_whitespace())
+}
+
 fn looks_like_page_title_lede(t: &str) -> bool {
     if t.len() < 24 {
         return false;
@@ -594,6 +650,252 @@ pub fn strip_rework_quoted_removals(body: &str, instructions: &str) -> String {
         out = out.replace(&phrase, "");
     }
     collapse_blank_lines(&out).trim().to_string()
+}
+
+/// Phrases the operator wants rewritten (must not remain verbatim after `/rework`).
+///
+/// Includes quoted spans and prior-body sentences the operator pasted into instructions
+/// when asking to reformulate / rewrite / not copy. For a full replacement draft, bans
+/// prior sentences that are absent from the new draft.
+#[must_use]
+pub fn rework_verbatim_ban_phrases(prior: &str, instructions: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for phrase in quoted_phrases_in_instructions(instructions) {
+        if phrase.chars().count() >= 24 {
+            push_ban_unique(&mut out, phrase);
+        }
+    }
+    if rework_looks_like_replacement_draft(instructions) {
+        for sentence in prose_sentences(prior) {
+            if sentence.chars().count() < 40 {
+                continue;
+            }
+            if !instructions_echoes_span(instructions, &sentence) {
+                push_ban_unique(&mut out, sentence);
+            }
+        }
+        return out;
+    }
+    let ask = instructions_ask_rewrite(instructions);
+    if ask {
+        for sentence in prose_sentences(prior) {
+            if sentence.chars().count() < 40 {
+                continue;
+            }
+            if instructions_echoes_span(instructions, &sentence) {
+                push_ban_unique(&mut out, sentence);
+            }
+        }
+        if out.is_empty() {
+            for sentence in last_n_sentences(prior, rewrite_sentence_count(instructions)) {
+                if sentence.chars().count() >= 24 {
+                    push_ban_unique(&mut out, sentence);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// `/rework` input mode for replies and drafts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReworkMode {
+    /// `/rework <id>` with no text: regenerate from subject.
+    Refresh,
+    /// Short/medium edit directives (reformulate, lengthen, …).
+    Instruction,
+    /// Operator pasted a full replacement body (cite/replace).
+    Replace,
+}
+
+/// Classify `/rework` text into refresh / instruction / replace.
+#[must_use]
+pub fn classify_rework_mode(instructions: &str) -> ReworkMode {
+    let t = instructions.trim();
+    if t.is_empty() {
+        return ReworkMode::Refresh;
+    }
+    if rework_looks_like_replacement_draft(t) {
+        return ReworkMode::Replace;
+    }
+    ReworkMode::Instruction
+}
+
+/// True when `/rework` text is a full replacement draft (not a short polish tip).
+#[must_use]
+pub fn rework_looks_like_replacement_draft(instructions: &str) -> bool {
+    let t = instructions.trim();
+    if t.chars().count() < 160 {
+        return false;
+    }
+    if t.split_whitespace().count() < 40 {
+        return false;
+    }
+    if prose_sentences(t).len() < 2 {
+        return false;
+    }
+    if instructions_are_edit_directives(t) {
+        return false;
+    }
+    true
+}
+
+/// True when rework output collapsed into a cheer stub vs a longer prior.
+#[must_use]
+pub fn rework_collapsed_too_much(prior: &str, next: &str, instructions: &str) -> bool {
+    if instructions_allow_shorten(instructions) {
+        return false;
+    }
+    let prior_n = prior.split_whitespace().count();
+    let next_n = next.split_whitespace().count();
+    if prior_n < 24 {
+        return false;
+    }
+    let floor = (prior_n * 2 / 5).max(12);
+    next_n < floor
+}
+
+fn instructions_allow_shorten(instructions: &str) -> bool {
+    let l = instructions.to_ascii_lowercase();
+    l.contains("shorter")
+        || l.contains("shorten")
+        || l.contains("one sentence")
+        || l.contains("1 sentence")
+        || l.contains("brief")
+        || l.contains("tighter")
+}
+
+fn instructions_are_edit_directives(instructions: &str) -> bool {
+    const HEADS: &[&str] = &[
+        "make ",
+        "rewrite",
+        "rephrase",
+        "reformulat",
+        "refomulat",
+        "refourmlat",
+        "do not ",
+        "don't ",
+        "dont ",
+        "add ",
+        "remove ",
+        "delete ",
+        "lengthen",
+        "shorten",
+        "expand ",
+        "fix ",
+        "change ",
+        "keep ",
+        "drop ",
+        "replace ",
+    ];
+    let l = instructions.to_ascii_lowercase();
+    let head = l.lines().next().unwrap_or("").trim();
+    if HEADS.iter().any(|h| head.starts_with(h)) {
+        return true;
+    }
+    if instructions_ask_rewrite(instructions) {
+        let first = prose_sentences(instructions)
+            .into_iter()
+            .next()
+            .unwrap_or_default();
+        if first.chars().count() < 100 {
+            return true;
+        }
+    }
+    false
+}
+
+/// True when `body` still contains any banned phrase (whitespace-normalized).
+#[must_use]
+pub fn body_copies_rework_ban(body: &str, banned: &[String]) -> bool {
+    let norm_body = collapse_ws(body);
+    banned.iter().any(|p| {
+        let n = collapse_ws(p);
+        n.chars().count() >= 24 && norm_body.contains(&n)
+    })
+}
+
+fn push_ban_unique(out: &mut Vec<String>, phrase: String) {
+    let n = collapse_ws(&phrase);
+    if out.iter().any(|e| collapse_ws(e) == n) {
+        return;
+    }
+    out.push(phrase);
+}
+
+fn instructions_ask_rewrite(instructions: &str) -> bool {
+    let l = instructions.to_ascii_lowercase();
+    l.contains("reformulat")
+        || l.contains("refomulat")
+        || l.contains("refourmlat")
+        || l.contains("rephrase")
+        || l.contains("rewrite")
+        || l.contains("do not copy")
+        || l.contains("don't copy")
+        || l.contains("dont copy")
+        || l.contains("not copy")
+}
+
+fn rewrite_sentence_count(instructions: &str) -> usize {
+    let l = instructions.to_ascii_lowercase();
+    if l.contains("last two") || l.contains("last 2") {
+        return 2;
+    }
+    if l.contains("last three") || l.contains("last 3") {
+        return 3;
+    }
+    if l.contains("last sentence") || l.contains("that sentence") || l.contains("this sentence") {
+        return 1;
+    }
+    0
+}
+
+fn last_n_sentences(prior: &str, n: usize) -> Vec<String> {
+    if n == 0 {
+        return Vec::new();
+    }
+    let all = prose_sentences(prior);
+    all.into_iter().rev().take(n).rev().collect()
+}
+
+fn prose_sentences(prior: &str) -> Vec<String> {
+    let text = prior
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with("Written by AI"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    for (i, ch) in text.char_indices() {
+        cur.push(ch);
+        if matches!(ch, '.' | '!' | '?') {
+            let next = text[i + ch.len_utf8()..].chars().next();
+            if next.is_none_or(char::is_whitespace) {
+                let s = cur.trim().to_string();
+                if !s.is_empty() {
+                    out.push(s);
+                }
+                cur.clear();
+            }
+        }
+    }
+    let tail = cur.trim();
+    if !tail.is_empty() {
+        out.push(tail.to_string());
+    }
+    out
+}
+
+fn instructions_echoes_span(instructions: &str, span: &str) -> bool {
+    collapse_ws(instructions).contains(&collapse_ws(span))
+}
+
+fn collapse_ws(s: &str) -> String {
+    s.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase()
 }
 
 fn quoted_phrases_in_instructions(instructions: &str) -> Vec<String> {
@@ -1000,6 +1302,19 @@ https://openai.com/index/our-decision-on-cursor-following-its-acquisition-by-spa
     }
 
     #[test]
+    fn strip_leading_cite_instruction_drops_brief_leak() {
+        // DRAFT-20260902-000146: writer opened with operator "cite …" vocabulary.
+        let body = "cite 📜 @seggwat is a tool that's built for SaaS teams.\n\n🦉 Builders triage feedback without leaving the workflow.";
+        let out = strip_leading_cite_instruction(body);
+        assert!(!out.to_ascii_lowercase().starts_with("cite"), "{out}");
+        assert!(out.starts_with("📜 @seggwat"), "{out}");
+        assert_eq!(
+            strip_leading_cite_instruction("Cited research shows Rust wins."),
+            "Cited research shows Rust wins."
+        );
+    }
+
+    #[test]
     fn strip_browse_page_title_chrome_drops_a11y_title_line() {
         let snap = "\
 ### Page
@@ -1027,6 +1342,129 @@ Our decision on Cursor following its acquisition by SpaceX | @openai August 28, 
             "quoted removal must apply: {out}"
         );
         assert!(out.contains("📜 Today"), "{out}");
+    }
+
+    #[test]
+    fn rework_ban_phrases_catch_pasted_sentences_to_reformulate() {
+        // CREPLY-20260902-000006: operator pasted the sentences; model kept copying them.
+        let prior = "\
+This is exactly the kind of innovation that shifts the paradigm. Lightweight, secure, and powerful. 🦉 \
+Databricks bought ElectricSQL, the team behind PGlite, and for agent sandboxes, PGlite makes sense. \
+The real unlock is giving an agent a DB it can break and reset in a second instead of pointing it near prod. \
+The wasm build was never the hard part though, sync conflict resolution is. Guessing that's the actual asset.";
+        let instructions = "\
+do not copy reformulate that part The real unlock is giving an agent a DB it can break and reset in a second \
+instead of pointing it near prod. The wasm build was never the hard part though, sync conflict resolution is. \
+Guessing that's the actual asset.";
+        let banned = rework_verbatim_ban_phrases(prior, instructions);
+        assert!(
+            banned.iter().any(|p| p.contains("real unlock")),
+            "must ban pasted unlock sentence: {banned:?}"
+        );
+        assert!(
+            banned.iter().any(|p| p.contains("wasm build")),
+            "must ban pasted wasm sentence: {banned:?}"
+        );
+        let copied = prior;
+        assert!(
+            body_copies_rework_ban(copied, &banned),
+            "unchanged body must fail ban check"
+        );
+        let rewritten = "\
+This is exactly the kind of innovation that shifts the paradigm. Lightweight, secure, and powerful. 🦉 \
+Databricks bought ElectricSQL, the team behind PGlite, and for agent sandboxes, PGlite makes sense. \
+What matters is a disposable database the agent can trash and reboot instantly, not a path toward prod. \
+Wasm packaging was the easy win; conflict-aware sync is the prize.";
+        assert!(
+            !body_copies_rework_ban(rewritten, &banned),
+            "reformulated body must pass: {rewritten}"
+        );
+    }
+
+    #[test]
+    fn rework_ban_phrases_last_two_sentences_when_asked() {
+        let prior = "\
+Hook line stays about Wasmer and sandboxes for agents in production talk. \
+Middle beat names ElectricSQL without changing. \
+Last one changes because disposable databases beat prod-adjacent guesses. \
+And the closing too when sync conflict resolution is the real asset.";
+        let instructions = "reformulate last two sentences";
+        let banned = rework_verbatim_ban_phrases(prior, instructions);
+        assert!(
+            banned.iter().any(|p| p.contains("Last one changes")),
+            "{banned:?}"
+        );
+        assert!(
+            banned.iter().any(|p| p.contains("closing too")),
+            "{banned:?}"
+        );
+    }
+
+    #[test]
+    fn replacement_draft_bans_old_prior_only_sentences() {
+        let prior = "\
+This is exactly the kind of innovation that shifts the paradigm. Lightweight, secure, and powerful. 🦉 \
+Databricks bought ElectricSQL, the team behind PGlite, and for agent sandboxes, PGlite makes sense. \
+The real unlock is giving an agent a DB it can break and reset in a second instead of pointing it near prod. \
+The wasm build was never the hard part though, sync conflict resolution is. Guessing that's the actual asset.";
+        let instructions = "\
+This is exactly the kind of innovation that shifts the paradigm. Lightweight, secure, and powerful. 🦉 \
+Databricks acquired ElectricSQL, the team behind PGlite, and for agent sandboxes, PGlite makes a lot of sense. \
+PGlite is essentially PostgreSQL compiled to WebAssembly using Emscripten, with a JS/TS interface for embedding it into applications. \
+The interesting distinction with Wasmer is that Wasmer is going one level lower: rather than being a PostgreSQL-specific embedded database, \
+Wasmer provides a WASM/WASIX runtime that can run PostgreSQL alongside Python, Node.js, PHP, and other workloads. \
+So Wasmer could theoretically host the same kind of PostgreSQL WASM workload from a Rust application, while PGlite provides the PostgreSQL-specific embedded experience. \
+That distinction between embedded PostgreSQL and a runtime for embedding arbitrary software is what makes Wasmer's approach particularly interesting.";
+        assert!(rework_looks_like_replacement_draft(instructions));
+        let banned = rework_verbatim_ban_phrases(prior, instructions);
+        assert!(
+            banned.iter().any(|p| p.contains("real unlock")),
+            "old unlock line must be banned: {banned:?}"
+        );
+        assert!(
+            !body_copies_rework_ban(instructions, &banned),
+            "operator replacement must not contain banned prior lines"
+        );
+        assert!(
+            body_copies_rework_ban(prior, &banned),
+            "stale prior must fail ban check"
+        );
+    }
+
+    #[test]
+    fn classify_rework_modes_refresh_instruction_replace() {
+        assert_eq!(classify_rework_mode(""), ReworkMode::Refresh);
+        assert_eq!(
+            classify_rework_mode("reformulate last two sentences"),
+            ReworkMode::Instruction
+        );
+        assert_eq!(
+            classify_rework_mode(
+                "do not copy reformulate that part The real unlock is giving an agent a DB it can break and reset in a second instead of pointing it near prod. The wasm build was never the hard part though, sync conflict resolution is. Guessing that's the actual asset."
+            ),
+            ReworkMode::Instruction
+        );
+        let replace = "\
+This is exactly the kind of innovation that shifts the paradigm. Lightweight, secure, and powerful. 🦉 \
+Databricks acquired ElectricSQL, the team behind PGlite, and for agent sandboxes, PGlite makes a lot of sense. \
+PGlite is essentially PostgreSQL compiled to WebAssembly using Emscripten, with a JS/TS interface for embedding it into applications. \
+The interesting distinction with Wasmer is that Wasmer is going one level lower: rather than being a PostgreSQL-specific embedded database, \
+Wasmer provides a WASM/WASIX runtime that can run PostgreSQL alongside Python, Node.js, PHP, and other workloads. \
+So Wasmer could theoretically host the same kind of PostgreSQL WASM workload from a Rust application, while PGlite provides the PostgreSQL-specific embedded experience. \
+That distinction between embedded PostgreSQL and a runtime for embedding arbitrary software is what makes Wasmer's approach particularly interesting.";
+        assert_eq!(classify_rework_mode(replace), ReworkMode::Replace);
+        let prior_long = "word ".repeat(40);
+        let stub = "Cheers, great point 🦉";
+        assert!(rework_collapsed_too_much(
+            &prior_long,
+            stub,
+            "make it better"
+        ));
+        assert!(!rework_collapsed_too_much(
+            &prior_long,
+            stub,
+            "make it shorter"
+        ));
     }
 
     #[test]

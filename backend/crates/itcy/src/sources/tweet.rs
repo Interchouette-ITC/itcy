@@ -366,6 +366,7 @@ pub(crate) fn attach_tweet_cites(
 pub(crate) fn scrub_tweet_body(raw: &str) -> String {
     let raw = crate::llm::sanitize_itcy_text(raw);
     let raw = crate::sources::draft_url::strip_sources_section(&raw);
+    let raw = crate::sources::draft_footer::strip_leading_cite_instruction(&raw);
     let raw = crate::sources::tweet_footer::strip_own_x_handle(&raw);
     if crate::sources::corpus_propose::body_has_slogan_mush(&raw) {
         let stripped = crate::sources::corpus_propose::strip_slogan_mush_sentences(&raw);

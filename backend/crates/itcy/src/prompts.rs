@@ -80,9 +80,26 @@ pub const COMMENT_REPLY_SYSTEM_CORE: &str = prompt!("comment_reply_system.md");
 /// X tweet-reply system (`/accept_tweet_reply`).
 pub const TWEET_REPLY_SYSTEM_CORE: &str = prompt!("tweet_reply_system.md");
 
+/// `CREPLY-` `/rework` with no instructions (refresh).
+pub const REPLY_REWORK_REFRESH_SYSTEM_CORE: &str = prompt!("reply_rework_refresh_system.md");
+/// `CREPLY-` `/rework` with edit instructions.
+pub const REPLY_REWORK_INSTRUCTION_SYSTEM_CORE: &str =
+    prompt!("reply_rework_instruction_system.md");
+/// `XREPLY-` `/rework` with no instructions (refresh).
+pub const TWEET_REPLY_REWORK_REFRESH_SYSTEM_CORE: &str =
+    prompt!("tweet_reply_rework_refresh_system.md");
+/// `XREPLY-` `/rework` with edit instructions.
+pub const TWEET_REPLY_REWORK_INSTRUCTION_SYSTEM_CORE: &str =
+    prompt!("tweet_reply_rework_instruction_system.md");
+
 const SELF_USER_TMPL: &str = prompt!("self_user.md");
 const COMMENT_REPLY_USER_TMPL: &str = prompt!("comment_reply_user.md");
 const TWEET_REPLY_USER_TMPL: &str = prompt!("tweet_reply_user.md");
+const REPLY_REWORK_REFRESH_USER_TMPL: &str = prompt!("reply_rework_refresh_user.md");
+const REPLY_REWORK_INSTRUCTION_USER_TMPL: &str = prompt!("reply_rework_instruction_user.md");
+const TWEET_REPLY_REWORK_REFRESH_USER_TMPL: &str = prompt!("tweet_reply_rework_refresh_user.md");
+const TWEET_REPLY_REWORK_INSTRUCTION_USER_TMPL: &str =
+    prompt!("tweet_reply_rework_instruction_user.md");
 
 fn fill(tmpl: &str, key: &str, value: &str) -> String {
     tmpl.replace(&format!("{{{key}}}"), value)
@@ -171,6 +188,78 @@ pub fn comment_reply_user_message(
 pub fn tweet_reply_user_message(tweet_author: &str, tweet_body: &str) -> String {
     let s = fill(TWEET_REPLY_USER_TMPL, "tweet_author", tweet_author);
     fill(&s, "tweet_body", tweet_body)
+}
+
+/// `CREPLY-` refresh `/rework` user turn (no instructions).
+#[must_use]
+pub fn reply_rework_refresh_user_message(
+    parent_post: &str,
+    comment_author: &str,
+    comment_body: &str,
+    prior: &str,
+) -> String {
+    let mut s = fill(REPLY_REWORK_REFRESH_USER_TMPL, "parent_post", parent_post);
+    s = fill(&s, "comment_author", comment_author);
+    s = fill(&s, "comment_body", comment_body);
+    fill(&s, "prior", prior)
+}
+
+/// `CREPLY-` instruction `/rework` user turn.
+#[must_use]
+pub fn reply_rework_instruction_user_message(
+    instructions: &str,
+    parent_post: &str,
+    comment_author: &str,
+    comment_body: &str,
+    prior: &str,
+    ban_block: &str,
+) -> String {
+    let mut s = fill(
+        REPLY_REWORK_INSTRUCTION_USER_TMPL,
+        "instructions",
+        instructions.trim(),
+    );
+    s = fill(&s, "parent_post", parent_post);
+    s = fill(&s, "comment_author", comment_author);
+    s = fill(&s, "comment_body", comment_body);
+    s = fill(&s, "prior", prior);
+    fill(&s, "ban_block", ban_block)
+}
+
+/// `XREPLY-` refresh `/rework` user turn (no instructions).
+#[must_use]
+pub fn tweet_reply_rework_refresh_user_message(
+    tweet_author: &str,
+    tweet_body: &str,
+    prior: &str,
+) -> String {
+    let mut s = fill(
+        TWEET_REPLY_REWORK_REFRESH_USER_TMPL,
+        "tweet_author",
+        tweet_author,
+    );
+    s = fill(&s, "tweet_body", tweet_body);
+    fill(&s, "prior", prior)
+}
+
+/// `XREPLY-` instruction `/rework` user turn.
+#[must_use]
+pub fn tweet_reply_rework_instruction_user_message(
+    instructions: &str,
+    tweet_author: &str,
+    tweet_body: &str,
+    prior: &str,
+    ban_block: &str,
+) -> String {
+    let mut s = fill(
+        TWEET_REPLY_REWORK_INSTRUCTION_USER_TMPL,
+        "instructions",
+        instructions.trim(),
+    );
+    s = fill(&s, "tweet_author", tweet_author);
+    s = fill(&s, "tweet_body", tweet_body);
+    s = fill(&s, "prior", prior);
+    fill(&s, "ban_block", ban_block)
 }
 
 /// Empty `ResearchPack` stub when a rework has no stored pack.

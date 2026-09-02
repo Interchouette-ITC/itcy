@@ -48,6 +48,14 @@ const PROMPT_FILES: &[&str] = &[
     "comment_reply_user.md",
     "tweet_reply_system.md",
     "tweet_reply_user.md",
+    "reply_rework_refresh_system.md",
+    "reply_rework_refresh_user.md",
+    "reply_rework_instruction_system.md",
+    "reply_rework_instruction_user.md",
+    "tweet_reply_rework_refresh_system.md",
+    "tweet_reply_rework_refresh_user.md",
+    "tweet_reply_rework_instruction_system.md",
+    "tweet_reply_rework_instruction_user.md",
 ];
 
 fn main() {
@@ -105,6 +113,16 @@ fn stub_body(name: &str) -> &'static str {
         "self_user.md" => "{surface}\n{instructions}\n",
         "comment_reply_user.md" => "{parent_post}\n{comment_author}\n{comment_body}\n",
         "tweet_reply_user.md" => "{tweet_author}\n{tweet_body}\n",
+        "reply_rework_refresh_user.md" => {
+            "{parent_post}\n{comment_author}\n{comment_body}\n{prior}\n"
+        }
+        "reply_rework_instruction_user.md" => {
+            "{instructions}\n{parent_post}\n{comment_author}\n{comment_body}\n{prior}\n{ban_block}\n"
+        }
+        "tweet_reply_rework_refresh_user.md" => "{tweet_author}\n{tweet_body}\n{prior}\n",
+        "tweet_reply_rework_instruction_user.md" => {
+            "{instructions}\n{tweet_author}\n{tweet_body}\n{prior}\n{ban_block}\n"
+        }
         _ => "stub\n",
     }
 }

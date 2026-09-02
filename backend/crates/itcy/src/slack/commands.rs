@@ -460,7 +460,6 @@ fn extract_inline_slash(text: &str) -> Option<(String, String)> {
 fn slash_args_look_like_usage_chrome(cmd: &str, args: &str) -> bool {
     match cmd {
         "change_url" => args.contains("<0|1|2|3"),
-        "rework" => args.contains("<instructions>"),
         _ => false,
     }
 }
@@ -630,14 +629,10 @@ fn parse_lifecycle_slash(cmd: &str, args: &str) -> Option<Result<OperatorCommand
         "rework" => {
             let Some((id, rest)) = split_draft_or_tweet_id_and_rest(args) else {
                 return Some(Err(
-                    "usage: /rework <DRAFT-…|TWEET-…|CREPLY-…|XREPLY-…> <instructions>".into(),
+                    "usage: /rework <DRAFT-…|TWEET-…|CREPLY-…|XREPLY-…> [instructions|paste]"
+                        .into(),
                 ));
             };
-            if rest.is_empty() {
-                return Some(Err(
-                    "usage: /rework <DRAFT-…|TWEET-…|CREPLY-…|XREPLY-…> <instructions>".into(),
-                ));
-            }
             Ok(OperatorCommand::Rework {
                 draft_id: id,
                 instructions: crate::sources::rework::sanitize_rework_instructions(&rest),
@@ -996,7 +991,7 @@ pub const fn help_text() -> &'static str {
      • `/draft_about <subject>, <instructions>` - draft; a https in instructions is the in-post cite\n\
      • `/draft_about_itc` or `/draft_about_itc <subject>, <instructions>` - LinkedIn draft about Interchouette / our projects\n\
      • `/draft_about_itcy` or `/draft_about_itcy <instructions>` - LinkedIn self-introduction post as ITCy (first-person, stack disclosure)\n\
-     • `/rework <Draft-ID|Tweet-ID|Reply-ID> <instructions>` - rewrite saved draft, tweet, or reply (until Post / XPOST / ship)\n\
+     • `/rework <Draft-ID|Tweet-ID|Reply-ID> [instructions|paste]` - refresh, edit, or replace saved draft/tweet/reply\n\
      • `/change_url <Draft-ID|Tweet-ID> <0|1|2|3|4|5|https://…>` - set the link (`1`–`5` or URL); `0` = no link (not for replies)\n\
      • `/accept <Draft-ID|Tweet-ID|Reply-ID>` - BAT PR for DRAFT/TWEET; direct ship for CREPLY/XREPLY\n\
      • `/list` - list drafts, tweets, replies, and shipped Posts / X posts\n\
@@ -1407,6 +1402,17 @@ Amp commentary here.\n\n\
             } => {
                 assert_eq!(draft_id, "DRAFT-20260728-000001");
                 assert_eq!(instructions, "make shorter");
+            }
+            other => panic!("{other:?}"),
+        }
+        let refresh = parse_slash_command("/rework", "CREPLY-20260902-000006").unwrap();
+        match refresh {
+            OperatorCommand::Rework {
+                draft_id,
+                instructions,
+            } => {
+                assert_eq!(draft_id, "CREPLY-20260902-000006");
+                assert!(instructions.is_empty());
             }
             other => panic!("{other:?}"),
         }
