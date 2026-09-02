@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
-# Public-page HTML fetch for ingest (no login).
+# Public-page HTML fetch for `/ingest` only (no login). Does not use profile-x or profile-brave.
 # Usage: scripts/fetch-public-page.sh <url>
-# Prints HTML to stdout.
-#
-# Uses persistent pw/profile-brave (or ITCY_PW_USER_DATA_DIR) like draft research.
-# Opt-in headed: ITCY_PUBLIC_FETCH_HEADED=1 (for interactive Cloudflare checks).
-# Opt-in Obscura: ITCY_PW_BROWSER=obscura
+# Optional: ITCY_PUBLIC_FETCH_HEADED=1 for headed Brave (Cloudflare checkbox on OUP, etc.).
 set -euo pipefail
 URL="${1:?url required}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -32,6 +28,7 @@ if [[ -z "${PW_JSON}" || ! -f "${PW_JSON}" ]]; then
 fi
 
 BROWSER_NAME="$(echo "${ITCY_PW_BROWSER:-}" | tr '[:upper:]' '[:lower:]')"
+
 export ITCY_ROOT="${ROOT}"
 export PLAYWRIGHT_REQUIRE_FROM="${PW_JSON}"
 
@@ -58,11 +55,6 @@ else
   fi
   export ITCY_BROWSER_EXECUTABLE="${BROWSER_BIN}"
 fi
-
-if [[ -z "${ITCY_PW_USER_DATA_DIR:-}" ]]; then
-  export ITCY_PW_USER_DATA_DIR="${ROOT}/pw/profile-public-fetch"
-fi
-mkdir -p "${ITCY_PW_USER_DATA_DIR}"
 
 cd "${ROOT}"
 exec "${NODE}" "${ROOT}/scripts/lib/fetch-public-page.mjs" "${URL}"

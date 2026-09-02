@@ -210,16 +210,19 @@ pub(crate) fn is_bot_wall_fetch_err(msg: &str) -> bool {
         || is_bot_wall_http_status(429) && msg.contains("HTTP 429")
 }
 
-/// HTTP then optional public Playwright when extracted text is thin.
+/// HTTP GET, then optional public Playwright only when extract is thin.
 ///
-/// Default command: `scripts/fetch-public-page.sh` when present under cwd / repo.
-/// Override with `ITCY_PUBLIC_FETCH_CMD`. Never for logged-in `LinkedIn`.
-pub struct HttpThenPublicPlaywright;
+/// Does **not** run browser on HTTP 403/401/429 (that path is [`fetch_public_page_html`] / `/ingest` only).
+pub struct HttpThenPublicPlaywright {
+    http: HttpPageFetcher,
+}
 
 impl HttpThenPublicPlaywright {
     #[must_use]
-    pub const fn new() -> Self {
-        Self
+    pub fn new() -> Self {
+        Self {
+            http: HttpPageFetcher::new(),
+        }
     }
 }
 
@@ -232,7 +235,29 @@ impl Default for HttpThenPublicPlaywright {
 #[async_trait]
 impl PageFetcher for HttpThenPublicPlaywright {
     async fn fetch_html(&self, url: &str) -> Result<String, IngestError> {
-        let (html, _) = fetch_public_page_html(url).await?;
+        let html = self.http.fetch_html(url).await?;
+        let text = extract_page_text(&html);
+        let chars = text.chars().count();
+        if chars >= THIN_TRIGGER_CHARS {
+            info!(url = %url, chars, "ingest: HTTP GET ok (no Playwright)");
+            return Ok(html);
+        }
+        warn!(
+            url = %url,
+            chars,
+            trigger = THIN_TRIGGER_CHARS,
+            "ingest: HTTP extract thin; trying public Playwright if available"
+        );
+        if let Some(enriched) = match try_public_playwright_fetch(url).await {
+            Ok(pw) => pw,
+            Err(e) => {
+                warn!(url = %url, error = %e, "ingest: public Playwright failed; keeping HTTP HTML");
+                None
+            }
+        } {
+            info!(url = %url, "ingest: public Playwright enrichment ok");
+            return Ok(enriched);
+        }
         Ok(html)
     }
 }
@@ -306,13 +331,10 @@ pub fn public_fetch_subprocess_env() -> Vec<(String, String)> {
         "ITCY_BROWSER_EXECUTABLE",
         "ITCY_OBSCURA_CDP_PORT",
         "ITCY_OBSCURA_STEALTH",
-        "ITCY_PW_USER_DATA_DIR",
         "ITCY_PUBLIC_FETCH_HEADED",
-        "ITCY_PUBLIC_FETCH_HEADED_AUTO",
         "ITCY_PUBLIC_FETCH_CF_WAIT_MS",
         "ITCY_ROOT",
         "ITCY_OBSCURA_CDP_URL",
-        "DISPLAY",
     ];
     KEYS.iter()
         .filter_map(|key| {
@@ -353,7 +375,7 @@ fn is_loopback_url(url: &str) -> bool {
     u.contains("127.0.0.1") || u.contains("localhost") || u.contains("[::1]")
 }
 
-/// HTTP then optional Playwright (`fetch-public-page.sh`). Shared by `/ingest` and cite probes.
+/// HTTP then optional Playwright (`fetch-public-page.sh`). **`/ingest` only** (not cite probes).
 ///
 /// # Errors
 ///
