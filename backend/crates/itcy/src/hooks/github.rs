@@ -20,8 +20,10 @@ use axum::Json;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::json;
+use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use tokio::sync::Mutex as AsyncMutex;
 use tracing::{info, warn};
 
 /// Shared wake state (last wake / delivery for `/status`).
@@ -41,6 +43,8 @@ pub struct GithubHookState {
     pub last_delivery: Arc<Mutex<Option<GithubDeliverySnapshot>>>,
     /// Last delivery / tunnel warn (forward errors, 502, wrong path, …).
     pub delivery_warn: Arc<Mutex<Option<String>>>,
+    /// PR numbers currently in `try_promote_if_bat_green` (dedupe concurrent webhooks).
+    bat_promote_inflight: Arc<AsyncMutex<HashSet<u64>>>,
 }
 
 impl GithubHookState {
@@ -67,6 +71,7 @@ impl GithubHookState {
             last_wake: Arc::new(Mutex::new(None)),
             last_delivery: Arc::new(Mutex::new(None)),
             delivery_warn: Arc::new(Mutex::new(None)),
+            bat_promote_inflight: Arc::new(AsyncMutex::new(HashSet::new())),
         }
     }
 
@@ -873,6 +878,7 @@ async fn try_promote_if_bat_green(
     pr_owner: &str,
     pr_number: u64,
 ) -> Result<String, WakeSkip> {
+    let _promote_guard = PrPromoteGuard::try_acquire(state, pr_number).await?;
     if pr_number == 0 {
         return Err(WakeSkip::Error("missing pr number".into()));
     }
@@ -914,6 +920,31 @@ async fn try_promote_if_bat_green(
         .await
         .map_err(|e| WakeSkip::Error(e.to_string()))?;
 
+    if let Some(detail) = existing_ok_ship_detail(
+        state.state_db_path.as_str(),
+        &promoted.post_id,
+        promoted.fork_pr_number,
+    ) {
+        info!(
+            pr = promoted.fork_pr_number,
+            post_id = %promoted.post_id,
+            "hooks/github: skip duplicate BAT ship (already in publish_audit)"
+        );
+        if let Ok(store) = crate::bat::store::DraftStore::open(state.state_db_path.as_str()) {
+            let _ = store.mark_status_from(&promoted.draft_id, "accepted", "published");
+            let _ = store.mark_status_from(&promoted.draft_id, "open", "published");
+        }
+        let dest = if promoted.post_id.starts_with("XPOST-") {
+            tweet_posts_base.as_str()
+        } else {
+            posts_base.as_str()
+        };
+        return Ok(format!(
+            "promoted {} → {} on `{dest}` (already shipped); {detail}",
+            promoted.draft_id, promoted.post_id
+        ));
+    }
+
     let (ship_ok, ship_detail) =
         if promoted.post_id.starts_with("XPOST-") || promoted.draft_id.starts_with("TWEET-") {
             ship_promoted_xpost(state, &promoted).await
@@ -935,6 +966,48 @@ async fn try_promote_if_bat_green(
         "promoted {} → {} on `{dest}`; Draft PR #{pr_number} merged; {ship_detail}",
         promoted.draft_id, promoted.post_id
     ))
+}
+
+/// Returns ship detail when this artefact already shipped successfully (BAT webhook dedupe).
+fn existing_ok_ship_detail(
+    state_db_path: &str,
+    post_id: &str,
+    pubs_pr_number: u64,
+) -> Option<String> {
+    let audit = crate::publish::PublishAuditStore::open(state_db_path).ok()?;
+    let row = audit
+        .latest_ok(Some(post_id), Some(pubs_pr_number))
+        .ok()??;
+    Some(row.detail)
+}
+
+struct PrPromoteGuard {
+    inflight: Arc<AsyncMutex<HashSet<u64>>>,
+    pr_number: u64,
+}
+
+impl PrPromoteGuard {
+    async fn try_acquire(state: &GithubHookState, pr_number: u64) -> Result<Self, WakeSkip> {
+        let mut guard = state.bat_promote_inflight.lock().await;
+        if !guard.insert(pr_number) {
+            return Err(WakeSkip::NotReady(format!(
+                "PR #{pr_number} BAT promote already in flight"
+            )));
+        }
+        drop(guard);
+        Ok(Self {
+            inflight: Arc::clone(&state.bat_promote_inflight),
+            pr_number,
+        })
+    }
+}
+
+impl Drop for PrPromoteGuard {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.inflight.try_lock() {
+            guard.remove(&self.pr_number);
+        }
+    }
 }
 
 /// X publish mode for webhook ship (re-resolves env each wake).
