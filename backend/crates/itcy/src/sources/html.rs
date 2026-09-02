@@ -599,9 +599,27 @@ fn content_tokens(text: &str, stop: &[&str]) -> Vec<String> {
     out
 }
 
+/// True when HTML is a Cloudflare/Turnstile interstitial, not publisher content.
+#[must_use]
+pub fn looks_like_cloudflare_challenge(html: &str) -> bool {
+    let lower = html.to_ascii_lowercase();
+    lower.contains("challenges.cloudflare.com")
+        || lower.contains("cdn-cgi/challenge-platform")
+        || lower.contains("just a moment")
+        || lower.contains("un instant")
+        || lower.contains("performing security verification")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detects_cloudflare_challenge_shell() {
+        let html = r#"<html><head><title>Just a moment...</title></head>
+<body><script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script></body></html>"#;
+        assert!(looks_like_cloudflare_challenge(html));
+    }
 
     #[test]
     fn strips_script_and_tags() {

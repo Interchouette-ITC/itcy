@@ -11,8 +11,6 @@ use crate::sources::url_hygiene::{
     is_allowed_tweet_cite, is_junk_or_search_url, is_x_status_url, same_publisher_domain,
     scrub_https_url,
 };
-use std::sync::OnceLock;
-use std::time::Duration;
 use tracing::{info, warn};
 
 const PROBE_BODY_CAP: usize = 256_000;
@@ -104,19 +102,9 @@ fn is_loopback_probe_url(url: &str) -> bool {
         || u.starts_with("http://[::1]")
 }
 
-fn probe_http_client() -> &'static reqwest::Client {
-    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .user_agent("ITCy/0.1 (+https://interchouette.net; publisher URL probe)")
-            .timeout(Duration::from_secs(20))
-            .redirect(reqwest::redirect::Policy::limited(5))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new())
-    })
-}
-
 /// GET probe: reject dead publisher URLs before they land in Link options or ship.
+///
+/// Uses the same fetch path as [`crate::sources::ingest::fetch_public_page_html`].
 ///
 /// # Errors
 ///
@@ -133,12 +121,16 @@ pub async fn probe_publisher_url(url: &str) -> Result<(), String> {
     if skip_publisher_url_probe(url) {
         return Ok(());
     }
-    let client = probe_http_client();
-    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
-    let status = res.status().as_u16();
-    let mut body = res.text().await.map_err(|e| e.to_string())?;
-    truncate_utf8_bytes(&mut body, PROBE_BODY_CAP);
-    evaluate_publisher_probe(status, &body)
+    let body = fetch_publisher_probe_body(url).await?;
+    evaluate_publisher_probe(200, &body)
+}
+
+async fn fetch_publisher_probe_body(url: &str) -> Result<String, String> {
+    let (mut html, _) = crate::sources::ingest::fetch_public_page_html(url)
+        .await
+        .map_err(|e| e.to_string())?;
+    truncate_utf8_bytes(&mut html, PROBE_BODY_CAP);
+    Ok(html)
 }
 
 /// Cap HTTP body by bytes without slicing mid-UTF-8 (panic on `String::truncate`).

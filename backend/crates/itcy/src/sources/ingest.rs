@@ -196,20 +196,30 @@ fn is_transient_fetch_err(msg: &str) -> bool {
         || msg.contains("connection closed")
 }
 
+/// HTTP statuses where a headless browser may succeed (bot walls, rate limits).
+#[must_use]
+pub(crate) const fn is_bot_wall_http_status(status: u16) -> bool {
+    matches!(status, 401 | 403 | 429)
+}
+
+/// Parse [`HttpPageFetcher`] errors for [`is_bot_wall_http_status`].
+#[must_use]
+pub(crate) fn is_bot_wall_fetch_err(msg: &str) -> bool {
+    is_bot_wall_http_status(401) && msg.contains("HTTP 401")
+        || is_bot_wall_http_status(403) && msg.contains("HTTP 403")
+        || is_bot_wall_http_status(429) && msg.contains("HTTP 429")
+}
+
 /// HTTP then optional public Playwright when extracted text is thin.
 ///
 /// Default command: `scripts/fetch-public-page.sh` when present under cwd / repo.
 /// Override with `ITCY_PUBLIC_FETCH_CMD`. Never for logged-in `LinkedIn`.
-pub struct HttpThenPublicPlaywright {
-    http: HttpPageFetcher,
-}
+pub struct HttpThenPublicPlaywright;
 
 impl HttpThenPublicPlaywright {
     #[must_use]
-    pub fn new() -> Self {
-        Self {
-            http: HttpPageFetcher::new(),
-        }
+    pub const fn new() -> Self {
+        Self
     }
 }
 
@@ -222,33 +232,7 @@ impl Default for HttpThenPublicPlaywright {
 #[async_trait]
 impl PageFetcher for HttpThenPublicPlaywright {
     async fn fetch_html(&self, url: &str) -> Result<String, IngestError> {
-        let html = self.http.fetch_html(url).await?;
-        let text = extract_page_text(&html);
-        let chars = text.chars().count();
-        if chars >= THIN_TRIGGER_CHARS {
-            info!(
-                url = %url,
-                chars,
-                "ingest: HTTP GET ok (no Playwright)"
-            );
-            return Ok(html);
-        }
-        warn!(
-            url = %url,
-            chars,
-            trigger = THIN_TRIGGER_CHARS,
-            "ingest: HTTP extract thin; trying public Playwright if available"
-        );
-        if let Some(enriched) = match try_public_playwright_fetch(url).await {
-            Ok(html) => html,
-            Err(e) => {
-                warn!(url = %url, error = %e, "ingest: public Playwright failed; keeping HTTP HTML");
-                None
-            }
-        } {
-            info!(url = %url, "ingest: public Playwright enrichment ok");
-            return Ok(enriched);
-        }
+        let (html, _) = fetch_public_page_html(url).await?;
         Ok(html)
     }
 }
@@ -274,7 +258,7 @@ pub fn resolve_public_fetch_cmd() -> Option<String> {
     None
 }
 
-async fn try_public_playwright_fetch(url: &str) -> Result<Option<String>, IngestError> {
+pub(crate) async fn try_public_playwright_fetch(url: &str) -> Result<Option<String>, IngestError> {
     let Some(cmd_tmpl) = resolve_public_fetch_cmd() else {
         warn!("ingest: no ITCY_PUBLIC_FETCH_CMD / fetch-public-page.sh; staying on HTTP HTML");
         return Ok(None);
@@ -293,6 +277,9 @@ async fn try_public_playwright_fetch(url: &str) -> Result<Option<String>, Ingest
         .stderr(Stdio::piped());
     for (key, value) in public_fetch_subprocess_env() {
         command.env(key, value);
+    }
+    if std::env::var("ITCY_ROOT").is_err() {
+        command.env("ITCY_ROOT", crate::paths::product_root());
     }
     let output = command
         .output()
@@ -319,6 +306,11 @@ pub fn public_fetch_subprocess_env() -> Vec<(String, String)> {
         "ITCY_BROWSER_EXECUTABLE",
         "ITCY_OBSCURA_CDP_PORT",
         "ITCY_OBSCURA_STEALTH",
+        "ITCY_PW_USER_DATA_DIR",
+        "ITCY_PUBLIC_FETCH_HEADED",
+        "ITCY_PUBLIC_FETCH_CF_WAIT_MS",
+        "ITCY_ROOT",
+        "ITCY_OBSCURA_CDP_URL",
     ];
     KEYS.iter()
         .filter_map(|key| {
@@ -329,6 +321,91 @@ pub fn public_fetch_subprocess_env() -> Vec<(String, String)> {
                 .map(|value| ((*key).to_string(), value))
         })
         .collect()
+}
+
+async fn public_playwright_or_http_err(url: &str, http_err: &str) -> Result<String, IngestError> {
+    match try_public_playwright_fetch(url).await {
+        Ok(Some(html)) => {
+            info!(url = %url, "ingest: public Playwright ok after HTTP bot wall");
+            Ok(html)
+        }
+        Ok(None) => Err(IngestError::Fetch(http_err.to_string())),
+        Err(e) => Err(e),
+    }
+}
+
+fn reject_cloudflare_challenge(url: &str, html: &str) -> Result<(), IngestError> {
+    if crate::sources::html::looks_like_cloudflare_challenge(html) {
+        warn!(url = %url, "ingest: Cloudflare challenge page after fetch");
+        return Err(IngestError::Fetch(
+            "Cloudflare bot check (automated fetch could not pass). \
+Use a PMC/DOI mirror, GitHub/README cite, or set ITCY_PUBLIC_FETCH_HEADED=1 and open the URL once in Brave."
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
+fn is_loopback_url(url: &str) -> bool {
+    let u = url.to_ascii_lowercase();
+    u.contains("127.0.0.1") || u.contains("localhost") || u.contains("[::1]")
+}
+
+/// HTTP then optional Playwright (`fetch-public-page.sh`). Shared by `/ingest` and cite probes.
+///
+/// # Errors
+///
+/// Returns [`IngestError::Fetch`] on network failure, bot wall after Playwright, or Cloudflare shell.
+pub async fn fetch_public_page_html(url: &str) -> Result<(String, IngestFetchPath), IngestError> {
+    let http = HttpPageFetcher::new();
+    let (html, path) = match http.fetch_html(url).await {
+        Ok(body) => {
+            let chars = extract_page_text(&body).chars().count();
+            let needs_pw = !is_loopback_url(url)
+                && (chars < THIN_TRIGGER_CHARS
+                    || crate::sources::html::looks_like_cloudflare_challenge(&body));
+            if !needs_pw {
+                info!(url = %url, chars, "ingest: HTTP GET ok (no Playwright)");
+                return Ok((body, IngestFetchPath::Http));
+            }
+            warn!(
+                url = %url,
+                chars,
+                trigger = THIN_TRIGGER_CHARS,
+                "ingest: HTTP thin or bot shell; trying public Playwright if available"
+            );
+            match try_public_playwright_fetch(url).await {
+                Ok(Some(pw)) => {
+                    let pw_chars = extract_page_text(&pw).chars().count();
+                    if pw_chars > chars {
+                        info!(url = %url, http_chars = chars, pw_chars, "ingest: public Playwright enrichment ok");
+                        (pw, IngestFetchPath::PublicPlaywright)
+                    } else {
+                        warn!(
+                            url = %url,
+                            http_chars = chars,
+                            pw_chars,
+                            "ingest: public Playwright not richer than HTTP; keeping HTTP HTML"
+                        );
+                        (body, IngestFetchPath::Http)
+                    }
+                }
+                Ok(None) => (body, IngestFetchPath::Http),
+                Err(e) => {
+                    warn!(url = %url, error = %e, "ingest: public Playwright failed; keeping HTTP HTML");
+                    (body, IngestFetchPath::Http)
+                }
+            }
+        }
+        Err(IngestError::Fetch(msg)) if is_bot_wall_fetch_err(&msg) => {
+            warn!(url = %url, error = %msg, "ingest: HTTP bot wall; trying public Playwright");
+            let pw = public_playwright_or_http_err(url, &msg).await?;
+            (pw, IngestFetchPath::PublicPlaywright)
+        }
+        Err(e) => return Err(e),
+    };
+    reject_cloudflare_challenge(url, &html)?;
+    Ok((html, path))
 }
 
 /// Ingests a public URL into the source DB with embeddings (upsert by URL).
@@ -346,31 +423,7 @@ pub async fn ingest_url(
     _fetcher: &dyn PageFetcher,
 ) -> Result<IngestReport, IngestError> {
     info!(url = %url, "ingest: start");
-    let http = HttpPageFetcher::new();
-    let http_html = http.fetch_html(url).await?;
-    let http_chars = extract_page_text(&http_html).chars().count();
-    let (html, path) = if http_chars >= THIN_TRIGGER_CHARS {
-        info!(url = %url, chars = http_chars, "ingest: HTTP GET ok (no Playwright)");
-        (http_html, IngestFetchPath::Http)
-    } else {
-        warn!(
-            url = %url,
-            chars = http_chars,
-            trigger = THIN_TRIGGER_CHARS,
-            "ingest: HTTP extract thin; trying public Playwright if available"
-        );
-        match try_public_playwright_fetch(url).await {
-            Ok(Some(pw_html)) => {
-                info!(url = %url, "ingest: public Playwright enrichment ok");
-                (pw_html, IngestFetchPath::PublicPlaywright)
-            }
-            Ok(None) => (http_html, IngestFetchPath::Http),
-            Err(e) => {
-                warn!(url = %url, error = %e, "ingest: public Playwright failed; keeping HTTP HTML");
-                (http_html, IngestFetchPath::Http)
-            }
-        }
-    };
+    let (html, path) = fetch_public_page_html(url).await?;
     ingest_html(url, db_path, embed, &html, path).await
 }
 
@@ -611,6 +664,23 @@ mod tests {
             cmd.is_some(),
             "expected scripts/fetch-public-page.sh under product root"
         );
+    }
+
+    #[test]
+    fn bot_wall_fetch_err_detects_403_for_playwright_fallback() {
+        assert!(is_bot_wall_fetch_err("HTTP 403"));
+        assert!(is_bot_wall_fetch_err("fetch: HTTP 403"));
+        assert!(!is_bot_wall_fetch_err("HTTP 404"));
+        assert!(is_bot_wall_http_status(403));
+        assert!(!is_bot_wall_http_status(404));
+    }
+
+    #[test]
+    fn cloudflare_challenge_rejected_after_fetch() {
+        let cf = r#"<html><head><title>Just a moment...</title></head>
+<body><script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script></body></html>"#;
+        let err = reject_cloudflare_challenge("https://example.com/x", cf).expect_err("cf");
+        assert!(err.to_string().contains("Cloudflare"));
     }
 
     #[test]
