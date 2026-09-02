@@ -188,6 +188,22 @@ pub fn is_x_status_url(url: &str) -> bool {
     x_status_id(url).is_some()
 }
 
+/// X/Twitter host URL that is not a status cite (hashtag, profile, home, …).
+#[must_use]
+pub fn is_x_non_status_url(url: &str) -> bool {
+    if is_x_status_url(url) {
+        return false;
+    }
+    let lower = url.trim().to_ascii_lowercase();
+    let Some(host) = url_host(&lower) else {
+        return false;
+    };
+    matches!(
+        host,
+        "x.com" | "twitter.com" | "mobile.twitter.com" | "www.x.com" | "www.twitter.com"
+    )
+}
+
 /// Numeric status id from an X/Twitter status URL.
 #[must_use]
 pub fn x_status_id(url: &str) -> Option<String> {
@@ -744,6 +760,9 @@ mod tests {
         );
         assert!(!is_x_status_url("https://x.com/a"));
         assert!(!is_x_status_url("https://labs.sogeti.com/status/1"));
+        assert!(is_x_non_status_url("https://x.com/hashtag/RustLang"));
+        assert!(is_x_non_status_url("https://x.com/rust4bio"));
+        assert!(!is_x_non_status_url("https://x.com/Interchouette/status/1"));
         assert!(is_allowed_tweet_cite(
             "https://x.com/Interchouette/status/1"
         ));

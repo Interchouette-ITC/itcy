@@ -8,9 +8,11 @@ use crate::sources::draft_url::{extract_in_post_url, set_single_in_post_url};
 use crate::sources::html::extract_articleish_text;
 use crate::sources::tweet_footer::extract_brief_cite;
 use crate::sources::url_hygiene::{
-    is_allowed_tweet_cite, is_junk_or_search_url, is_x_status_url, same_publisher_domain,
-    scrub_https_url,
+    is_allowed_tweet_cite, is_junk_or_search_url, is_x_non_status_url, is_x_status_url,
+    same_publisher_domain, scrub_https_url,
 };
+use std::sync::OnceLock;
+use std::time::Duration;
 use tracing::{info, warn};
 
 const PROBE_BODY_CAP: usize = 256_000;
@@ -114,7 +116,7 @@ pub fn cite_probe_soft_fail(reason: &str) -> bool {
 
 /// GET probe: reject dead publisher URLs before they land in Link options or ship.
 ///
-/// Uses the same fetch path as [`crate::sources::ingest::fetch_public_page_html`].
+/// Plain HTTP only (reqwest). Does **not** launch Brave/Playwright; that is `/ingest` only.
 ///
 /// # Errors
 ///
@@ -131,16 +133,24 @@ pub async fn probe_publisher_url(url: &str) -> Result<(), String> {
     if skip_publisher_url_probe(url) {
         return Ok(());
     }
-    let body = fetch_publisher_probe_body(url).await?;
-    evaluate_publisher_probe(200, &body)
+    let client = probe_http_client();
+    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+    let status = res.status().as_u16();
+    let mut body = res.text().await.map_err(|e| e.to_string())?;
+    truncate_utf8_bytes(&mut body, PROBE_BODY_CAP);
+    evaluate_publisher_probe(status, &body)
 }
 
-async fn fetch_publisher_probe_body(url: &str) -> Result<String, String> {
-    let (mut html, _) = crate::sources::ingest::fetch_public_page_html(url)
-        .await
-        .map_err(|e| e.to_string())?;
-    truncate_utf8_bytes(&mut html, PROBE_BODY_CAP);
-    Ok(html)
+fn probe_http_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .user_agent("ITCy/0.1 (+https://interchouette.net; publisher URL probe)")
+            .timeout(Duration::from_secs(20))
+            .redirect(reqwest::redirect::Policy::limited(5))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    })
 }
 
 /// Cap HTTP body by bytes without slicing mid-UTF-8 (panic on `String::truncate`).
@@ -165,6 +175,10 @@ pub async fn filter_reachable_publisher_urls(urls: Vec<String>) -> Vec<String> {
         let loopback_test = cfg!(test) && is_loopback_probe_url(&u);
         if !is_x_status_url(&u) && !is_allowed_tweet_cite(&u) && !loopback_test {
             warn!(url = %u, "publisher_url: dropped non-cite before probe");
+            continue;
+        }
+        if is_x_non_status_url(&u) {
+            warn!(url = %u, "publisher_url: dropped x non-status before probe");
             continue;
         }
         if skip_publisher_url_probe(&u) {
@@ -448,6 +462,17 @@ mod tests {
         truncate_utf8_bytes(&mut s, 11);
         assert_eq!(s, "aaaaaaaaaa");
         assert!(s.is_char_boundary(s.len()));
+    }
+
+    #[tokio::test]
+    async fn filter_drops_x_hashtag_without_probe() {
+        let out = filter_reachable_publisher_urls(vec![
+            "https://x.com/hashtag/RustLang".into(),
+            "https://x.com/rust4bio/status/2094894437818368170".into(),
+        ])
+        .await;
+        assert_eq!(out.len(), 1);
+        assert!(out[0].contains("/status/"));
     }
 
     #[tokio::test]
