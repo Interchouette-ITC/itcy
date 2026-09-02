@@ -23,14 +23,18 @@ const cdpUrl = process.env.ITCY_OBSCURA_CDP_URL || '';
 const profile =
   process.env.ITCY_PW_USER_DATA_DIR ||
   path.join(root, 'pw', 'profile-public-fetch');
-const headless = process.env.ITCY_PUBLIC_FETCH_HEADED !== '1';
-const waitMs = Number(process.env.ITCY_PUBLIC_FETCH_CF_WAIT_MS || '45000');
+const forceHeaded = process.env.ITCY_PUBLIC_FETCH_HEADED === '1';
+const autoHeadedOnCf = process.env.ITCY_PUBLIC_FETCH_HEADED_AUTO !== '0';
+const waitMs = Number(
+  process.env.ITCY_PUBLIC_FETCH_CF_WAIT_MS || (forceHeaded ? '120000' : '45000'),
+);
 
 function looksLikeCloudflare(html) {
   return (
     html.includes('challenges.cloudflare.com') ||
     html.includes('cdn-cgi/challenge-platform') ||
     /just a moment/i.test(html) ||
+    /un instant/i.test(html) ||
     /performing security verification/i.test(html)
   );
 }
@@ -52,18 +56,19 @@ async function writePageHtml(page) {
     .waitForLoadState('networkidle', { timeout: 20000 })
     .catch(() => undefined);
   await settlePastChallenge(page);
-  process.stdout.write(await page.content());
+  return page.content();
 }
 
-if (cdpUrl) {
+async function fetchViaCdp() {
   const browser = await chromium.connectOverCDP(cdpUrl);
   const context = browser.contexts()[0] ?? (await browser.newContext());
   const page = context.pages()[0] ?? (await context.newPage());
-  await writePageHtml(page);
+  const html = await writePageHtml(page);
   await browser.close();
-} else if (!browserBin) {
-  throw new Error('ITCY_BROWSER_EXECUTABLE unset and no Obscura CDP URL');
-} else {
+  return html;
+}
+
+async function fetchViaBrave(headless) {
   const context = await chromium.launchPersistentContext(profile, {
     headless,
     executablePath: browserBin,
@@ -72,8 +77,34 @@ if (cdpUrl) {
   });
   try {
     const page = context.pages()[0] ?? (await context.newPage());
-    await writePageHtml(page);
+    return await writePageHtml(page);
   } finally {
     await context.close();
   }
 }
+
+async function main() {
+  if (cdpUrl) {
+    process.stdout.write(await fetchViaCdp());
+    return;
+  }
+  if (!browserBin) {
+    throw new Error('ITCY_BROWSER_EXECUTABLE unset and no Obscura CDP URL');
+  }
+
+  const startHeadless = !forceHeaded;
+  let html = await fetchViaBrave(startHeadless);
+  if (
+    looksLikeCloudflare(html) &&
+    autoHeadedOnCf &&
+    startHeadless &&
+    process.env.DISPLAY
+  ) {
+    // Headless hit a CF/Turnstile wall: retry headed on the same profile so the
+    // operator can pass the checkbox once; cookies persist for later headless runs.
+    html = await fetchViaBrave(false);
+  }
+  process.stdout.write(html);
+}
+
+await main();

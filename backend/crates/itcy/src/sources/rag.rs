@@ -799,9 +799,17 @@ async fn run_draft_load_with_cite(
 ) -> Result<(String, Vec<String>, CompletionTrace), RagError> {
     if let Some(url) = ctx.prefer {
         if let Err(reason) = crate::sources::publisher_url::probe_publisher_url(url).await {
-            return Err(RagError::Store(format!(
-                "cite URL not reachable: {url} ({reason})"
-            )));
+            if crate::sources::publisher_url::cite_probe_soft_fail(&reason) {
+                warn!(
+                    url = %url,
+                    error = %reason,
+                    "draft: cite probe soft-fail (bot wall); continuing LOAD"
+                );
+            } else {
+                return Err(RagError::Store(format!(
+                    "cite URL not reachable: {url} ({reason})"
+                )));
+            }
         }
     }
     let (research_pack, mut pack_urls, load_trace) = if let Some(url) = ctx.prefer {

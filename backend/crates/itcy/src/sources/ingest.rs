@@ -308,9 +308,11 @@ pub fn public_fetch_subprocess_env() -> Vec<(String, String)> {
         "ITCY_OBSCURA_STEALTH",
         "ITCY_PW_USER_DATA_DIR",
         "ITCY_PUBLIC_FETCH_HEADED",
+        "ITCY_PUBLIC_FETCH_HEADED_AUTO",
         "ITCY_PUBLIC_FETCH_CF_WAIT_MS",
         "ITCY_ROOT",
         "ITCY_OBSCURA_CDP_URL",
+        "DISPLAY",
     ];
     KEYS.iter()
         .filter_map(|key| {
@@ -338,8 +340,8 @@ fn reject_cloudflare_challenge(url: &str, html: &str) -> Result<(), IngestError>
     if crate::sources::html::looks_like_cloudflare_challenge(html) {
         warn!(url = %url, "ingest: Cloudflare challenge page after fetch");
         return Err(IngestError::Fetch(
-            "Cloudflare bot check (automated fetch could not pass). \
-Use a PMC/DOI mirror, GitHub/README cite, or set ITCY_PUBLIC_FETCH_HEADED=1 and open the URL once in Brave."
+            "Cloudflare bot check (headed browser retry still blocked). \
+Pass the checkbox in the Brave window on this host, or use an open-access mirror URL."
                 .into(),
         ));
     }

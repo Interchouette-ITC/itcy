@@ -339,6 +339,9 @@ const SLOGAN_MUSH_NEEDLES: &[&str] = &[
     "not just about speed",
     "isn't just a technical",
     "isn't just about code",
+    "watching how this change becomes habit",
+    "watching how this shift becomes habit",
+    "watching how these small changes become habits",
 ];
 
 struct PickedAngle {
@@ -652,9 +655,32 @@ Builders care about stewardship without swallowing the community around the stac
         assert!(body_has_slogan_mush(
             "22.1k on GitHub? That's not just code, it's a new way to build."
         ));
+        assert!(body_has_slogan_mush(
+            "I'm watching how this change becomes habit."
+        ));
         assert!(!body_has_slogan_mush(
             "Mozilla shipped JPEG XL after a Rust decoder rewrite landed in Firefox."
         ));
+    }
+
+    #[test]
+    fn strip_slogan_mush_drops_watching_habit_sentence_keeps_rest() {
+        let body = "The Rust rewrite is a clear step forward.\n\n\
+I'm watching how this change becomes habit. Builders who work with firmware will notice the difference. The Rust rewrite brings a new kind of care to the task.\n\n\
+The core of this shift is in the analysis engine.";
+        let out = strip_slogan_mush_sentences(body);
+        assert!(
+            !out.contains("becomes habit"),
+            "mush sentence must drop: {out}"
+        );
+        assert!(
+            out.contains("Builders who work with firmware"),
+            "keep following sentences: {out}"
+        );
+        assert!(
+            out.contains("The core of this shift"),
+            "keep third para: {out}"
+        );
     }
 
     #[test]
