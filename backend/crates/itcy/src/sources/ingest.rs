@@ -161,6 +161,27 @@ impl PageFetcher for HttpPageFetcher {
 
 impl HttpPageFetcher {
     async fn fetch_html_once(&self, url: &str) -> Result<String, IngestError> {
+        let (status, body) = self.get_text(url).await?;
+        if status.is_success() {
+            return Ok(body);
+        }
+        if status == reqwest::StatusCode::NOT_FOUND {
+            if let Some(alt) = crate::sources::url_hygiene::ingest_trailing_slash_variant(url) {
+                let (status2, body2) = self.get_text(&alt).await?;
+                if status2.is_success() {
+                    info!(
+                        url = %url,
+                        alt = %alt,
+                        "ingest: 404 without trailing slash; retried ok"
+                    );
+                    return Ok(body2);
+                }
+            }
+        }
+        Err(IngestError::Fetch(format_http_status(status)))
+    }
+
+    async fn get_text(&self, url: &str) -> Result<(reqwest::StatusCode, String), IngestError> {
         let res = self
             .http
             .get(url)
@@ -172,10 +193,7 @@ impl HttpPageFetcher {
             .text()
             .await
             .map_err(|e| IngestError::Fetch(e.to_string()))?;
-        if !status.is_success() {
-            return Err(IngestError::Fetch(format_http_status(status)));
-        }
-        Ok(body)
+        Ok((status, body))
     }
 }
 
@@ -749,5 +767,74 @@ mod tests {
     fn http_status_formats_numeric_only() {
         let s = reqwest::StatusCode::from_u16(522).expect("522");
         assert_eq!(format_http_status(s), "HTTP 522");
+    }
+
+    #[tokio::test]
+    async fn fetch_retries_trailing_slash_after_404() {
+        use axum::routing::get;
+        use axum::Router;
+        use std::net::SocketAddr;
+
+        let body = format!(
+            "<html><title>Cot framework comparison</title><body>{}</body></html>",
+            "Cot vs Actix framework comparison notes ".repeat(40)
+        );
+        let app = Router::new()
+            .route(
+                "/guide/master/framework-comparison",
+                get(|| async { (axum::http::StatusCode::NOT_FOUND, "missing") }),
+            )
+            .route(
+                "/guide/master/framework-comparison/",
+                get({
+                    let body = body.clone();
+                    move || {
+                        let b = body.clone();
+                        async move { (axum::http::StatusCode::OK, b) }
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr: SocketAddr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve");
+        });
+        let url = format!("http://{addr}/guide/master/framework-comparison");
+        let html = HttpPageFetcher::new()
+            .fetch_html(&url)
+            .await
+            .expect("404 without slash must retry with slash");
+        assert!(
+            html.contains("Cot framework comparison"),
+            "expected article HTML: {}",
+            &html[..html.len().min(200)]
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_404_without_slash_variant_stays_404() {
+        use axum::routing::get;
+        use axum::Router;
+        use std::net::SocketAddr;
+
+        let app = Router::new().route(
+            "/gone",
+            get(|| async { (axum::http::StatusCode::NOT_FOUND, "gone") }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr: SocketAddr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve");
+        });
+        let url = format!("http://{addr}/gone");
+        let err = HttpPageFetcher::new()
+            .fetch_html(&url)
+            .await
+            .expect_err("true 404 must fail");
+        assert!(err.to_string().contains("HTTP 404"), "unexpected: {err}");
     }
 }
