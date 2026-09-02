@@ -102,6 +102,16 @@ fn is_loopback_probe_url(url: &str) -> bool {
         || u.starts_with("http://[::1]")
 }
 
+/// Automated fetch cannot pass these walls; draft/tweet LOAD continues, `/ingest` still fails.
+#[must_use]
+pub fn cite_probe_soft_fail(reason: &str) -> bool {
+    let r = reason.to_ascii_lowercase();
+    r.contains("http 403")
+        || r.contains("http 401")
+        || r.contains("http 429")
+        || r.contains("cloudflare")
+}
+
 /// GET probe: reject dead publisher URLs before they land in Link options or ship.
 ///
 /// Uses the same fetch path as [`crate::sources::ingest::fetch_public_page_html`].
@@ -375,6 +385,15 @@ mod tests {
     use super::*;
     use axum::{routing::get, Router};
     use std::net::SocketAddr;
+
+    #[test]
+    fn cite_probe_soft_fail_bot_wall_and_cloudflare() {
+        assert!(cite_probe_soft_fail("HTTP 403"));
+        assert!(cite_probe_soft_fail(
+            "Cloudflare bot check (headed browser retry still blocked)"
+        ));
+        assert!(!cite_probe_soft_fail("HTTP 404"));
+    }
 
     #[test]
     fn evaluate_rejects_http_404() {

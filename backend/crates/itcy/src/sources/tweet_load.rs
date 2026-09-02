@@ -180,10 +180,23 @@ async fn assemble_and_probe_pack(
     urls.truncate(PACK_CAP);
     urls = crate::sources::publisher_url::filter_reachable_publisher_urls(urls).await;
     if !urls.iter().any(|u| u == parts.subject_url) {
-        return Err(RagError::Store(format!(
-            "cite URL not reachable: {}",
-            parts.subject_url
-        )));
+        match crate::sources::publisher_url::probe_publisher_url(parts.subject_url).await {
+            Err(reason) if crate::sources::publisher_url::cite_probe_soft_fail(&reason) => {
+                warn!(
+                    url = %parts.subject_url,
+                    error = %reason,
+                    "load_tweet: cite probe soft-fail (bot wall); keeping operator cite"
+                );
+                urls.insert(0, parts.subject_url.to_string());
+            }
+            Err(reason) => {
+                return Err(RagError::Store(format!(
+                    "cite URL not reachable: {} ({reason})",
+                    parts.subject_url
+                )));
+            }
+            Ok(()) => urls.insert(0, parts.subject_url.to_string()),
+        }
     }
     if let Some(t) = tools {
         t.session_record_extracted_urls(&refill_pool).await;
