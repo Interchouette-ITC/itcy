@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Public-page HTML fetch for ingest thin→PW (no login).
+# Public-page HTML fetch for ingest (no login).
 # Usage: scripts/fetch-public-page.sh <url>
 # Prints HTML to stdout.
 #
-# Default: headless Brave/Chromium via Playwright launch (unchanged).
-# Opt-in: ITCY_PW_BROWSER=obscura → obscura serve + Playwright connectOverCDP.
+# Uses persistent pw/profile-brave (or ITCY_PW_USER_DATA_DIR) like draft research.
+# Opt-in headed: ITCY_PUBLIC_FETCH_HEADED=1 (for interactive Cloudflare checks).
+# Opt-in Obscura: ITCY_PW_BROWSER=obscura
 set -euo pipefail
 URL="${1:?url required}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -31,67 +32,37 @@ if [[ -z "${PW_JSON}" || ! -f "${PW_JSON}" ]]; then
 fi
 
 BROWSER_NAME="$(echo "${ITCY_PW_BROWSER:-}" | tr '[:upper:]' '[:lower:]')"
+export ITCY_ROOT="${ROOT}"
+export PLAYWRIGHT_REQUIRE_FROM="${PW_JSON}"
 
 if [[ "${BROWSER_NAME}" == "obscura" ]]; then
-  ITCY_ROOT="${ROOT}"
   # shellcheck source=scripts/lib/obscura-serve.sh
   source "${ROOT}/scripts/lib/obscura-serve.sh"
   obscura_ensure_serve
-  export PLAYWRIGHT_REQUIRE_FROM="${PW_JSON}"
   export ITCY_OBSCURA_CDP_URL="$(obscura_cdp_base_url)"
-  cd "${ROOT}"
-  exec "${NODE}" --input-type=module -e "
-import { createRequire } from 'node:module';
-const requireFrom = process.env.PLAYWRIGHT_REQUIRE_FROM;
-if (!requireFrom) {
-  throw new Error('PLAYWRIGHT_REQUIRE_FROM unset');
-}
-const require = createRequire(requireFrom);
-const { chromium } = require('playwright');
-const url = process.argv[1];
-const cdpUrl = process.env.ITCY_OBSCURA_CDP_URL || 'http://127.0.0.1:9222';
-const browser = await chromium.connectOverCDP(cdpUrl);
-const context = browser.contexts()[0] ?? await browser.newContext();
-const page = context.pages()[0] ?? await context.newPage();
-await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-process.stdout.write(await page.content());
-await browser.close();
-" "$URL"
+  unset ITCY_BROWSER_EXECUTABLE
+else
+  unset ITCY_OBSCURA_CDP_URL
+  BROWSER_BIN="${ITCY_BROWSER_EXECUTABLE:-}"
+  if [[ -z "$BROWSER_BIN" ]]; then
+    for candidate in /usr/bin/brave-browser /usr/bin/brave-browser-stable /usr/bin/chromium /usr/bin/chromium-browser; do
+      if [[ -x "$candidate" ]]; then
+        BROWSER_BIN="$candidate"
+        break
+      fi
+    done
+  fi
+  if [[ -z "$BROWSER_BIN" || ! -x "$BROWSER_BIN" ]]; then
+    echo "no system browser (brave/chromium); set ITCY_BROWSER_EXECUTABLE=" >&2
+    exit 1
+  fi
+  export ITCY_BROWSER_EXECUTABLE="${BROWSER_BIN}"
 fi
 
-BROWSER_BIN="${ITCY_BROWSER_EXECUTABLE:-}"
-if [[ -z "$BROWSER_BIN" ]]; then
-  for candidate in /usr/bin/brave-browser /usr/bin/brave-browser-stable /usr/bin/chromium /usr/bin/chromium-browser; do
-    if [[ -x "$candidate" ]]; then
-      BROWSER_BIN="$candidate"
-      break
-    fi
-  done
+if [[ -z "${ITCY_PW_USER_DATA_DIR:-}" ]]; then
+  export ITCY_PW_USER_DATA_DIR="${ROOT}/pw/profile-public-fetch"
 fi
-if [[ -z "$BROWSER_BIN" || ! -x "$BROWSER_BIN" ]]; then
-  echo "no system browser (brave/chromium); set ITCY_BROWSER_EXECUTABLE=" >&2
-  exit 1
-fi
+mkdir -p "${ITCY_PW_USER_DATA_DIR}"
 
 cd "${ROOT}"
-export PLAYWRIGHT_REQUIRE_FROM="${PW_JSON}"
-exec "${NODE}" --input-type=module -e "
-import { createRequire } from 'node:module';
-const requireFrom = process.env.PLAYWRIGHT_REQUIRE_FROM;
-if (!requireFrom) {
-  throw new Error('PLAYWRIGHT_REQUIRE_FROM unset');
-}
-const require = createRequire(requireFrom);
-const { chromium } = require('playwright');
-const url = process.argv[1];
-const exe = process.argv[2];
-const browser = await chromium.launch({
-  headless: true,
-  executablePath: exe,
-  chromiumSandbox: true,
-});
-const page = await browser.newPage();
-await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-process.stdout.write(await page.content());
-await browser.close();
-" "$URL" "$BROWSER_BIN"
+exec "${NODE}" "${ROOT}/scripts/lib/fetch-public-page.mjs" "${URL}"
