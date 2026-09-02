@@ -285,11 +285,16 @@ async fn try_public_playwright_fetch(url: &str) -> Result<Option<String>, Ingest
         format!("{cmd_tmpl} {url}")
     };
     info!(cmd = %cmdline, url = %url, "ingest: running public Playwright fetch cmd");
-    let output = Command::new("bash")
+    let mut command = Command::new("bash");
+    command
         .arg("-lc")
         .arg(&cmdline)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    for (key, value) in public_fetch_subprocess_env() {
+        command.env(key, value);
+    }
+    let output = command
         .output()
         .await
         .map_err(|e| IngestError::Fetch(format!("playwright public cmd: {e}")))?;
@@ -304,6 +309,26 @@ async fn try_public_playwright_fetch(url: &str) -> Result<Option<String>, Ingest
         return Ok(None);
     }
     Ok(Some(html))
+}
+
+/// Env vars forwarded to [`try_public_playwright_fetch`] (`fetch-public-page.sh`).
+#[must_use]
+pub fn public_fetch_subprocess_env() -> Vec<(String, String)> {
+    const KEYS: &[&str] = &[
+        "ITCY_PW_BROWSER",
+        "ITCY_BROWSER_EXECUTABLE",
+        "ITCY_OBSCURA_CDP_PORT",
+        "ITCY_OBSCURA_STEALTH",
+    ];
+    KEYS.iter()
+        .filter_map(|key| {
+            std::env::var(key)
+                .ok()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .map(|value| ((*key).to_string(), value))
+        })
+        .collect()
 }
 
 /// Ingests a public URL into the source DB with embeddings (upsert by URL).
@@ -594,6 +619,36 @@ mod tests {
         assert!(is_transient_fetch_err("HTTP 524"));
         assert!(!is_transient_fetch_err("HTTP 404"));
         assert!(!is_transient_fetch_err("HTTP 403"));
+    }
+
+    #[test]
+    fn public_fetch_subprocess_env_forwards_browser_vars() {
+        // SAFETY: test serializes env access; no other threads read these vars here.
+        unsafe {
+            std::env::set_var("ITCY_PW_BROWSER", "obscura");
+            std::env::set_var("ITCY_BROWSER_EXECUTABLE", "/tmp/obscura-test-bin");
+            std::env::set_var("ITCY_OBSCURA_CDP_PORT", "9223");
+        }
+        let pairs = public_fetch_subprocess_env();
+        unsafe {
+            std::env::remove_var("ITCY_PW_BROWSER");
+            std::env::remove_var("ITCY_BROWSER_EXECUTABLE");
+            std::env::remove_var("ITCY_OBSCURA_CDP_PORT");
+        }
+        let map: std::collections::HashMap<_, _> = pairs.into_iter().collect();
+        assert_eq!(
+            map.get("ITCY_PW_BROWSER").map(String::as_str),
+            Some("obscura")
+        );
+        assert_eq!(
+            map.get("ITCY_BROWSER_EXECUTABLE").map(String::as_str),
+            Some("/tmp/obscura-test-bin")
+        );
+        assert_eq!(
+            map.get("ITCY_OBSCURA_CDP_PORT").map(String::as_str),
+            Some("9223")
+        );
+        assert!(!map.contains_key("ITCY_OBSCURA_STEALTH"));
     }
 
     #[test]

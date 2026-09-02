@@ -29,6 +29,9 @@ Committed defaults: [`backend/config.toml`](../backend/config.toml).
 | `ITCY_LINKEDIN_EXPORT_DIR` | Official LinkedIn export directory (zip or unzipped). Never commit it. |
 | `ITCY_TOR_BIN` | Tor daemon binary for `/enrich` (SOCKS `9050`, control `9051`) |
 | `ITCY_PUBLIC_FETCH_CMD` | Optional HTML fetch helper (default `scripts/fetch-public-page.sh`) |
+| `ITCY_PW_BROWSER` | Ingest thin-page fetch only: `brave`, `chromium`, or opt-in `obscura` (default unset = legacy Brave/Chromium launch) |
+| `ITCY_BROWSER_EXECUTABLE` | Override browser or Obscura binary path (`tools/obscura/obscura` when `ITCY_PW_BROWSER=obscura` and unset) |
+| `ITCY_OBSCURA_CDP_PORT` | CDP port for `obscura serve` (default `9222`) when using Obscura ingest fetch |
 | Slack / GitHub / X env keys named in `config.toml` | Tokens in gitignored `.env` |
 
 Copy env names from `backend/config.toml` (`*_env` fields). Do not commit `.env`, `.linkedin`, or `.twitter`.
@@ -56,6 +59,10 @@ cd backend && cargo run -p itcy --bin import-linkedin-export
 ```
 
 Ongoing adds: Slack `/enrich` (Tor, post URLs) and `/ingest` (public pages).
+
+## Obscura ingest (opt-in)
+
+Thin-page `/ingest` fallback only (`scripts/fetch-public-page.sh`). Default unchanged. Set `ITCY_PW_BROWSER=obscura` in `.env` to try Obscura CDP; install binary under `tools/obscura/`. Compare baseline vs Obscura: `make obscura-parity`. Draft research (`playwright-mcp.sh`) and X ship are unchanged.
 
 ## GitHub wake
 
