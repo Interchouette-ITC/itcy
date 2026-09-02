@@ -21,7 +21,7 @@ lint: check-license-headers
 
 test:
 	cd backend && cargo test --workspace
-	node --test scripts/x-ship-resolve.test.mjs
+	node --test scripts/x-ship-resolve.test.mjs scripts/tweet-href-urls.test.mjs
 
 # Drop cargo build artifacts only. Does not touch sql/ or .env.
 clean:

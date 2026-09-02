@@ -57,6 +57,36 @@ function handleFromStatusUrl(url) {
 async function collectOnce(page, lane, queryTag, limit) {
   return page.evaluate(
     ({ laneName, queryName, maxHits }) => {
+      function acceptPublisherHref(href) {
+        if (!href || typeof href !== "string") return null;
+        const u = href.trim().split("?")[0].split("#")[0];
+        if (!u.startsWith("http://") && !u.startsWith("https://")) return null;
+        let host = "";
+        try {
+          host = new URL(u).hostname.toLowerCase();
+        } catch {
+          return null;
+        }
+        if (host === "x.com" || host === "twitter.com" || host === "t.co") {
+          return null;
+        }
+        return u;
+      }
+
+      function tweetBodyWithHrefLinks(article) {
+        if (!article) return "";
+        const tw = article.querySelector('[data-testid="tweetText"]');
+        if (!tw) return "";
+        const clone = tw.cloneNode(true);
+        for (const link of clone.querySelectorAll("a[href]")) {
+          const u = acceptPublisherHref(link.getAttribute("href"));
+          if (u) {
+            link.replaceWith(document.createTextNode(u));
+          }
+        }
+        return (clone.innerText || "").trim();
+      }
+
       const out = [];
       const seen = new Set();
       for (const a of document.querySelectorAll('a[href*="/status/"]')) {
@@ -83,8 +113,8 @@ async function collectOnce(page, lane, queryTag, limit) {
             if (at) handle = at.replace(/^@/, "").trim();
           }
           const tw = article.querySelector('[data-testid="tweetText"]');
-          body = tw ? (tw.innerText || "").trim() : "";
-          if (body.length < 12) {
+          body = tweetBodyWithHrefLinks(article);
+          if (body.length < 12 && tw) {
             body = (article.innerText || "").trim();
           }
         }
