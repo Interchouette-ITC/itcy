@@ -1,4 +1,4 @@
-.PHONY: lint test run build clean tor-up tor-down linkedin-enrich check-license-headers apply-license-headers corpus-rebuild
+.PHONY: lint test run build clean tor-up tor-down linkedin-enrich check-license-headers apply-license-headers corpus-rebuild obscura-parity
 
 check-license-headers:
 	@if [ -f .cursor/scripts/check-license-headers.mjs ]; then \
@@ -59,3 +59,7 @@ tor-down:
 # Tor-up + enrich-linkedin-urls --loop (link-only post/repost stubs). Restart-safe via DB.
 linkedin-enrich:
 	bash scripts/linkedin-enrich.sh
+
+# Lane C baseline vs ITCY_PW_BROWSER=obscura (manual; requires tools/obscura/obscura).
+obscura-parity:
+	bash scripts/obscura-parity-harness.sh
