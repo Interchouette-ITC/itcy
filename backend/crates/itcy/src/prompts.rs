@@ -56,7 +56,9 @@ const DRAFT_USER_TMPL: &str = prompt!("draft_user.md");
 const TWEET_USER_TMPL: &str = prompt!("tweet_user.md");
 const TWEET_FARCE_USER_TMPL: &str = prompt!("tweet_farce_user.md");
 const DRAFT_REWORK_USER_TMPL: &str = prompt!("draft_rework_user.md");
+const DRAFT_REWORK_REFRESH_USER_TMPL: &str = prompt!("draft_rework_refresh_user.md");
 const TWEET_REWORK_USER_TMPL: &str = prompt!("tweet_rework_user.md");
+const TWEET_REWORK_REFRESH_USER_TMPL: &str = prompt!("tweet_rework_refresh_user.md");
 const TWEET_REWORK_USER_TOOLS_TMPL: &str = prompt!("tweet_rework_user_tools.md");
 const TWEET_REWORK_USER_FARCE_TMPL: &str = prompt!("tweet_rework_user_farce.md");
 const REWORK_EMPTY_PACK_TMPL: &str = prompt!("rework_empty_pack.md");
@@ -73,6 +75,10 @@ const DRAFT_USER_SUBJECT_HTTPS_TMPL: &str = prompt!("draft_user_subject_https.md
 /// Self-introduction writer system core (date line prepended at runtime).
 pub const SELF_SYSTEM_CORE: &str = prompt!("self_system.md");
 pub const DRAFT_REWORK_SYSTEM_CORE: &str = prompt!("draft_rework_system.md");
+/// `DRAFT-` `/rework` with no instructions (refresh / redo).
+pub const DRAFT_REWORK_REFRESH_SYSTEM_CORE: &str = prompt!("draft_rework_refresh_system.md");
+/// `TWEET-` `/rework` with no instructions (refresh / redo).
+pub const TWEET_REWORK_REFRESH_SYSTEM_CORE: &str = prompt!("tweet_rework_refresh_system.md");
 
 /// `LinkedIn` comment-reply system (`/accept_comment_reply`).
 pub const COMMENT_REPLY_SYSTEM_CORE: &str = prompt!("comment_reply_system.md");
@@ -286,6 +292,24 @@ pub fn draft_rework_user_message(
     fill(&s, "url_lock", url_lock)
 }
 
+/// Draft `/rework` refresh (empty instructions) user turn.
+#[must_use]
+pub fn draft_rework_refresh_user_message(
+    id: &str,
+    subject: &str,
+    pack: &str,
+    body: &str,
+    url_lock: &str,
+    ban_block: &str,
+) -> String {
+    let mut s = fill(DRAFT_REWORK_REFRESH_USER_TMPL, "id", id);
+    s = fill(&s, "subject", subject);
+    s = fill(&s, "pack", pack);
+    s = fill(&s, "body", body);
+    s = fill(&s, "url_lock", url_lock);
+    fill(&s, "ban_block", ban_block)
+}
+
 /// Inputs for [`tweet_rework_user_message`].
 pub struct TweetReworkUserArgs<'a> {
     pub instructions: &'a str,
@@ -319,6 +343,24 @@ pub fn tweet_rework_user_message(args: &TweetReworkUserArgs<'_>) -> String {
         s = fill(&s, "pack", args.pack);
     }
     s
+}
+
+/// Tweet `/rework` refresh (empty instructions) user turn.
+#[must_use]
+pub fn tweet_rework_refresh_user_message(
+    id: &str,
+    subject: &str,
+    pack: &str,
+    commentary: &str,
+    cite: &str,
+    ban_block: &str,
+) -> String {
+    let mut s = fill(TWEET_REWORK_REFRESH_USER_TMPL, "id", id);
+    s = fill(&s, "subject", subject);
+    s = fill(&s, "pack", pack);
+    s = fill(&s, "commentary", commentary);
+    s = fill(&s, "cite", cite);
+    fill(&s, "ban_block", ban_block)
 }
 
 /// Commentary placeholder when the stored tweet body was an essay dump.
@@ -455,6 +497,32 @@ mod tests {
     }
 
     #[test]
+    fn craft_prompts_forbid_markdown_bold_spans() {
+        assert!(
+            FORM_CRAFT_X.contains("Emphasis: plain prose"),
+            "X Form craft must teach rare emphasis (no markdown bold flood)"
+        );
+        assert!(
+            FORM_CRAFT_LINKEDIN.contains("Emphasis: plain prose"),
+            "LinkedIn Form craft must teach rare emphasis"
+        );
+        for (name, body) in [
+            ("FORM_CRAFT_X", FORM_CRAFT_X),
+            ("FORM_CRAFT_LINKEDIN", FORM_CRAFT_LINKEDIN),
+            ("CREATIVE_X", CREATIVE_X),
+            ("CREATIVE_LINKEDIN", CREATIVE_LINKEDIN),
+            ("AI_CMO", AI_CMO),
+            ("TWEET_SYSTEM_CORE", TWEET_SYSTEM_CORE),
+            ("DRAFT_SYSTEM_CORE", DRAFT_SYSTEM_CORE),
+        ] {
+            assert!(
+                !body.contains("**"),
+                "{name} must not teach markdown bold with ** spans (model copies them into artifacts)"
+            );
+        }
+    }
+
+    #[test]
     fn surface_form_and_creative_craft() {
         assert!(FORM_CRAFT_X.contains('🦉') && FORM_CRAFT_X.contains('🦀'));
         assert!(FORM_CRAFT_LINKEDIN.contains('🦉') && FORM_CRAFT_LINKEDIN.contains('🦀'));
@@ -528,6 +596,10 @@ mod tests {
             FORM_CRAFT_LINKEDIN.len() > 4000,
             "Form craft - LinkedIn should be a real curriculum (jobs + bad-only, no slot skeletons)"
         );
+    }
+
+    #[test]
+    fn creative_craft_surface_locks() {
         assert!(CREATIVE_X.contains("Creative CMO") || CREATIVE_X.contains("CREATIVE MANDATE"));
         assert!(
             CREATIVE_LINKEDIN.contains("Creative CMO")
@@ -576,7 +648,7 @@ mod tests {
         assert!(
             CREATIVE_LINKEDIN.contains("Zero emoji is a fail")
                 || CREATIVE_LINKEDIN.contains("you are the owl")
-                || CREATIVE_LINKEDIN.contains("**owl** AI CMO"),
+                || CREATIVE_LINKEDIN.contains("owl AI CMO"),
             "LinkedIn Creative must lock owl AI CMO + emoji fail"
         );
         assert!(

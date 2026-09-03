@@ -44,10 +44,14 @@ const PROMPT_FILES: &[&str] = &[
     "self_system.md",
     "self_user.md",
     "draft_rework_system.md",
+    "draft_rework_refresh_system.md",
+    "draft_rework_refresh_user.md",
     "comment_reply_system.md",
     "comment_reply_user.md",
     "tweet_reply_system.md",
     "tweet_reply_user.md",
+    "tweet_rework_refresh_system.md",
+    "tweet_rework_refresh_user.md",
     "reply_rework_refresh_system.md",
     "reply_rework_refresh_user.md",
     "reply_rework_instruction_system.md",
@@ -105,7 +109,9 @@ fn stub_body(name: &str) -> &'static str {
         "draft_user.md" | "tweet_user.md" => "{research_pack}\n{pack_note}\n{subject}\n",
         "tweet_farce_user.md" => "{theme}\n",
         "draft_rework_user.md" => "{instructions}\n{id}\n{subject}\n{pack}\n{body}\n{url_lock}\n",
+        "draft_rework_refresh_user.md" => "{id}\n{subject}\n{pack}\n{body}\n{url_lock}\n{ban_block}\n",
         "tweet_rework_user.md" => "{instructions}\n{id}\n{subject}\n{commentary}\n{cite}\n",
+        "tweet_rework_refresh_user.md" => "{id}\n{subject}\n{pack}\n{commentary}\n{cite}\n{ban_block}\n",
         "tweet_rework_user_tools.md" => {
             "{instructions}\n{id}\n{subject}\n{commentary}\n{cite}\n{pack}\n"
         }

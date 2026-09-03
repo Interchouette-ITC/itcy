@@ -420,7 +420,9 @@ fn apply_replacement_reply(
     banned: &[String],
 ) -> Result<(String, crate::llm::client::CompletionTrace), String> {
     use crate::sources::draft_footer::body_copies_rework_ban;
-    let mut reply = ensure_one_emoji(&sanitize_itcy_text(instructions.trim()));
+    let mut reply = ensure_one_emoji(&sanitize_itcy_text(
+        crate::sources::draft_footer::rework_replacement_body(instructions),
+    ));
     for phrase in banned {
         if phrase.chars().count() >= 24 {
             reply = reply.replace(phrase, "");

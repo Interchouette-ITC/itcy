@@ -697,15 +697,35 @@ pub fn rework_verbatim_ban_phrases(prior: &str, instructions: &str) -> Vec<Strin
     out
 }
 
-/// `/rework` input mode for replies and drafts.
+/// `/rework` input mode for replies, drafts, and tweets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReworkMode {
-    /// `/rework <id>` with no text: regenerate from subject.
+    /// `/rework <id>` with no text: redo from subject + pack.
     Refresh,
     /// Short/medium edit directives (reformulate, lengthen, …).
     Instruction,
-    /// Operator pasted a full replacement body (cite/replace).
+    /// Operator pasted a full replacement body (`use text` or long paste).
     Replace,
+}
+
+/// If instructions start with `use text` (optional `:`), return the body after the prefix.
+#[must_use]
+pub fn strip_use_text_prefix(instructions: &str) -> Option<&str> {
+    const PREFIX: &str = "use text";
+    let t = instructions.trim();
+    let lower = t.to_ascii_lowercase();
+    if !lower.starts_with(PREFIX) {
+        return None;
+    }
+    let rest = t.get(PREFIX.len()..)?.trim_start();
+    Some(rest.strip_prefix(':').map_or(rest, str::trim_start))
+}
+
+/// Body to save on Replace: strip `use text` when present, else the full paste.
+#[must_use]
+pub fn rework_replacement_body(instructions: &str) -> &str {
+    let t = instructions.trim();
+    strip_use_text_prefix(t).unwrap_or(t)
 }
 
 /// Classify `/rework` text into refresh / instruction / replace.
@@ -715,10 +735,50 @@ pub fn classify_rework_mode(instructions: &str) -> ReworkMode {
     if t.is_empty() {
         return ReworkMode::Refresh;
     }
+    if strip_use_text_prefix(t).is_some() {
+        return ReworkMode::Replace;
+    }
     if rework_looks_like_replacement_draft(t) {
         return ReworkMode::Replace;
     }
     ReworkMode::Instruction
+}
+
+/// ASCII / curly quoted spans from instructions that must appear in Instruction rework output.
+#[must_use]
+pub fn rework_required_quoted_spans(instructions: &str) -> Vec<String> {
+    quoted_phrases_in_instructions(instructions)
+        .into_iter()
+        .filter(|p| p.chars().count() >= 8)
+        .collect()
+}
+
+/// Required quotes from instructions that are missing from `body`.
+#[must_use]
+pub fn missing_required_quoted_spans(body: &str, required: &[String]) -> Vec<String> {
+    required
+        .iter()
+        .filter(|q| !body.contains(q.as_str()))
+        .cloned()
+        .collect()
+}
+
+/// Phrases to avoid on empty `/rework` refresh (prior body beats / sentences).
+#[must_use]
+pub fn rework_refresh_ban_phrases(prior: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for sentence in prose_sentences(prior) {
+        if sentence.chars().count() >= 24 {
+            push_ban_unique(&mut out, sentence);
+        }
+    }
+    for line in prior.lines() {
+        let t = line.trim();
+        if t.chars().count() >= 24 {
+            push_ban_unique(&mut out, t.to_string());
+        }
+    }
+    out
 }
 
 /// True when `/rework` text is a full replacement draft (not a short polish tip).
@@ -1453,6 +1513,36 @@ Wasmer provides a WASM/WASIX runtime that can run PostgreSQL alongside Python, N
 So Wasmer could theoretically host the same kind of PostgreSQL WASM workload from a Rust application, while PGlite provides the PostgreSQL-specific embedded experience. \
 That distinction between embedded PostgreSQL and a runtime for embedding arbitrary software is what makes Wasmer's approach particularly interesting.";
         assert_eq!(classify_rework_mode(replace), ReworkMode::Replace);
+        assert_eq!(
+            classify_rework_mode("use text\nAutumn ships. \"Ship the App, not the Plumbing.\" 🦉"),
+            ReworkMode::Replace
+        );
+        assert_eq!(
+            classify_rework_mode("USE TEXT: short body ok"),
+            ReworkMode::Replace
+        );
+        assert_eq!(
+            rework_replacement_body("use text\nHello owl 🦉"),
+            "Hello owl 🦉"
+        );
+        assert_eq!(rework_replacement_body("USE TEXT: Hello"), "Hello");
+        let required = rework_required_quoted_spans(
+            "include slogan exactly as \"Ship the App, not the Plumbing.\" with double quotes",
+        );
+        assert!(
+            required
+                .iter()
+                .any(|s| s == "Ship the App, not the Plumbing."),
+            "{required:?}"
+        );
+        assert!(missing_required_quoted_spans("no slogan here", &required)
+            .iter()
+            .any(|s| s.contains("Ship the App")));
+        assert!(missing_required_quoted_spans(
+            "We say \"Ship the App, not the Plumbing.\" today",
+            &required
+        )
+        .is_empty());
         let prior_long = "word ".repeat(40);
         let stub = "Cheers, great point 🦉";
         assert!(rework_collapsed_too_much(
