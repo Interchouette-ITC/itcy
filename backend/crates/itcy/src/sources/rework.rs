@@ -436,7 +436,7 @@ fn tweet_rework_needs_tools(instructions: &str) -> bool {
     t.contains("web_search") || t.contains("browse_url")
 }
 
-#[cfg(test)]
+#[cfg(all(test, itcy_kitchen_prompts))]
 fn tweet_rework_user_prompt(
     tweet_id: &str,
     subject: &str,
