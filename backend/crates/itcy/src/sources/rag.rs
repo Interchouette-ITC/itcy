@@ -497,10 +497,14 @@ async fn run_draft_phase(
     log_pipeline_banner("DRAFT (writer)");
 
     let base_note = draft_pack_note(ctx.pack_urls.is_empty(), ctx.brief_has_cite);
-    let pack_note = match ctx.extra_pack_note {
+    let mut pack_note = match ctx.extra_pack_note {
         Some(extra) if !extra.trim().is_empty() => format!("{base_note}\n\n{extra}"),
         _ => base_note.to_string(),
     };
+    if let Some(qnote) = crate::sources::draft_footer::operator_quote_pack_note(ctx.subject) {
+        pack_note.push_str("\n\n");
+        pack_note.push_str(&qnote);
+    }
     let user = if ctx.brief_has_cite {
         crate::prompts::draft_user_message_subject_https(ctx.research_pack, &pack_note, ctx.subject)
     } else {
@@ -650,13 +654,13 @@ async fn draft_body_with_scrub_retry(
     ctx: &DraftPhaseCtx<'_>,
     paste_subject: &str,
 ) -> Result<(String, CompletionTrace), RagError> {
-    let (draft_response, draft_trace) = run_draft_phase(ctx).await?;
-    match scrub_and_validate_writer_body(
+    let (draft_response, mut draft_trace) = run_draft_phase(ctx).await?;
+    let mut body = match scrub_and_validate_writer_body(
         &draft_response.message.content,
         ctx.pack_urls,
         paste_subject,
     ) {
-        Ok(body) => Ok((body, draft_trace)),
+        Ok(body) => body,
         Err(first_err) => {
             warn!(error = %first_err, "load_draft: scrub failed; retrying writer once");
             let retry_ctx = DraftPhaseCtx {
@@ -670,14 +674,63 @@ async fn draft_body_with_scrub_retry(
                 session_dir: ctx.session_dir,
             };
             let (retry_response, retry_trace) = run_draft_phase(&retry_ctx).await?;
-            let body = scrub_and_validate_writer_body(
+            draft_trace = draft_trace.clone().accumulate(&retry_trace);
+            scrub_and_validate_writer_body(
                 &retry_response.message.content,
                 ctx.pack_urls,
                 paste_subject,
-            )?;
-            Ok((body, draft_trace.accumulate(&retry_trace)))
+            )?
         }
+    };
+    body = enforce_required_quotes_on_draft(ctx, paste_subject, body, &mut draft_trace).await?;
+    Ok((body, draft_trace))
+}
+
+async fn enforce_required_quotes_on_draft(
+    ctx: &DraftPhaseCtx<'_>,
+    paste_subject: &str,
+    body: String,
+    draft_trace: &mut CompletionTrace,
+) -> Result<String, RagError> {
+    use crate::sources::draft_footer::{
+        louder_required_quotes_note, missing_quotes_operator_error, missing_required_quoted_spans,
+        rework_required_quoted_spans,
+    };
+    let required = rework_required_quoted_spans(ctx.subject);
+    if required.is_empty() {
+        return Ok(body);
     }
+    let missing = missing_required_quoted_spans(&body, &required);
+    if missing.is_empty() {
+        return Ok(body);
+    }
+    let note = louder_required_quotes_note(&missing);
+    warn!(
+        missing = ?missing,
+        "load_draft: required quotes missing; retrying writer once"
+    );
+    let retry_ctx = DraftPhaseCtx {
+        extra_pack_note: Some(note.as_str()),
+        router: ctx.router,
+        subject: ctx.subject,
+        research_pack: ctx.research_pack,
+        pack_urls: ctx.pack_urls,
+        tools: ctx.tools,
+        brief_has_cite: ctx.brief_has_cite,
+        session_dir: ctx.session_dir,
+    };
+    let (retry_response, retry_trace) = run_draft_phase(&retry_ctx).await?;
+    *draft_trace = draft_trace.clone().accumulate(&retry_trace);
+    let retry_body = scrub_and_validate_writer_body(
+        &retry_response.message.content,
+        ctx.pack_urls,
+        paste_subject,
+    )?;
+    let still = missing_required_quoted_spans(&retry_body, &required);
+    if still.is_empty() {
+        return Ok(retry_body);
+    }
+    Err(RagError::Store(missing_quotes_operator_error(&still)))
 }
 
 /// First line / clause of a subject string for subject-paste detection (not the full operator brief).

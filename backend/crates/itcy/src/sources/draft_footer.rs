@@ -744,23 +744,193 @@ pub fn classify_rework_mode(instructions: &str) -> ReworkMode {
     ReworkMode::Instruction
 }
 
-/// ASCII / curly quoted spans from instructions that must appear in Instruction rework output.
+/// Operator `quote` keyword values from a brief (draft / tweet / rework).
+///
+/// Same family as `cite https://…`: `quote Ship the App, not the Plumbing.` or
+/// `quote: Ship the App, not the Plumbing.` Value runs until the next `cite` /
+/// `quote` keyword, an `https://` URL, or end of brief.
 #[must_use]
-pub fn rework_required_quoted_spans(instructions: &str) -> Vec<String> {
-    quoted_phrases_in_instructions(instructions)
-        .into_iter()
-        .filter(|p| p.chars().count() >= 8)
-        .collect()
+pub fn extract_brief_quotes(brief: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let lower = brief.to_ascii_lowercase();
+    let bytes = brief.as_bytes();
+    let mut search_from = 0_usize;
+    while search_from < lower.len() {
+        let Some(rel) = lower[search_from..].find("quote") else {
+            break;
+        };
+        let start = search_from + rel;
+        if !quote_keyword_boundary_before(brief, start) {
+            search_from = start + 5;
+            continue;
+        }
+        let after_kw = start + 5;
+        if after_kw < bytes.len() && bytes[after_kw].is_ascii_alphanumeric() {
+            search_from = after_kw;
+            continue;
+        }
+        let mut value_start = after_kw;
+        while value_start < bytes.len()
+            && (bytes[value_start] == b':' || bytes[value_start].is_ascii_whitespace())
+        {
+            value_start += 1;
+        }
+        let value_end = quote_value_end(brief, &lower, value_start);
+        if value_end <= value_start {
+            search_from = after_kw;
+            continue;
+        }
+        let raw = brief[value_start..value_end].trim();
+        let cleaned = strip_wrapping_quotes(raw)
+            .trim_matches(|c: char| c == ',' || c.is_whitespace())
+            .trim()
+            .to_string();
+        if cleaned.chars().count() >= 3 {
+            push_ban_unique(&mut out, cleaned);
+        }
+        search_from = value_end;
+    }
+    out
 }
 
-/// Required quotes from instructions that are missing from `body`.
+fn quote_keyword_boundary_before(brief: &str, start: usize) -> bool {
+    if start == 0 {
+        return true;
+    }
+    let Some(prev) = brief[..start].chars().next_back() else {
+        return true;
+    };
+    prev.is_whitespace() || matches!(prev, ',' | ';' | ':' | '|' | '(' | '[')
+}
+
+fn quote_value_end(brief: &str, lower: &str, value_start: usize) -> usize {
+    let rest = &lower[value_start..];
+    let mut end = brief.len();
+    for key in ["cite", "quote"] {
+        let mut from = 0_usize;
+        while let Some(rel) = rest[from..].find(key) {
+            let at = value_start + from + rel;
+            if at == value_start && key == "quote" {
+                from += rel + key.len();
+                continue;
+            }
+            if quote_keyword_boundary_before(brief, at) {
+                let after = at + key.len();
+                if after >= brief.len() || !brief.as_bytes()[after].is_ascii_alphanumeric() {
+                    end = end.min(at);
+                    break;
+                }
+            }
+            from += rel + key.len();
+        }
+    }
+    if let Some(rel) = rest.find("https://") {
+        end = end.min(value_start + rel);
+    }
+    if let Some(rel) = rest.find("http://") {
+        end = end.min(value_start + rel);
+    }
+    while end > value_start {
+        let ch = brief[..end].chars().next_back().unwrap_or('\0');
+        if ch.is_whitespace() || ch == ',' || ch == ';' {
+            end -= ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+    end
+}
+
+fn strip_wrapping_quotes(s: &str) -> &str {
+    let t = s.trim();
+    for (open, close) in [
+        ('"', '"'),
+        ('\u{201c}', '\u{201d}'),
+        ('\u{2018}', '\u{2019}'),
+        ('\'', '\''),
+    ] {
+        if t.starts_with(open)
+            && t.ends_with(close)
+            && t.len() >= open.len_utf8() + close.len_utf8()
+        {
+            return t[open.len_utf8()..t.len() - close.len_utf8()].trim();
+        }
+    }
+    t
+}
+
+/// Required slogan / phrase spans from the operator `quote` keyword.
+#[must_use]
+pub fn rework_required_quoted_spans(instructions: &str) -> Vec<String> {
+    extract_brief_quotes(instructions)
+}
+
+/// Required `quote` values that are missing from `body`.
 #[must_use]
 pub fn missing_required_quoted_spans(body: &str, required: &[String]) -> Vec<String> {
     required
         .iter()
-        .filter(|q| !body.contains(q.as_str()))
+        .filter(|q| !body_contains_required_quote(body, q))
         .cloned()
         .collect()
+}
+
+fn body_contains_required_quote(body: &str, slogan: &str) -> bool {
+    if body.contains(slogan) {
+        return true;
+    }
+    for (open, close) in [('"', '"'), ('\u{201c}', '\u{201d}')] {
+        let wrapped = format!("{open}{slogan}{close}");
+        if body.contains(&wrapped) {
+            return true;
+        }
+    }
+    false
+}
+
+/// First-pass pack note when the brief has `quote …` values.
+#[must_use]
+pub fn operator_quote_pack_note(brief: &str) -> Option<String> {
+    let quotes = extract_brief_quotes(brief);
+    if quotes.is_empty() {
+        return None;
+    }
+    let mut s = String::from(
+        "OPERATOR quote keyword (hard): include each phrase verbatim with double quotes around it:\n",
+    );
+    for q in quotes {
+        s.push_str("- \"");
+        s.push_str(&q);
+        s.push_str("\"\n");
+    }
+    Some(s)
+}
+
+/// Louder pack-note / instruction suffix when required `quote` values were missing.
+#[must_use]
+pub fn louder_required_quotes_note(missing: &[String]) -> String {
+    let mut s = String::from(
+        "HARD: previous draft missed operator `quote` text. Include each phrase verbatim (with double quotes around it):\n",
+    );
+    for q in missing {
+        s.push_str("- \"");
+        s.push_str(q);
+        s.push_str("\"\n");
+    }
+    s
+}
+
+/// Operator-facing error when required `quote` values never landed.
+#[must_use]
+pub fn missing_quotes_operator_error(missing: &[String]) -> String {
+    format!(
+        "writer did not include required quote text: {}",
+        missing
+            .iter()
+            .map(|q| format!("\"{q}\""))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
 }
 
 /// Phrases to avoid on empty `/rework` refresh (prior body beats / sentences).
@@ -1527,7 +1697,7 @@ That distinction between embedded PostgreSQL and a runtime for embedding arbitra
         );
         assert_eq!(rework_replacement_body("USE TEXT: Hello"), "Hello");
         let required = rework_required_quoted_spans(
-            "include slogan exactly as \"Ship the App, not the Plumbing.\" with double quotes",
+            "Autumn Rust web framework, quote Ship the App, not the Plumbing. Cite https://autumn-web.app/",
         );
         assert!(
             required
@@ -1535,12 +1705,22 @@ That distinction between embedded PostgreSQL and a runtime for embedding arbitra
                 .any(|s| s == "Ship the App, not the Plumbing."),
             "{required:?}"
         );
+        assert_eq!(
+            extract_brief_quotes("topic, quote: Hello world. cite https://example.com/a"),
+            vec!["Hello world.".to_string()]
+        );
         assert!(missing_required_quoted_spans("no slogan here", &required)
             .iter()
             .any(|s| s.contains("Ship the App")));
         assert!(missing_required_quoted_spans(
             "We say \"Ship the App, not the Plumbing.\" today",
             &required
+        )
+        .is_empty());
+        assert!(missing_quotes_operator_error(&required).contains("Ship the App"));
+        // Bare \"…\" without the quote keyword is not required.
+        assert!(rework_required_quoted_spans(
+            "include slogan exactly as \"Ship the App, not the Plumbing.\" with double quotes"
         )
         .is_empty());
         let prior_long = "word ".repeat(40);
