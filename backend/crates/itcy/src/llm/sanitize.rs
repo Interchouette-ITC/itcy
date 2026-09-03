@@ -29,7 +29,50 @@ pub fn sanitize_itcy_text(input: &str) -> String {
     tidy_commas(&mut s);
     s = expand_emoji_shortcodes(&s);
     collapse_spaces(&mut s);
+    s = strip_single_star_italic(&s);
     s
+}
+
+/// Strip `*word*` and `**word**` Markdown italic/bold spans that models leak into
+/// plain-text output. Only inline spans are touched; standalone `*` (e.g. list
+/// bullets, lone asterisks) are left alone.
+fn strip_single_star_italic(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(star_pos) = rest.find('*') {
+        out.push_str(&rest[..star_pos]);
+        rest = &rest[star_pos..];
+        // Determine span width: `**` or `*`.
+        let (open, close) = if rest.starts_with("**") {
+            ("**", "**")
+        } else {
+            ("*", "*")
+        };
+        let after_open = &rest[open.len()..];
+        // Not a span: open immediately followed by whitespace / newline / end, or no matching close.
+        if after_open.is_empty() || after_open.starts_with(' ') || after_open.starts_with('\n') {
+            out.push('*');
+            rest = &rest[1..];
+            continue;
+        }
+        if let Some(end) = after_open.find(close) {
+            let inner = &after_open[..end];
+            // Must be non-empty inline (no newlines inside).
+            if inner.is_empty() || inner.contains('\n') {
+                out.push('*');
+                rest = &rest[1..];
+                continue;
+            }
+            out.push_str(inner);
+            rest = &after_open[end + close.len()..];
+        } else {
+            // No closing marker: emit literally.
+            out.push('*');
+            rest = &rest[1..];
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Sanitize commentary; leave operator chrome / disclosure (`Link:`, `Written by AI`, …) untouched.
@@ -414,6 +457,46 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:1 out:1";
         let s = expand_emoji_shortcodes(":feet:");
         assert!(s.contains('👣'));
         assert!(!s.contains('🐾'));
+    }
+
+    // Exact phrases from the broken tweet/draft Greg reported.
+    #[test]
+    fn strips_italic_exact_examples_from_report() {
+        // "it doesn't depend on being *on*, it depends on being *in control*"
+        assert_eq!(
+            sanitize_itcy_text("it doesn't depend on being *on*, it depends on being *in control*"),
+            "it doesn't depend on being on, it depends on being in control"
+        );
+        // "the difference between an AI that's *there* and one that's *reliant* on being there"
+        assert_eq!(
+            sanitize_itcy_text(
+                "the difference between an AI that's *there* and one that's *reliant* on being there"
+            ),
+            "the difference between an AI that's there and one that's reliant on being there"
+        );
+        // "they *persist*, which is why"
+        assert_eq!(
+            sanitize_itcy_text("they *persist*, which is why"),
+            "they persist, which is why"
+        );
+    }
+
+    #[test]
+    fn strips_single_star_italic_spans() {
+        assert_eq!(
+            sanitize_itcy_text("plain *italic* span"),
+            "plain italic span"
+        );
+        assert_eq!(
+            sanitize_itcy_text("**bold** and *italic* both stripped"),
+            "bold and italic both stripped"
+        );
+        // Lone asterisk (list bullet) must survive.
+        assert_eq!(sanitize_itcy_text("* item one"), "* item one");
+        // Star followed by space: not a span.
+        assert_eq!(sanitize_itcy_text("a * b"), "a * b");
+        // Multiword span.
+        assert_eq!(sanitize_itcy_text("*in control*"), "in control");
     }
 
     #[test]
