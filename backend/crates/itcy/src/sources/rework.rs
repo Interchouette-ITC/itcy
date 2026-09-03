@@ -11,12 +11,16 @@ use crate::llm::disclosure::with_disclosure;
 use crate::llm::router::{FailoverRouter, TaskKind};
 use crate::llm::LlmError;
 use crate::prompts::{
-    draft_rework_user_message, rework_empty_pack, tweet_rework_commentary_empty,
-    tweet_rework_commentary_exploded, tweet_rework_user_message, TweetReworkUserArgs,
-    DRAFT_REWORK_SYSTEM_CORE, TWEET_FARCE_SYSTEM_CORE, TWEET_REWORK_SYSTEM_CORE, WHO_IS_WHO,
+    draft_rework_refresh_user_message, draft_rework_user_message, rework_empty_pack,
+    tweet_rework_commentary_empty, tweet_rework_commentary_exploded,
+    tweet_rework_refresh_user_message, tweet_rework_user_message, TweetReworkUserArgs,
+    DRAFT_REWORK_REFRESH_SYSTEM_CORE, DRAFT_REWORK_SYSTEM_CORE, TWEET_FARCE_SYSTEM_CORE,
+    TWEET_REWORK_REFRESH_SYSTEM_CORE, TWEET_REWORK_SYSTEM_CORE, WHO_IS_WHO,
 };
 use crate::sources::draft_footer::{
-    compose_draft_message, ensure_primary_link_line, pick_link_options,
+    classify_rework_mode, compose_draft_message, ensure_primary_link_line,
+    missing_required_quoted_spans, pick_link_options, rework_refresh_ban_phrases,
+    rework_replacement_body, rework_required_quoted_spans, ReworkMode,
 };
 use crate::sources::draft_url::{extract_in_post_url, promote_link_option, set_single_in_post_url};
 use crate::sources::handles::HandlesIndex;
@@ -40,6 +44,15 @@ fn rework_system_prompt() -> String {
     )
 }
 
+fn draft_refresh_system_prompt() -> String {
+    format!(
+        "{}\n\n{}\n\n{}",
+        today_context_line(),
+        WHO_IS_WHO,
+        DRAFT_REWORK_REFRESH_SYSTEM_CORE
+    )
+}
+
 #[derive(Debug, Error)]
 pub enum ReworkError {
     #[error("{0}")]
@@ -48,6 +61,8 @@ pub enum ReworkError {
     NotOpen(String, String),
     #[error("rework did not produce a tweet (model dumped an essay); try shorter instructions")]
     NotATweet,
+    #[error("{0}")]
+    Operator(String),
 }
 
 /// Reworked draft payload (same shape as grounded draft for persist).
@@ -91,13 +106,103 @@ pub async fn rework_stored_draft(
         instructions = %instructions.trim(),
         "rework: start"
     );
-    if matches!(
-        crate::sources::draft_footer::classify_rework_mode(instructions),
-        crate::sources::draft_footer::ReworkMode::Replace
-    ) {
-        return apply_draft_replacement(stored, instructions, handles, current_url).await;
+    match classify_rework_mode(instructions) {
+        ReworkMode::Replace => {
+            let body = rework_replacement_body(instructions);
+            if body.trim().is_empty() {
+                return Err(ReworkError::Operator(
+                    "use text requires a draft body after the prefix".into(),
+                ));
+            }
+            apply_draft_replacement(stored, body, handles, current_url).await
+        }
+        ReworkMode::Refresh => {
+            rework_stored_draft_llm(router, stored, "", tools, handles, current_url, true).await
+        }
+        ReworkMode::Instruction => {
+            let mut out = rework_stored_draft_llm(
+                router,
+                stored,
+                instructions,
+                tools,
+                handles,
+                current_url.clone(),
+                false,
+            )
+            .await?;
+            out = enforce_required_quotes_draft(
+                router,
+                stored,
+                instructions,
+                tools,
+                handles,
+                current_url,
+                out,
+            )
+            .await?;
+            Ok(out)
+        }
     }
-    rework_stored_draft_llm(router, stored, instructions, tools, handles, current_url).await
+}
+
+async fn enforce_required_quotes_draft(
+    router: &FailoverRouter,
+    stored: &StoredDraft,
+    instructions: &str,
+    tools: Option<&dyn ToolProvider>,
+    handles: &HandlesIndex,
+    current_url: Option<String>,
+    first: ReworkedDraft,
+) -> Result<ReworkedDraft, ReworkError> {
+    let required = rework_required_quoted_spans(instructions);
+    if required.is_empty() {
+        return Ok(first);
+    }
+    let prose = crate::sources::draft_footer::draft_prose_for_rework(&first.body);
+    let missing = missing_required_quoted_spans(&prose, &required);
+    if missing.is_empty() {
+        return Ok(first);
+    }
+    let louder = format!("{instructions}{}", louder_quote_retry_suffix(&missing));
+    let second =
+        rework_stored_draft_llm(router, stored, &louder, tools, handles, current_url, false)
+            .await?;
+    let prose2 = crate::sources::draft_footer::draft_prose_for_rework(&second.body);
+    let still = missing_required_quoted_spans(&prose2, &required);
+    if still.is_empty() {
+        return Ok(second);
+    }
+    Err(ReworkError::Operator(format!(
+        "rework did not include required quote(s): {}",
+        still
+            .iter()
+            .map(|q| format!("\"{q}\""))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )))
+}
+
+fn louder_quote_retry_suffix(missing: &[String]) -> String {
+    let mut s = String::from(
+        "\n\nHARD RETRY: previous draft missed these exact quotes from OPERATOR REWORK INSTRUCTIONS. Include them verbatim:\n",
+    );
+    for q in missing {
+        s.push_str("- \"");
+        s.push_str(q);
+        s.push_str("\"\n");
+    }
+    s
+}
+
+fn format_ban_block(banned: &[String]) -> String {
+    if banned.is_empty() {
+        return "(none)".into();
+    }
+    banned
+        .iter()
+        .map(|p| format!("- {p}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 async fn rework_stored_draft_llm(
@@ -107,6 +212,7 @@ async fn rework_stored_draft_llm(
     tools: Option<&dyn ToolProvider>,
     handles: &HandlesIndex,
     current_url: Option<String>,
+    refresh: bool,
 ) -> Result<ReworkedDraft, ReworkError> {
     let mut pack = if stored.research_pack.trim().is_empty() {
         rework_empty_pack(&stored.subject)
@@ -121,18 +227,34 @@ async fn rework_stored_draft_llm(
     );
     let brief_for_handles = format!("{}\n{instructions}\n{prose}", stored.subject);
     crate::sources::handles::apply_brief_handles_to_pack(&mut pack, &brief_for_handles, handles);
-    let user = draft_rework_user_message(
-        instructions,
-        &stored.draft_id,
-        &stored.subject,
-        &pack,
-        &prose,
-        url_lock,
-    );
-    let messages = vec![
-        LlmMessage::system(rework_system_prompt()),
-        LlmMessage::user(user),
-    ];
+    let (system, user) = if refresh {
+        let banned = rework_refresh_ban_phrases(&prose);
+        let ban_block = format_ban_block(&banned);
+        (
+            draft_refresh_system_prompt(),
+            draft_rework_refresh_user_message(
+                &stored.draft_id,
+                &stored.subject,
+                &pack,
+                &prose,
+                url_lock,
+                &ban_block,
+            ),
+        )
+    } else {
+        (
+            rework_system_prompt(),
+            draft_rework_user_message(
+                instructions,
+                &stored.draft_id,
+                &stored.subject,
+                &pack,
+                &prose,
+                url_lock,
+            ),
+        )
+    };
+    let messages = vec![LlmMessage::system(system), LlmMessage::user(user)];
     let (response, trace) = router
         .complete_with_tools(TaskKind::Draft, &messages, tools, 6)
         .await?;
@@ -314,6 +436,7 @@ fn tweet_rework_needs_tools(instructions: &str) -> bool {
     t.contains("web_search") || t.contains("browse_url")
 }
 
+#[cfg(test)]
 fn tweet_rework_user_prompt(
     tweet_id: &str,
     subject: &str,
@@ -430,6 +553,192 @@ pub async fn rework_stored_tweet(
     }
     let instructions = sanitize_rework_instructions(instructions);
     let instructions = instructions.as_str();
+    let pack_for_farce = if stored.research_pack.trim().is_empty() {
+        rework_empty_pack(&stored.subject)
+    } else {
+        stored.research_pack.clone()
+    };
+    let current = stored.link_options.first().cloned().unwrap_or_else(|| {
+        crate::sources::draft_url::extract_in_post_url(&stored.body).unwrap_or_default()
+    });
+    let farce = stored_is_farce(&pack_for_farce, &stored.body);
+    info!(
+        tweet_id = %stored.draft_id,
+        instructions = %instructions,
+        "rework: tweet start"
+    );
+    match classify_rework_mode(instructions) {
+        ReworkMode::Replace => {
+            let body = rework_replacement_body(instructions);
+            if body.trim().is_empty() {
+                return Err(ReworkError::Operator(
+                    "use text requires a tweet body after the prefix".into(),
+                ));
+            }
+            Ok(apply_tweet_replacement(
+                stored, body, handles, &current, farce,
+            ))
+        }
+        ReworkMode::Refresh => {
+            rework_stored_tweet_llm(
+                router,
+                TweetReworkLlmArgs {
+                    stored,
+                    instructions: "",
+                    tools,
+                    handles,
+                    current: &current,
+                    farce,
+                    refresh: true,
+                },
+            )
+            .await
+        }
+        ReworkMode::Instruction => {
+            let llm_args = TweetReworkLlmArgs {
+                stored,
+                instructions,
+                tools,
+                handles,
+                current: &current,
+                farce,
+                refresh: false,
+            };
+            let out = rework_stored_tweet_llm(router, llm_args).await?;
+            enforce_required_quotes_tweet(
+                router,
+                TweetReworkLlmArgs {
+                    stored,
+                    instructions,
+                    tools,
+                    handles,
+                    current: &current,
+                    farce,
+                    refresh: false,
+                },
+                out,
+            )
+            .await
+        }
+    }
+}
+
+async fn enforce_required_quotes_tweet(
+    router: &FailoverRouter,
+    args: TweetReworkLlmArgs<'_>,
+    first: ReworkedDraft,
+) -> Result<ReworkedDraft, ReworkError> {
+    let required = rework_required_quoted_spans(args.instructions);
+    if required.is_empty() {
+        return Ok(first);
+    }
+    let commentary = crate::publish::tweet_text_for_api(&first.body);
+    let missing = missing_required_quoted_spans(&commentary, &required);
+    if missing.is_empty() {
+        return Ok(first);
+    }
+    let louder = format!(
+        "{}{}",
+        args.instructions,
+        louder_quote_retry_suffix(&missing)
+    );
+    let second = rework_stored_tweet_llm(
+        router,
+        TweetReworkLlmArgs {
+            instructions: &louder,
+            ..args
+        },
+    )
+    .await?;
+    let commentary2 = crate::publish::tweet_text_for_api(&second.body);
+    let still = missing_required_quoted_spans(&commentary2, &required);
+    if still.is_empty() {
+        return Ok(second);
+    }
+    Err(ReworkError::Operator(format!(
+        "rework did not include required quote(s): {}",
+        still
+            .iter()
+            .map(|q| format!("\"{q}\""))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )))
+}
+
+fn apply_tweet_replacement(
+    stored: &StoredDraft,
+    paste: &str,
+    handles: &HandlesIndex,
+    current: &str,
+    farce: bool,
+) -> ReworkedDraft {
+    let mut pack = if stored.research_pack.trim().is_empty() {
+        rework_empty_pack(&stored.subject)
+    } else {
+        stored.research_pack.clone()
+    };
+    crate::sources::handles::apply_brief_handles_to_pack(
+        &mut pack,
+        &format!("{}\n{paste}", stored.subject),
+        handles,
+    );
+    let mut body = scrub_rework_tweet_body(paste);
+    if farce {
+        body = ensure_farce_mentions(&body);
+    }
+    body = crate::sources::handles::ensure_x_handle_from_pack(&body, &pack, handles);
+    let pack_urls = stored.sources.clone();
+    let (body, link_options) =
+        finalize_rework_tweet_output(body, stored, &pack_urls, current, paste, farce);
+    let body = compose_tweet_message(&body, &stored.draft_id, &link_options);
+    let trace = crate::llm::client::CompletionTrace {
+        provider: "operator".into(),
+        model: "rework-replace".into(),
+        prompt_tokens: 0,
+        completion_tokens: 0,
+    };
+    let body = with_disclosure(&body, &trace);
+    info!(
+        tweet_id = %stored.draft_id,
+        "rework: tweet replace applied (no LLM)"
+    );
+    ReworkedDraft {
+        draft_id: stored.draft_id.clone(),
+        subject: stored.subject.clone(),
+        body,
+        model: format!("rework={}", trace.model_label()),
+        tokens_in: 0,
+        tokens_out: 0,
+        sources: pack_urls,
+        link_options,
+        research_pack: pack,
+    }
+}
+
+#[derive(Clone, Copy)]
+struct TweetReworkLlmArgs<'a> {
+    stored: &'a StoredDraft,
+    instructions: &'a str,
+    tools: Option<&'a dyn ToolProvider>,
+    handles: &'a HandlesIndex,
+    current: &'a str,
+    farce: bool,
+    refresh: bool,
+}
+
+async fn rework_stored_tweet_llm(
+    router: &FailoverRouter,
+    args: TweetReworkLlmArgs<'_>,
+) -> Result<ReworkedDraft, ReworkError> {
+    let TweetReworkLlmArgs {
+        stored,
+        instructions,
+        tools,
+        handles,
+        current,
+        farce,
+        refresh,
+    } = args;
     let mut pack = if stored.research_pack.trim().is_empty() {
         rework_empty_pack(&stored.subject)
     } else {
@@ -440,36 +749,57 @@ pub async fn rework_stored_tweet(
         &format!("{}\n{instructions}", stored.subject),
         handles,
     );
-    let current = stored.link_options.first().cloned().unwrap_or_else(|| {
-        crate::sources::draft_url::extract_in_post_url(&stored.body).unwrap_or_default()
-    });
-    let farce = stored_is_farce(&pack, &stored.body);
-    info!(
-        tweet_id = %stored.draft_id,
-        instructions = %instructions,
-        "rework: tweet start"
-    );
-    let user = tweet_rework_user_prompt(
-        &stored.draft_id,
-        stored.subject.as_str(),
-        &pack,
-        &stored.body,
-        if current.is_empty() {
-            "(none)"
-        } else {
-            current.as_str()
-        },
-        instructions,
-        farce,
-    );
-    let (mut body, trace) = run_tweet_rework_llm(router, user, instructions, tools, farce).await?;
+    let cite = if current.is_empty() {
+        "(none)"
+    } else {
+        current
+    };
+    let commentary_raw = crate::publish::tweet_text_for_api(&stored.body);
+    let commentary = if tweet_body_exploded(&commentary_raw) {
+        tweet_rework_commentary_exploded().to_string()
+    } else if commentary_raw.is_empty() {
+        tweet_rework_commentary_empty().to_string()
+    } else {
+        commentary_raw
+    };
+    let (system, user) = if refresh && !farce {
+        let banned = rework_refresh_ban_phrases(&commentary);
+        let ban_block = format_ban_block(&banned);
+        (
+            tweet_refresh_system_prompt(),
+            tweet_rework_refresh_user_message(
+                &stored.draft_id,
+                stored.subject.as_str(),
+                &pack,
+                &commentary,
+                cite,
+                &ban_block,
+            ),
+        )
+    } else {
+        (
+            tweet_rework_system_prompt(farce),
+            tweet_rework_user_message(&TweetReworkUserArgs {
+                instructions,
+                id: &stored.draft_id,
+                subject: stored.subject.as_str(),
+                commentary: &commentary,
+                cite,
+                pack: &pack,
+                farce,
+                needs_tools: !farce && tweet_rework_needs_tools(instructions),
+            }),
+        )
+    };
+    let (mut body, trace) =
+        run_tweet_rework_llm(router, system, user, instructions, tools, farce).await?;
     if farce {
         body = ensure_farce_mentions(&body);
     }
     body = crate::sources::handles::ensure_x_handle_from_pack(&body, &pack, handles);
     let pack_urls = stored.sources.clone();
     let (body, link_options) =
-        finalize_rework_tweet_output(body, stored, &pack_urls, &current, instructions, farce);
+        finalize_rework_tweet_output(body, stored, &pack_urls, current, instructions, farce);
     let body = compose_tweet_message(&body, &stored.draft_id, &link_options);
     let body = with_disclosure(&body, &trace);
     Ok(ReworkedDraft {
@@ -485,8 +815,18 @@ pub async fn rework_stored_tweet(
     })
 }
 
+fn tweet_refresh_system_prompt() -> String {
+    format!(
+        "{}\n\n{}\n\n{}",
+        today_context_line(),
+        WHO_IS_WHO,
+        TWEET_REWORK_REFRESH_SYSTEM_CORE
+    )
+}
+
 async fn run_tweet_rework_llm(
     router: &FailoverRouter,
+    system: String,
     user: String,
     instructions: &str,
     tools: Option<&dyn ToolProvider>,
@@ -497,7 +837,6 @@ async fn run_tweet_rework_llm(
     } else {
         tools
     };
-    let system = tweet_rework_system_prompt(farce);
     let messages = vec![LlmMessage::system(system), LlmMessage::user(user)];
     let (response, trace) = router
         .complete_with_tools(TaskKind::Draft, &messages, tools_for_call, 2)
