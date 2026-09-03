@@ -2005,6 +2005,36 @@ Maintainers who measure compile graphs and cache hits will notice the gap first 
         assert!(out.contains("stack. 🚀 But"), "{out}");
     }
 
+    // Regression: strip_spurious_period_after_emoji must NOT touch periods that
+    // follow normal words (not emoji). Reported: sentences like "flickers out"
+    // and "trust anchor" were losing their terminal period even though the bug
+    // was actually Qwen omitting them; confirm the function itself is innocent.
+    #[test]
+    fn strip_spurious_period_does_not_eat_sentence_ending_periods() {
+        let cases = [
+            "even when the AI it's built on flickers out.",
+            "It's the kind of edge-case thinking that turns a tool into a trust anchor.",
+            "it depends on being in control.",
+            "they just need to run their code.",
+            "That's the quiet power of local AI.",
+        ];
+        for case in &cases {
+            let out = strip_spurious_period_after_emoji(case);
+            assert_eq!(
+                out, *case,
+                "period must be untouched when no emoji precedes it: {out:?}"
+            );
+        }
+    }
+
+    // Regression: the function also must not drop periods mid-sentence.
+    #[test]
+    fn strip_spurious_period_preserves_all_non_emoji_periods() {
+        let body =
+            "No cloud dependency, no waiting for a server to reboot. Just code that keeps going.";
+        assert_eq!(strip_spurious_period_after_emoji(body), body);
+    }
+
     #[test]
     fn ensure_draft_emoji_bar_never_emits_emoji_dot_glue() {
         let thin = "\

@@ -459,12 +459,30 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:1 out:1";
         assert!(!s.contains('🐾'));
     }
 
+    // Exact phrases from the broken tweet/draft Greg reported.
+    #[test]
+    fn strips_italic_exact_examples_from_report() {
+        // "it doesn't depend on being *on*, it depends on being *in control*"
+        assert_eq!(
+            sanitize_itcy_text("it doesn't depend on being *on*, it depends on being *in control*"),
+            "it doesn't depend on being on, it depends on being in control"
+        );
+        // "the difference between an AI that's *there* and one that's *reliant* on being there"
+        assert_eq!(
+            sanitize_itcy_text(
+                "the difference between an AI that's *there* and one that's *reliant* on being there"
+            ),
+            "the difference between an AI that's there and one that's reliant on being there"
+        );
+        // "they *persist*, which is why"
+        assert_eq!(
+            sanitize_itcy_text("they *persist*, which is why"),
+            "they persist, which is why"
+        );
+    }
+
     #[test]
     fn strips_single_star_italic_spans() {
-        assert_eq!(
-            sanitize_itcy_text("it depends on being *on*, it depends on being *in control*"),
-            "it depends on being on, it depends on being in control"
-        );
         assert_eq!(
             sanitize_itcy_text("plain *italic* span"),
             "plain italic span"
@@ -477,6 +495,8 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:1 out:1";
         assert_eq!(sanitize_itcy_text("* item one"), "* item one");
         // Star followed by space: not a span.
         assert_eq!(sanitize_itcy_text("a * b"), "a * b");
+        // Multiword span.
+        assert_eq!(sanitize_itcy_text("*in control*"), "in control");
     }
 
     #[test]
