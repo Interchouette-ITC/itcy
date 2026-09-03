@@ -1009,12 +1009,32 @@ fn find_phrase_outside_url(hay: &str, phrase: &str) -> Option<(usize, usize)> {
         if end > hay.len() {
             break;
         }
-        if word_boundary(hay, start, end) && !skip_host_or_url(hay, start, end) {
+        if word_boundary(hay, start, end)
+            && !skip_host_or_url(hay, start, end)
+            && entity_name_case_ok(hay, start, end, phrase)
+        {
             return Some((start, end));
         }
         from = start.saturating_add(1);
     }
     None
+}
+
+/// Single-token Title Case registry names must match that casing in prose.
+///
+/// Stops `Simple` / `Open` from tagging ordinary lowercase words (`a simple dashboard`).
+/// Multi-word names stay case-insensitive (`Isaac Sacolick`).
+fn entity_name_case_ok(hay: &str, start: usize, end: usize, phrase: &str) -> bool {
+    if phrase.contains(' ') {
+        return true;
+    }
+    let Some(first) = phrase.chars().next() else {
+        return false;
+    };
+    if !first.is_uppercase() {
+        return true;
+    }
+    hay.get(start..end) == Some(phrase)
 }
 
 fn word_boundary(hay: &str, start: usize, end: usize) -> bool {
@@ -1205,6 +1225,40 @@ mod tests {
         assert!(
             !out.contains("@code"),
             "short name 'code' must not tag inside 'code reviews': {out}"
+        );
+    }
+
+    #[test]
+    fn title_case_single_token_does_not_tag_lowercase_prose() {
+        // DRAFT-20260903-000148: registry "Simple" → `@simple` inside "a simple dashboard".
+        let mut idx = HandlesIndex::default();
+        idx.upsert_entry(HandleEntry {
+            name: "Simple".into(),
+            linkedin: "@simple".into(),
+            x: String::new(),
+            linkedin_url: "https://www.linkedin.com/company/simple/".into(),
+            x_url: String::new(),
+        });
+        let brief =
+            "Autumn: Rust Web Framework, building a simple dashboard with starter templates";
+        assert!(
+            idx.primary_from_brief(brief).is_none(),
+            "lowercase 'simple' must not resolve registry Simple"
+        );
+        let pack = "subject: Autumn\nhandles: linkedin=@simple\n";
+        let body =
+            "Whether you're building a simple dashboard or a full-scale SaaS app, Autumn helps.";
+        let out = ensure_linkedin_handle_from_pack(body, pack, &idx);
+        assert!(
+            !out.contains("@simple"),
+            "must not rewrite lowercase simple: {out}"
+        );
+        assert!(out.contains("a simple dashboard"), "{out}");
+        let branded =
+            ensure_linkedin_handle_from_pack("Simple shipped a new banking app.", pack, &idx);
+        assert!(
+            branded.contains("@simple"),
+            "Title Case Simple still becomes handle: {branded}"
         );
     }
 
