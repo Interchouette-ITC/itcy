@@ -254,9 +254,9 @@ async fn run_tweet_phase(
         tools,
         extra_pack_note: None,
     };
-    let (content, trace) = complete_tweet_writer(&base).await?;
-    match finalize_tweet_writer_body(&content, subject) {
-        Ok(body) => Ok((body, trace)),
+    let (content, mut trace) = complete_tweet_writer(&base).await?;
+    let mut body = match finalize_tweet_writer_body(&content, subject) {
+        Ok(body) => body,
         Err(first_err) => {
             warn!(error = %first_err, "load_tweet: scrub failed; retrying writer once");
             let retry_ctx = TweetWriterCtx {
@@ -264,16 +264,59 @@ async fn run_tweet_phase(
                 ..base
             };
             let (retry_content, retry_trace) = complete_tweet_writer(&retry_ctx).await?;
-            let body = finalize_tweet_writer_body(&retry_content, subject)?;
-            Ok((body, trace.accumulate(&retry_trace)))
+            trace = trace.clone().accumulate(&retry_trace);
+            finalize_tweet_writer_body(&retry_content, subject)?
         }
+    };
+    body = enforce_required_quotes_on_tweet(&base, subject, body, &mut trace).await?;
+    Ok((body, trace))
+}
+
+async fn enforce_required_quotes_on_tweet(
+    base: &TweetWriterCtx<'_>,
+    subject: &str,
+    body: String,
+    trace: &mut CompletionTrace,
+) -> Result<String, RagError> {
+    use crate::sources::draft_footer::{
+        louder_required_quotes_note, missing_quotes_operator_error, missing_required_quoted_spans,
+        rework_required_quoted_spans,
+    };
+    let required = rework_required_quoted_spans(subject);
+    if required.is_empty() {
+        return Ok(body);
     }
+    let missing = missing_required_quoted_spans(&body, &required);
+    if missing.is_empty() {
+        return Ok(body);
+    }
+    let note = louder_required_quotes_note(&missing);
+    warn!(
+        missing = ?missing,
+        "load_tweet: required quotes missing; retrying writer once"
+    );
+    let retry_ctx = TweetWriterCtx {
+        extra_pack_note: Some(note.as_str()),
+        ..*base
+    };
+    let (retry_content, retry_trace) = complete_tweet_writer(&retry_ctx).await?;
+    *trace = trace.clone().accumulate(&retry_trace);
+    let retry_body = finalize_tweet_writer_body(&retry_content, subject)?;
+    let still = missing_required_quoted_spans(&retry_body, &required);
+    if still.is_empty() {
+        return Ok(retry_body);
+    }
+    Err(RagError::Store(missing_quotes_operator_error(&still)))
 }
 
 async fn complete_tweet_writer(
     ctx: &TweetWriterCtx<'_>,
 ) -> Result<(String, CompletionTrace), RagError> {
     let mut pack_note = tweet_pack_note(ctx.pack_urls.is_empty(), ctx.subject_https).to_string();
+    if let Some(qnote) = crate::sources::draft_footer::operator_quote_pack_note(ctx.subject) {
+        pack_note.push_str("\n\n");
+        pack_note.push_str(&qnote);
+    }
     if let Some(note) = ctx.extra_pack_note {
         pack_note.push_str("\n\n");
         pack_note.push_str(note);

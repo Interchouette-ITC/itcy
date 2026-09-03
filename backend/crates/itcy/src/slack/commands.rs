@@ -990,11 +990,11 @@ pub const fn help_text() -> &'static str {
      • `help` / `commands` - this list\n\
      • `status_itcy` - process / routes / health snapshot\n\
      *Slash workflows:*\n\
-     • `/draft_about <subject>, <instructions>` - draft; a https in instructions is the in-post cite\n\
+     • `/draft_about <subject>, <instructions>` - draft; `cite https://…` locks the in-post URL; `quote …` must appear in the body\n\
      • `/draft_about_itc` or `/draft_about_itc <subject>, <instructions>` - LinkedIn draft about Interchouette / our projects\n\
      • `/draft_about_itcy` or `/draft_about_itcy <instructions>` - LinkedIn self-introduction post as ITCy (first-person, stack disclosure)\n\
      • `/rework <Draft-ID|Tweet-ID|Reply-ID>` - redo (refresh) from subject\n\
-     • `/rework <id>, <instructions>` - apply edit instructions (quoted phrases must appear)\n\
+     • `/rework <id>, <instructions>` - apply edit instructions (`quote …` must appear when set)\n\
      • `/rework <id>, use text` + body - replace saved text, no LLM (or long paste)\n\
      • `/change_url <Draft-ID|Tweet-ID> <0|1|2|3|4|5|https://…>` - set the link (`1`–`5` or URL); `0` = no link (not for replies)\n\
      • `/accept <Draft-ID|Tweet-ID|Reply-ID>` - BAT PR for DRAFT/TWEET; direct ship for CREPLY/XREPLY\n\
@@ -1008,7 +1008,7 @@ pub const fn help_text() -> &'static str {
      • `/daily_digest` - 20 press + 20 For you + 20 Following + 20 tweet searches + 10 Interchouette (5 draft / 5 tweet) into `#daily-digest`\n\
      • `/propose_draft` - new draft from corpus (resolves a subject from LinkedIn/corpus memory)\n\
      • `/propose_draft <DIGEST-…>, <1|1,3>` or `/propose_draft <N>` - new drafts from that digest's propositions\n\
-     • `/tweet_about <subject>, <instructions>` - tweet; a https in instructions locks the quote (X status) or the link (publisher)\n\
+     • `/tweet_about <subject>, <instructions>` - tweet; `cite https://…` locks the link; `quote …` must appear in the body\n\
      • `/tweet_farce` or `/tweet_farce <theme hint>` - dad-joke / IT wordplay tagging @grok @cursor_ai @elonmusk (no cite)\n\
      • `/draft_tweet_about_itc` or `/draft_tweet_about_itc <subject>, <instructions>` - X tweet about Interchouette / our projects\n\
      • `/tweet_about_itcy` or `/tweet_about_itcy <instructions>` - X self-introduction tweet as ITCy (first-person, stack disclosure)\n\

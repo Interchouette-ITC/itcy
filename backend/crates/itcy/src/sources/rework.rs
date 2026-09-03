@@ -163,7 +163,10 @@ async fn enforce_required_quotes_draft(
     if missing.is_empty() {
         return Ok(first);
     }
-    let louder = format!("{instructions}{}", louder_quote_retry_suffix(&missing));
+    let louder = format!(
+        "{instructions}\n\n{}",
+        crate::sources::draft_footer::louder_required_quotes_note(&missing)
+    );
     let second =
         rework_stored_draft_llm(router, stored, &louder, tools, handles, current_url, false)
             .await?;
@@ -172,26 +175,9 @@ async fn enforce_required_quotes_draft(
     if still.is_empty() {
         return Ok(second);
     }
-    Err(ReworkError::Operator(format!(
-        "rework did not include required quote(s): {}",
-        still
-            .iter()
-            .map(|q| format!("\"{q}\""))
-            .collect::<Vec<_>>()
-            .join(", ")
-    )))
-}
-
-fn louder_quote_retry_suffix(missing: &[String]) -> String {
-    let mut s = String::from(
-        "\n\nHARD RETRY: previous draft missed these exact quotes from OPERATOR REWORK INSTRUCTIONS. Include them verbatim:\n",
-    );
-    for q in missing {
-        s.push_str("- \"");
-        s.push_str(q);
-        s.push_str("\"\n");
-    }
-    s
+    Err(ReworkError::Operator(
+        crate::sources::draft_footer::missing_quotes_operator_error(&still),
+    ))
 }
 
 fn format_ban_block(banned: &[String]) -> String {
@@ -638,9 +624,9 @@ async fn enforce_required_quotes_tweet(
         return Ok(first);
     }
     let louder = format!(
-        "{}{}",
+        "{}\n\n{}",
         args.instructions,
-        louder_quote_retry_suffix(&missing)
+        crate::sources::draft_footer::louder_required_quotes_note(&missing)
     );
     let second = rework_stored_tweet_llm(
         router,
@@ -655,14 +641,9 @@ async fn enforce_required_quotes_tweet(
     if still.is_empty() {
         return Ok(second);
     }
-    Err(ReworkError::Operator(format!(
-        "rework did not include required quote(s): {}",
-        still
-            .iter()
-            .map(|q| format!("\"{q}\""))
-            .collect::<Vec<_>>()
-            .join(", ")
-    )))
+    Err(ReworkError::Operator(
+        crate::sources::draft_footer::missing_quotes_operator_error(&still),
+    ))
 }
 
 fn apply_tweet_replacement(
