@@ -945,12 +945,11 @@ async fn try_promote_if_bat_green(
         ));
     }
 
-    let (ship_ok, ship_detail) =
-        if promoted.post_id.starts_with("XPOST-") || promoted.draft_id.starts_with("TWEET-") {
-            ship_promoted_xpost(state, &promoted).await
-        } else {
-            ship_promoted_post(state, &promoted).await
-        };
+    let (ship_ok, ship_detail) = match promoted_ship_channel(&promoted.post_id, &promoted.draft_id)
+    {
+        PromotedShipChannel::X => ship_promoted_xpost(state, &promoted).await,
+        PromotedShipChannel::LinkedIn => ship_promoted_post(state, &promoted).await,
+    };
     if ship_ok {
         if let Ok(store) = crate::bat::store::DraftStore::open(state.state_db_path.as_str()) {
             let _ = store.mark_status_from(&promoted.draft_id, "accepted", "published");
@@ -969,6 +968,9 @@ async fn try_promote_if_bat_green(
 }
 
 /// Returns ship detail when this artefact already shipped successfully (BAT webhook dedupe).
+///
+/// Must match the **same** `draft_id` / `post_id`. Publications PR numbers collide across
+/// the `LinkedIn` pubs repo and the X pubs repo (e.g. both can have `#79`).
 fn existing_ok_ship_detail(
     state_db_path: &str,
     post_id: &str,
@@ -978,7 +980,29 @@ fn existing_ok_ship_detail(
     let row = audit
         .latest_ok(Some(post_id), Some(pubs_pr_number))
         .ok()??;
+    if row.draft_id.as_deref() != Some(post_id) {
+        return None;
+    }
     Some(row.detail)
+}
+
+/// Which ship path a promoted artefact must use (`LinkedIn` vs X). Hard channel split.
+#[must_use]
+fn promoted_ship_channel(post_id: &str, draft_id: &str) -> PromotedShipChannel {
+    // `POST-` never ships to X, even if draft_id is weird. Artefact id is the channel.
+    if post_id.starts_with("POST-") {
+        return PromotedShipChannel::LinkedIn;
+    }
+    if post_id.starts_with("XPOST-") || draft_id.starts_with("TWEET-") {
+        return PromotedShipChannel::X;
+    }
+    PromotedShipChannel::LinkedIn
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PromotedShipChannel {
+    LinkedIn,
+    X,
 }
 
 struct PrPromoteGuard {
@@ -1228,6 +1252,66 @@ struct RepoBody {
 mod tests {
     use super::*;
     use crate::bat::github::{BatApproveWakeRoute, BatGithubConfig, GithubClient};
+
+    #[test]
+    fn promoted_ship_channel_never_crosses_surfaces() {
+        assert_eq!(
+            promoted_ship_channel("POST-20260903-000148", "DRAFT-20260903-000148"),
+            PromotedShipChannel::LinkedIn
+        );
+        assert_eq!(
+            promoted_ship_channel("XPOST-20260825-000074", "TWEET-20260825-000074"),
+            PromotedShipChannel::X
+        );
+        assert_eq!(
+            promoted_ship_channel("XPOST-20260825-000074", "XPOST-20260825-000074"),
+            PromotedShipChannel::X
+        );
+        // Prefix of the *post* id decides; a POST must never route to X.
+        assert_eq!(
+            promoted_ship_channel("POST-20260903-000148", "TWEET-should-not-matter"),
+            PromotedShipChannel::LinkedIn
+        );
+    }
+
+    #[test]
+    fn existing_ok_ship_detail_ignores_other_surface_same_pr_number() {
+        use crate::publish::{
+            PublishAuditStore, PublishAuditWrite, PublishMode, PublishRequest, PublishResult,
+        };
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().expect("temp");
+        let db = dir.path().join("state.db");
+        let store = PublishAuditStore::open(&db).expect("open");
+        store
+            .insert(&PublishAuditWrite::from_ok(
+                &PublishRequest {
+                    draft_id: Some("XPOST-20260825-000074".into()),
+                    pubs_pr_number: Some(79),
+                    body: "x".into(),
+                },
+                &PublishResult {
+                    mode: PublishMode::Production,
+                    linkedin_urn: Some("2092237166126551463".into()),
+                    linkedin_url: Some(
+                        "https://x.com/interchouette/status/2092237166126551463".into(),
+                    ),
+                    detail: "https://x.com/interchouette/status/2092237166126551463".into(),
+                },
+            ))
+            .expect("insert");
+        assert!(
+            existing_ok_ship_detail(db.to_str().expect("utf8"), "POST-20260903-000148", 79)
+                .is_none(),
+            "LinkedIn POST must not inherit XPOST audit for PR #79"
+        );
+        assert!(
+            existing_ok_ship_detail(db.to_str().expect("utf8"), "XPOST-20260825-000074", 79)
+                .is_some(),
+            "same XPOST id must still dedupe"
+        );
+    }
 
     #[test]
     fn webhook_org_production_xpost_routes_promote_not_mirror() {

@@ -188,6 +188,10 @@ impl PublishAuditStore {
 
     /// Latest successful ship for this artefact id and/or publications PR (BAT dedupe).
     ///
+    /// When `draft_id` is set, only that artefact matches. Publications PR numbers are
+    /// **not** unique across the `LinkedIn` vs X pubs repos (same `#79` can be an XPOST
+    /// and a later `LinkedIn` POST).
+    ///
     /// # Errors
     ///
     /// Returns [`PublishAuditError::Open`] on `SQLite` failure.
@@ -326,5 +330,41 @@ mod tests {
             .latest_ok(Some("OTHER"), Some(999))
             .expect("q")
             .is_none());
+    }
+
+    #[test]
+    fn latest_ok_does_not_cross_match_linkedin_post_and_xpost_same_pr_number() {
+        // POST-20260903-000148: LinkedIn fork PR #79 collided with XPOST-20260825-000074
+        // (tweets repo PR #79). Dedupe must key on artefact id, not PR number alone.
+        let dir = TempDir::new().expect("temp");
+        let store = PublishAuditStore::open(dir.path().join("cross.db")).expect("open");
+        let x_req = PublishRequest {
+            draft_id: Some("XPOST-20260825-000074".into()),
+            pubs_pr_number: Some(79),
+            body: "old x ship".into(),
+        };
+        let x_result = PublishResult {
+            mode: PublishMode::Production,
+            linkedin_urn: Some("2092237166126551463".into()),
+            linkedin_url: Some("https://x.com/interchouette/status/2092237166126551463".into()),
+            detail: "https://x.com/interchouette/status/2092237166126551463\n\
+Reply https://x.com/interchouette/status/2092237181477634212"
+                .into(),
+        };
+        store
+            .insert(&PublishAuditWrite::from_ok(&x_req, &x_result))
+            .expect("insert x");
+        let hit = store
+            .latest_ok(Some("POST-20260903-000148"), Some(79))
+            .expect("query");
+        assert!(
+            hit.is_none(),
+            "LinkedIn POST must not reuse XPOST audit for same PR #: {hit:?}"
+        );
+        let same_x = store
+            .latest_ok(Some("XPOST-20260825-000074"), Some(79))
+            .expect("query")
+            .expect("x row");
+        assert!(same_x.detail.contains("x.com/interchouette/status"));
     }
 }
