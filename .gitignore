@@ -5,9 +5,6 @@
 .env
 .env.*
 
-# Nested Cursor / operator config (private itc-cursor clone)
-.cursor/
-
 # Writer prompts live in operator kitchen, not this tree
 /prompts/
 
