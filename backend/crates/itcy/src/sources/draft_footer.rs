@@ -744,6 +744,229 @@ pub fn classify_rework_mode(instructions: &str) -> ReworkMode {
     ReworkMode::Instruction
 }
 
+/// `replace FROM to|with TO` pairs from operator instructions (hard keyword, like `cite` / `quote`).
+#[must_use]
+pub fn extract_rework_replaces(instructions: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let lower = instructions.to_ascii_lowercase();
+    let mut search_from = 0_usize;
+    while search_from < lower.len() {
+        let Some(rel) = lower[search_from..].find("replace") else {
+            break;
+        };
+        let start = search_from + rel;
+        if !keyword_boundary_before(instructions, start)
+            || !keyword_boundary_after(instructions, start + "replace".len())
+        {
+            search_from = start + 7;
+            continue;
+        }
+        let mut rest = instructions[start + 7..].trim_start();
+        rest = rest.strip_prefix(':').map_or(rest, str::trim_start);
+        let Some((from, after_from)) = take_directive_span(rest) else {
+            search_from = start + 7;
+            continue;
+        };
+        let after_from = after_from.trim_start();
+        let after_sep = if let Some(r) = strip_prefix_ci(after_from, "to ") {
+            r
+        } else if let Some(r) = strip_prefix_ci(after_from, "with ") {
+            r
+        } else if let Some(r) = after_from.strip_prefix("->") {
+            r.trim_start()
+        } else {
+            search_from = start + 7;
+            continue;
+        };
+        let Some((to, _)) = take_directive_span(after_sep) else {
+            search_from = start + 7;
+            continue;
+        };
+        let from = strip_wrapping_quotes(from).trim().to_string();
+        let to = strip_wrapping_quotes(to).trim().to_string();
+        if from.chars().count() >= 2 && !to.is_empty() && from != to {
+            out.push((from, to));
+        }
+        search_from = start + 7;
+    }
+    out
+}
+
+/// `"Name" is handle @slug` maps (hard; do not leave to the model).
+#[must_use]
+pub fn extract_rework_handle_maps(instructions: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let lower = instructions.to_ascii_lowercase();
+    let mut search_from = 0_usize;
+    while search_from < lower.len() {
+        let Some(rel) = lower[search_from..].find(" is handle ") else {
+            break;
+        };
+        let mid = search_from + rel;
+        let before = instructions[..mid].trim_end();
+        let after = instructions[mid + " is handle ".len()..].trim_start();
+        let Some(name) = take_directive_span_ending_at(before) else {
+            search_from = mid + 1;
+            continue;
+        };
+        let Some((handle, _)) = take_directive_span(after) else {
+            search_from = mid + 1;
+            continue;
+        };
+        let name = strip_wrapping_quotes(name).trim().to_string();
+        let mut handle = strip_wrapping_quotes(handle).trim().to_string();
+        if !handle.starts_with('@') {
+            handle = format!("@{handle}");
+        }
+        if name.chars().count() >= 2 && handle.len() >= 2 {
+            out.push((name, handle));
+        }
+        search_from = mid + " is handle ".len();
+    }
+    out
+}
+
+/// True when instructions are only `replace` / `is handle` edits (connectors OK).
+#[must_use]
+pub fn rework_instructions_are_keyword_edits_only(instructions: &str) -> bool {
+    let replaces = extract_rework_replaces(instructions);
+    let handles = extract_rework_handle_maps(instructions);
+    if replaces.is_empty() && handles.is_empty() {
+        return false;
+    }
+    let mut known: Vec<String> = vec![
+        "replace".into(),
+        "to".into(),
+        "with".into(),
+        "is".into(),
+        "handle".into(),
+        "however".into(),
+        "and".into(),
+        "also".into(),
+        "then".into(),
+        "please".into(),
+        "but".into(),
+    ];
+    for (from, to) in &replaces {
+        known.push(from.to_ascii_lowercase());
+        known.push(to.to_ascii_lowercase());
+    }
+    for (name, handle) in &handles {
+        known.push(name.to_ascii_lowercase());
+        known.push(handle.to_ascii_lowercase());
+        known.push(handle.trim_start_matches('@').to_ascii_lowercase());
+        for part in name.split_whitespace() {
+            known.push(part.to_ascii_lowercase());
+        }
+    }
+    instructions
+        .split(|c: char| !c.is_ascii_alphanumeric() && c != '@')
+        .filter(|w| !w.is_empty())
+        .all(|w| known.iter().any(|k| k == &w.to_ascii_lowercase()))
+}
+
+/// Apply operator `replace` + `is handle` keyword edits to prose (hard).
+#[must_use]
+pub fn apply_rework_keyword_edits(body: &str, instructions: &str) -> String {
+    let mut out = body.to_string();
+    for (from, to) in extract_rework_replaces(instructions) {
+        out = out.replace(&from, &to);
+    }
+    for (name, handle) in extract_rework_handle_maps(instructions) {
+        out = out.replace(&name, &handle);
+    }
+    out
+}
+
+/// Missing `replace` outcomes: `from` still present, or `to` never landed when `from` was in prior.
+#[must_use]
+pub fn missing_rework_replace_outcomes(prior: &str, body: &str, instructions: &str) -> Vec<String> {
+    let mut missing = Vec::new();
+    for (from, to) in extract_rework_replaces(instructions) {
+        if body.contains(&from) {
+            missing.push(format!("still contains `{from}` (replace with `{to}`)"));
+        } else if prior.contains(&from) && !body.contains(&to) {
+            missing.push(format!("missing `{to}` after replacing `{from}`"));
+        }
+    }
+    for (name, handle) in extract_rework_handle_maps(instructions) {
+        if body.contains(&name) && !body.contains(&handle) {
+            missing.push(format!("`{name}` must become `{handle}`"));
+        } else if prior.contains(&name) && !body.contains(&handle) && !body.contains(&name) {
+            missing.push(format!("missing handle `{handle}` for `{name}`"));
+        }
+    }
+    missing
+}
+
+fn keyword_boundary_before(text: &str, start: usize) -> bool {
+    if start == 0 {
+        return true;
+    }
+    let Some(prev) = text[..start].chars().next_back() else {
+        return true;
+    };
+    prev.is_whitespace() || matches!(prev, ',' | ';' | ':' | '|' | '(' | '[')
+}
+
+const fn keyword_boundary_after(text: &str, after: usize) -> bool {
+    if after >= text.len() {
+        return true;
+    }
+    !text.as_bytes()[after].is_ascii_alphanumeric()
+}
+
+fn strip_prefix_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
+    if s.len() >= prefix.len() && s[..prefix.len()].eq_ignore_ascii_case(prefix) {
+        Some(&s[prefix.len()..])
+    } else {
+        None
+    }
+}
+
+fn take_directive_span(s: &str) -> Option<(&str, &str)> {
+    let s = s.trim_start();
+    if s.is_empty() {
+        return None;
+    }
+    if let Some(rest) = s.strip_prefix('"') {
+        let end = rest.find('"')?;
+        let val = &rest[..end];
+        let after = &rest[end + 1..];
+        return Some((val, after));
+    }
+    if s.starts_with('\u{201c}') {
+        let end = s['\u{201c}'.len_utf8()..].find('\u{201d}')?;
+        let val = &s['\u{201c}'.len_utf8()..'\u{201c}'.len_utf8() + end];
+        let rest = &s['\u{201c}'.len_utf8() + end + '\u{201d}'.len_utf8()..];
+        return Some((val, rest));
+    }
+    let end = s
+        .find(|c: char| c.is_whitespace() || matches!(c, ',' | ';' | ')' | ']'))
+        .unwrap_or(s.len());
+    if end == 0 {
+        return None;
+    }
+    Some((&s[..end], &s[end..]))
+}
+
+/// Last quoted span or trailing tokens at the end of `before` (for `… Name is handle`).
+fn take_directive_span_ending_at(before: &str) -> Option<&str> {
+    let t = before.trim_end();
+    if let Some(inner) = t.strip_suffix('"') {
+        let start = inner.rfind('"')?;
+        return Some(inner[start + 1..].trim());
+    }
+    // Unquoted multi-word name: take from last connector / start.
+    let start = t.rfind([',', ';', '.', '|', '(']).map_or(0, |i| i + 1);
+    let name = t[start..].trim();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
+}
+
 /// Operator `quote` keyword values from a brief (draft / tweet / rework).
 ///
 /// Same family as `cite https://…`: `quote Ship the App, not the Plumbing.` or
@@ -1735,6 +1958,35 @@ That distinction between embedded PostgreSQL and a runtime for embedding arbitra
             stub,
             "make it shorter"
         ));
+    }
+
+    #[test]
+    fn rework_replace_and_handle_keywords_from_operator_instruction() {
+        let instr = "Replace @wasmerio to \"Wasmer\" however \"Bytecode Alliance\" is handle @bytecodealliance";
+        assert_eq!(
+            extract_rework_replaces(instr),
+            vec![("@wasmerio".into(), "Wasmer".into())]
+        );
+        assert_eq!(
+            extract_rework_handle_maps(instr),
+            vec![("Bytecode Alliance".into(), "@bytecodealliance".into())]
+        );
+        assert!(rework_instructions_are_keyword_edits_only(instr));
+        let prior = "Built by the Bytecode Alliance, powering Wasmtime and @wasmerio with LLVM-rival speed.";
+        let out = apply_rework_keyword_edits(prior, instr);
+        assert!(
+            out.contains("Wasmer") && !out.contains("@wasmerio"),
+            "replace must land: {out}"
+        );
+        assert!(
+            out.contains("@bytecodealliance") && !out.contains("Bytecode Alliance"),
+            "handle map must land: {out}"
+        );
+        assert!(missing_rework_replace_outcomes(prior, &out, instr).is_empty());
+        // LLM-ignored body still fails the outcome check.
+        let ignored = prior.to_string();
+        let miss = missing_rework_replace_outcomes(prior, &ignored, instr);
+        assert!(miss.iter().any(|m| m.contains("@wasmerio")), "{miss:?}");
     }
 
     #[test]

@@ -994,7 +994,7 @@ pub const fn help_text() -> &'static str {
      • `/draft_about_itc` or `/draft_about_itc <subject>, <instructions>` - LinkedIn draft about Interchouette / our projects\n\
      • `/draft_about_itcy` or `/draft_about_itcy <instructions>` - LinkedIn self-introduction post as ITCy (first-person, stack disclosure)\n\
      • `/rework <Draft-ID|Tweet-ID|Reply-ID>` - redo (refresh) from subject\n\
-     • `/rework <id>, <instructions>` - apply edit instructions (`quote …` must appear when set)\n\
+     • `/rework <id>, <instructions>` - apply edits; replace X to Y and Name is handle @slug are hard (like cite / quote)\n\
      • `/rework <id>, use text` + body - replace saved text, no LLM (or long paste)\n\
      • `/change_url <Draft-ID|Tweet-ID> <0|1|2|3|4|5|https://…>` - set the link (`1`–`5` or URL); `0` = no link (not for replies)\n\
      • `/accept <Draft-ID|Tweet-ID|Reply-ID>` - BAT PR for DRAFT/TWEET; direct ship for CREPLY/XREPLY\n\
