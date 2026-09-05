@@ -1,11 +1,10 @@
 // Copyright (c) 2026 Interchouette-ITC
 // SPDX-License-Identifier: BUSL-1.1
 
-//! HTTP reachability probe for publisher cites (reject 404 / soft-not-found / empty shells).
+//! HTTP reachability probe for publisher cites (reject 404 / soft-not-found).
 
 use crate::sources::draft_footer::ensure_primary_link_line;
 use crate::sources::draft_url::{extract_in_post_url, set_single_in_post_url};
-use crate::sources::html::extract_articleish_text;
 use crate::sources::tweet_footer::extract_brief_cite;
 use crate::sources::url_hygiene::{
     is_allowed_tweet_cite, is_junk_or_search_url, is_x_non_status_url, is_x_status_url,
@@ -16,8 +15,6 @@ use std::time::Duration;
 use tracing::{info, warn};
 
 const PROBE_BODY_CAP: usize = 256_000;
-/// Publisher cite probe floor (browse/ingest may still require [`MIN_STORE_CHARS`]).
-const PROBE_MIN_ARTICLE_CHARS: usize = 120;
 
 /// Floor: refill until at least this many reachable Link options (when the pool allows).
 pub const LINK_OPTIONS_MIN: usize = 3;
@@ -63,6 +60,10 @@ fn extract_html_title(lower_html: &str) -> Option<String> {
 
 /// Evaluate HTTP status + HTML without network (unit tests).
 ///
+/// Reachability only: HTTP success and soft-404 markers. Product landing pages,
+/// SPA shells, and marketing homes (e.g. cranelift.dev) are valid operator cites;
+/// do **not** require an "article body" extract.
+///
 /// # Errors
 ///
 /// Returns a short reason when the URL must not ship as a publisher cite.
@@ -75,15 +76,6 @@ pub fn evaluate_publisher_probe(status: u16, body: &str) -> Result<(), String> {
     }
     if html_page_looks_like_not_found(body) {
         return Err("page looks like not found".into());
-    }
-    // Require a real article/main/Apollo body. Fat Next.js shells return 200 with
-    // nav chrome only; full-page strip would pass MIN_STORE_CHARS and lie.
-    let Some(text) = extract_articleish_text(body) else {
-        return Err("page has no article body".into());
-    };
-    let chars = text.chars().count();
-    if chars < PROBE_MIN_ARTICLE_CHARS {
-        return Err(format!("page too thin ({chars} chars)"));
     }
     Ok(())
 }
@@ -120,7 +112,7 @@ pub fn cite_probe_soft_fail(reason: &str) -> bool {
 ///
 /// # Errors
 ///
-/// Returns a short reason (HTTP code, thin page, soft 404, empty shell).
+/// Returns a short reason (HTTP code, soft 404).
 pub async fn probe_publisher_url(url: &str) -> Result<(), String> {
     let url = url.trim();
     if url.is_empty() {
@@ -165,7 +157,7 @@ fn truncate_utf8_bytes(s: &mut String, max_bytes: usize) {
     s.truncate(end);
 }
 
-/// Keep only publisher URLs that respond with real article content.
+/// Keep only publisher URLs that respond OK (not 404 / soft-not-found).
 #[must_use]
 pub async fn filter_reachable_publisher_urls(urls: Vec<String>) -> Vec<String> {
     let mut out = Vec::new();
@@ -433,13 +425,15 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_rejects_fat_spa_shell_without_article() {
-        let chrome = "nav word ".repeat(80);
-        let html = format!(
-            "<html><head><title>App</title></head><body><div id=\"root\">{chrome}</div></body></html>"
-        );
-        let err = evaluate_publisher_probe(200, &html).expect_err("empty shell");
-        assert!(err.contains("no article") || err.contains("thin"), "{err}");
+    fn evaluate_accepts_product_landing_without_article_body_gate() {
+        // cranelift.dev / SPA shells: HTTP 200 is enough. Article-body extract was a false reject.
+        let html = r#"<!DOCTYPE html><html><head><title>Cranelift</title></head>
+<body><nav>nav</nav><main class="page-content"><h1>Cranelift</h1>
+<p>A Bytecode Alliance project</p></main></body></html>"#;
+        evaluate_publisher_probe(200, html).expect("product landing must pass cite probe");
+        let spa = r#"<!doctype html><html><head><title>App</title></head>
+<body><div id="root">nav word nav word</div></body></html>"#;
+        evaluate_publisher_probe(200, spa).expect("SPA shell with HTTP 200 must pass cite probe");
     }
 
     #[test]
@@ -540,7 +534,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finalize_refills_from_pool_after_empty_shell_probe() {
+    async fn finalize_keeps_http_200_landing_and_refills_from_pool() {
+        // Product landing / SPA shells are valid cites (no article-body gate).
         let body_ok = "word ".repeat(120);
         let app = Router::new()
             .route(
@@ -580,10 +575,10 @@ mod tests {
         )
         .await;
         assert!(
-            !opts.iter().any(|u| u == &shell),
-            "empty shell must not stay: {opts:?}"
+            opts.iter().any(|u| u == &shell),
+            "HTTP 200 landing must stay: {opts:?}"
         );
-        assert_eq!(opts, vec![ok], "pool article must refill Link options");
+        assert_eq!(opts.first().map(String::as_str), Some(shell.as_str()));
     }
 
     #[test]
