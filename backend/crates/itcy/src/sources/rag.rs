@@ -1539,7 +1539,7 @@ https://example.com/policy";
         let with_tags = "Builders care about review habit.\n\n#Rust #LLM #OpenSource";
         assert!(looks_like_x_shaped_linkedin(with_tags));
         let linkedin = "When a major code forge publishes a written LLM contribution policy, the interesting part is not the headline - it is the review habit that follows. Maintainers finally get a line they can point at when a contribution leans on a model instead of guessing from vibes.\n\n\
-I'm watching how disclose-your-tooling turns into something boring and useful: show the work, keep the tree auditable, skip the press-release fog that says everything and commits to nothing. When the stack is Rust-shaped, careful crates and honest diffs beat slogans for builders who actually ship.\n\n\
+I'm watching how disclose-your-tooling turns into something boring and useful: show the work, keep the tree auditable, skip the press-release fog that says everything and commits to nothing. When the stack is Rust-shaped, named crates and reviewable commits beat slogans for builders who actually ship.\n\n\
 https://example.com/policy";
         assert!(!looks_like_x_shaped_linkedin(linkedin));
     }
@@ -2115,6 +2115,41 @@ core; it's not about which cloud wins mindshare in a keynote slide.";
             "salvaged body must not keep mush"
         );
         assert!(prose_word_count(&out) >= 80);
+    }
+
+    #[test]
+    fn scrub_strips_recycled_systems_voice_bank_sludge() {
+        // DRAFT-20260905-000155 style: subject noun + cloned careful-diffs / feels-right sludge.
+        let body = "\
+The Rust compiler's code generation has a new contender: Cranelift. The framework, now part of \
+the Bytecode Alliance ecosystem, is proving its worth with results that rival LLVM-based solutions \
+on compile latency for WebAssembly and debug builds that teams already ship every day.\n\n\
+Cranelift's integration into projects like Linera shows it's more than a theoretical improvement. \
+It's a real-world upgrade, one that builders will notice when they see the diffs in their toolchains. \
+The framework's design is clean, its diffs honest, and its process clear. For a maintainer, this means \
+less friction and more room to focus on what matters: writing code that feels right.\n\n\
+I'm curious how this will shape the future of Rust tooling. And for those who care about systems, \
+the 🦀 energy is unmistakable. Cranelift is careful, deliberate, and built for the long haul.";
+        assert!(
+            crate::sources::corpus_propose::body_has_slogan_mush(body),
+            "fixture must trip mush gate"
+        );
+        let out = scrub_and_validate_writer_body(body, &[], "Cranelift Bytecode Alliance")
+            .expect("subject facts must survive mush salvage");
+        assert!(
+            !crate::sources::corpus_propose::body_has_slogan_mush(&out),
+            "recycled voice-bank sludge must not ship: {out}"
+        );
+        assert!(
+            out.to_ascii_lowercase().contains("cranelift"),
+            "subject entity must remain: {out}"
+        );
+        assert!(
+            !out.to_ascii_lowercase().contains("feels right")
+                && !out.to_ascii_lowercase().contains("diffs honest")
+                && !out.contains("🦀 energy"),
+            "stock stickers must be gone: {out}"
+        );
     }
 
     #[test]

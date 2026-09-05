@@ -342,6 +342,18 @@ const SLOGAN_MUSH_NEEDLES: &[&str] = &[
     "watching how this change becomes habit",
     "watching how this shift becomes habit",
     "watching how these small changes become habits",
+    // Recycled ITCy voice-bank sludge (models clone these under every Rust subject).
+    "feels right",
+    "careful diffs",
+    "honest process",
+    "diffs honest",
+    "process clear",
+    "🦀 energy",
+    "less friction",
+    "focus on what matters",
+    "shape the future of",
+    "built for the long haul",
+    "writing code that feels right",
 ];
 
 struct PickedAngle {
@@ -657,6 +669,14 @@ Builders care about stewardship without swallowing the community around the stac
         ));
         assert!(body_has_slogan_mush(
             "I'm watching how this change becomes habit."
+        ));
+        assert!(body_has_slogan_mush(
+            "The framework's design is clean, its diffs honest, and its process clear. \
+For a maintainer, this means less friction and more room to focus on what matters: \
+writing code that feels right. And for those who care about systems, the 🦀 energy is unmistakable."
+        ));
+        assert!(body_has_slogan_mush(
+            "I'm curious how this will shape the future of Rust tooling. Built for the long haul."
         ));
         assert!(!body_has_slogan_mush(
             "Mozilla shipped JPEG XL after a Rust decoder rewrite landed in Firefox."
