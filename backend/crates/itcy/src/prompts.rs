@@ -523,6 +523,29 @@ mod tests {
     }
 
     #[test]
+    #[cfg(itcy_kitchen_prompts)]
+    fn craft_prompts_forbid_watching_habit_stock_sticker() {
+        // Voice bank used to teach this exact cloneable line; model shipped it as openers.
+        assert!(
+            !AI_CMO.contains("Curious owl: \"🦉 is watching how the rule becomes habit.\""),
+            "AI_CMO must not teach the stock owl habit sticker as a voice-bank example"
+        );
+        for (name, body) in [
+            ("AI_CMO", AI_CMO),
+            ("DRAFT_SYSTEM_CORE", DRAFT_SYSTEM_CORE),
+            ("FORM_CRAFT_LINKEDIN", FORM_CRAFT_LINKEDIN),
+            ("CREATIVE_LINKEDIN", CREATIVE_LINKEDIN),
+        ] {
+            let lower = body.to_ascii_lowercase();
+            assert!(
+                lower.contains("becomes habit")
+                    && (lower.contains("forbidden") || lower.contains("never")),
+                "{name} must forbid watching-how/becomes-habit stock stickers"
+            );
+        }
+    }
+
+    #[test]
     fn surface_form_and_creative_craft() {
         assert!(FORM_CRAFT_X.contains('🦉') && FORM_CRAFT_X.contains('🦀'));
         assert!(FORM_CRAFT_LINKEDIN.contains('🦉') && FORM_CRAFT_LINKEDIN.contains('🦀'));
