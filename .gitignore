@@ -1,6 +1,5 @@
 .linkedin
 .twitter
-.github_credentials
 
 # Secrets
 .env
