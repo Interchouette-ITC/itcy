@@ -490,7 +490,7 @@ Never claim you ran /change_url, /accept, or /rework."
                 } else if draft_id.starts_with("TWEET-") {
                     self.change_tweet_url_reply(&draft_id, &choice)
                 } else {
-                    self.change_draft_url_reply(&draft_id, &choice).await
+                    self.change_draft_url_reply(&draft_id, &choice)
                 }
             }
             OperatorCommand::List => self.list_saved_reply(),
@@ -1138,7 +1138,7 @@ Status: **published**.",
         }
     }
 
-    async fn change_draft_url_reply(&self, draft_id: &str, choice: &str) -> String {
+    fn change_draft_url_reply(&self, draft_id: &str, choice: &str) -> String {
         let mut stored = match ensure_open_for_edit(&self.config.state_db_path, draft_id) {
             Ok(d) => d,
             Err(e) => return format!("Could not edit draft: {e}"),
@@ -1189,11 +1189,9 @@ Status: **published**.",
                 )
             }
             UrlChoice::Url(new_url) => {
-                if let Err(reason) =
-                    crate::sources::publisher_url::probe_publisher_url(&new_url).await
-                {
-                    return format!("Link not reachable: {new_url} ({reason})");
-                }
+                // Operator override: set the URL as-is. Reachability stays an `/accept` gate
+                // (`require_ship_cite_reachable`). SPA shells (e.g. cranelift.dev) fail the
+                // article-body probe but are still valid cites the operator may lock.
                 info!(
                     draft_id = %draft_id,
                     choice = %choice,
@@ -1847,5 +1845,64 @@ mod tests {
         assert!(!body.contains("Org Draft PR"), "{body}");
         assert!(!body.contains("Org drafts:"), "{body}");
         assert!(body.contains(":link: Fork BAT:"), "{body}");
+    }
+
+    /// `/change_url` must lock the operator URL without HTTP/article-body probe.
+    /// SPA landing pages (e.g. cranelift.dev) fail `evaluate_publisher_probe` but are
+    /// still valid cites; reachability stays an `/accept` gate.
+    #[tokio::test]
+    async fn change_url_sets_operator_https_without_reachability_probe() {
+        use crate::bat::store::status;
+        let llm = Arc::new(CountingLlm {
+            calls: AtomicUsize::new(0),
+            reply: "unused".into(),
+        });
+        let llm_client: Arc<dyn LlmClient> = llm;
+        let rt = test_runtime(llm_client);
+        let id = "DRAFT-20260905-000155";
+        let store = DraftStore::open(&rt.config.state_db_path).expect("store");
+        let mut row = stored_from_payload(DraftPayload {
+            draft_id: id.into(),
+            subject: "Cranelift".into(),
+            body: format!(
+                "Draft ID: {id}\n\n\
+Body about Cranelift.\n\n\
+https://example.com/old\n\n\
+Link: 1\n\
+0 = no link. /change_url {id} <0|1|2|3|4|5|url>\n\
+1. https://example.com/old\n\n\
+Written by AI - ITCy - model test - tokens in:1 out:1"
+            ),
+            model: "test".into(),
+            tokens_in: 1,
+            tokens_out: 1,
+            sources: Vec::new(),
+            link_options: vec!["https://example.com/old".into()],
+            research_pack: String::new(),
+        });
+        row.status = status::OPEN.into();
+        store.upsert(&row).expect("seed");
+        drop(store);
+
+        let reply = rt.change_draft_url_reply(id, "https://cranelift.dev/");
+        assert!(
+            reply.contains("Link updated"),
+            "must not probe/reject SPA cites: {reply}"
+        );
+        assert!(
+            !reply.contains("Link not reachable"),
+            "change_url must not run publisher probe: {reply}"
+        );
+        let store = DraftStore::open(&rt.config.state_db_path).expect("store");
+        let saved = store.get(id).expect("get").expect("row");
+        assert!(
+            saved.body.contains("https://cranelift.dev"),
+            "operator URL must be locked: {}",
+            saved.body
+        );
+        assert_eq!(
+            saved.link_options.first().map(String::as_str),
+            Some("https://cranelift.dev")
+        );
     }
 }
