@@ -2001,6 +2001,32 @@ That distinction between embedded PostgreSQL and a runtime for embedding arbitra
     }
 
     #[test]
+    fn rework_replace_handle_to_name_survives_pack_x_inject() {
+        // Pack inject turns plain "Wasmer" back into @wasmerio; operator replace must win after.
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../handles.toml");
+        let idx = crate::sources::handles::load_handles_from(&path).expect("handles");
+        let pack = "subject: Cranelift\nhandles: x=@wasmerio\n";
+        let prior = "Cranelift is what Wasmtime and @wasmerio ship for codegen.";
+        let instr = "replace \"@wasmerio\" to \"Wasmer\"";
+        let edited = apply_rework_keyword_edits(prior, instr);
+        assert!(
+            edited.contains("Wasmer") && !edited.contains("@wasmerio"),
+            "keyword edit first: {edited}"
+        );
+        let reinjected = crate::sources::handles::ensure_x_handle_from_pack(&edited, pack, &idx);
+        assert!(
+            reinjected.contains("@wasmerio"),
+            "inject would undo without re-apply: {reinjected}"
+        );
+        let final_body = apply_rework_keyword_edits(&reinjected, instr);
+        assert!(
+            final_body.contains("Wasmer") && !final_body.contains("@wasmerio"),
+            "operator replace must beat handle inject: {final_body}"
+        );
+        assert!(missing_rework_replace_outcomes(prior, &final_body, instr).is_empty());
+    }
+
+    #[test]
     fn slack_paste_safe_reply_fences_and_expands_owl() {
         let shown = slack_paste_safe_reply_body("Hello :owl: world.");
         assert!(shown.starts_with("```\n"), "{shown}");

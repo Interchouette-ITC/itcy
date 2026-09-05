@@ -114,7 +114,7 @@ pub async fn rework_stored_draft(
                     "use text requires a draft body after the prefix".into(),
                 ));
             }
-            apply_draft_replacement(stored, body, handles, current_url).await
+            apply_draft_replacement(stored, body, handles, current_url, "").await
         }
         ReworkMode::Refresh => {
             rework_stored_draft_llm(router, stored, "", tools, handles, current_url, true).await
@@ -138,7 +138,22 @@ pub async fn rework_stored_draft(
                         missing.join("; ")
                     )));
                 }
-                return apply_draft_replacement(stored, &edited, handles, current_url).await;
+                let out =
+                    apply_draft_replacement(stored, &edited, handles, current_url, instructions)
+                        .await?;
+                let after = crate::sources::draft_footer::draft_prose_for_rework(&out.body);
+                let missing = crate::sources::draft_footer::missing_rework_replace_outcomes(
+                    &prior,
+                    &after,
+                    instructions,
+                );
+                if !missing.is_empty() {
+                    return Err(ReworkError::Operator(format!(
+                        "could not apply replace/handle edits: {}",
+                        missing.join("; ")
+                    )));
+                }
+                return Ok(out);
             }
             let mut out = rework_stored_draft_llm(
                 router,
@@ -155,8 +170,14 @@ pub async fn rework_stored_draft(
             let edited =
                 crate::sources::draft_footer::apply_rework_keyword_edits(&prose, instructions);
             if edited != prose {
-                out =
-                    apply_draft_replacement(stored, &edited, handles, current_url.clone()).await?;
+                out = apply_draft_replacement(
+                    stored,
+                    &edited,
+                    handles,
+                    current_url.clone(),
+                    instructions,
+                )
+                .await?;
             }
             let prose_after = crate::sources::draft_footer::draft_prose_for_rework(&out.body);
             let missing = crate::sources::draft_footer::missing_rework_replace_outcomes(
@@ -318,6 +339,8 @@ async fn rework_stored_draft_llm(
     body = strip_leading_draft_id(&body);
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = crate::sources::handles::ensure_linkedin_handle_from_pack(&body, &pack, handles);
+    // Operator `replace` / `is handle` win over pack handle inject.
+    body = crate::sources::draft_footer::apply_rework_keyword_edits(&body, instructions);
     let body = compose_draft_message(&body, &stored.draft_id, &link_options);
     let body = with_disclosure(&body, &trace);
     info!(
@@ -340,20 +363,24 @@ async fn rework_stored_draft_llm(
 }
 
 /// Apply a pasted full `LinkedIn` draft as `/rework` replace (no LLM).
+///
+/// `keyword_instructions` are operator `/rework` keywords (`replace` / `is handle`).
+/// Re-applied after handle inject so pack `@slug` cannot undo an explicit plain-name replace.
 async fn apply_draft_replacement(
     stored: &StoredDraft,
-    instructions: &str,
+    paste: &str,
     handles: &HandlesIndex,
     current_url: Option<String>,
+    keyword_instructions: &str,
 ) -> Result<ReworkedDraft, ReworkError> {
     let mut pack = if stored.research_pack.trim().is_empty() {
         rework_empty_pack(&stored.subject)
     } else {
         stored.research_pack.clone()
     };
-    let brief_for_handles = format!("{}\n{instructions}", stored.subject);
+    let brief_for_handles = format!("{}\n{paste}", stored.subject);
     crate::sources::handles::apply_brief_handles_to_pack(&mut pack, &brief_for_handles, handles);
-    let mut body = crate::llm::sanitize_itcy_text(instructions.trim());
+    let mut body = crate::llm::sanitize_itcy_text(paste.trim());
     body = crate::sources::draft_footer::strip_leading_page_title_lede(&body);
     body = crate::sources::draft_footer::strip_leading_cite_instruction(&body);
     body = crate::sources::draft_footer::aerate_linkedin_draft(&body);
@@ -386,6 +413,7 @@ async fn apply_draft_replacement(
     body = strip_leading_draft_id(&body);
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = crate::sources::handles::ensure_linkedin_handle_from_pack(&body, &pack, handles);
+    body = crate::sources::draft_footer::apply_rework_keyword_edits(&body, keyword_instructions);
     let body = compose_draft_message(&body, &stored.draft_id, &link_options);
     let trace = crate::llm::client::CompletionTrace {
         provider: "operator".into(),
@@ -602,7 +630,7 @@ pub async fn rework_stored_tweet(
                 ));
             }
             Ok(apply_tweet_replacement(
-                stored, body, handles, &current, farce,
+                stored, body, handles, &current, farce, "",
             ))
         }
         ReworkMode::Refresh => {
@@ -658,9 +686,20 @@ async fn rework_tweet_instruction(
                 missing.join("; ")
             )));
         }
-        return Ok(apply_tweet_replacement(
-            stored, &edited, handles, current, farce,
-        ));
+        let out = apply_tweet_replacement(stored, &edited, handles, current, farce, instructions);
+        let after = crate::publish::tweet_text_for_api(&out.body);
+        let missing = crate::sources::draft_footer::missing_rework_replace_outcomes(
+            &prior,
+            &after,
+            instructions,
+        );
+        if !missing.is_empty() {
+            return Err(ReworkError::Operator(format!(
+                "could not apply replace/handle edits: {}",
+                missing.join("; ")
+            )));
+        }
+        return Ok(out);
     }
     let llm_args = TweetReworkLlmArgs {
         stored,
@@ -675,7 +714,7 @@ async fn rework_tweet_instruction(
     let prose = crate::publish::tweet_text_for_api(&out.body);
     let edited = crate::sources::draft_footer::apply_rework_keyword_edits(&prose, instructions);
     if edited != prose {
-        out = apply_tweet_replacement(stored, &edited, handles, current, farce);
+        out = apply_tweet_replacement(stored, &edited, handles, current, farce, instructions);
     }
     let after = crate::publish::tweet_text_for_api(&out.body);
     let missing =
@@ -745,6 +784,7 @@ fn apply_tweet_replacement(
     handles: &HandlesIndex,
     current: &str,
     farce: bool,
+    keyword_instructions: &str,
 ) -> ReworkedDraft {
     let mut pack = if stored.research_pack.trim().is_empty() {
         rework_empty_pack(&stored.subject)
@@ -761,6 +801,8 @@ fn apply_tweet_replacement(
         body = ensure_farce_mentions(&body);
     }
     body = crate::sources::handles::ensure_x_handle_from_pack(&body, &pack, handles);
+    // Operator `replace` / `is handle` win over pack handle inject (e.g. Wasmer ← @wasmerio).
+    body = crate::sources::draft_footer::apply_rework_keyword_edits(&body, keyword_instructions);
     let pack_urls = stored.sources.clone();
     let (body, link_options) =
         finalize_rework_tweet_output(body, stored, &pack_urls, current, paste, farce);
@@ -871,6 +913,7 @@ async fn rework_stored_tweet_llm(
         body = ensure_farce_mentions(&body);
     }
     body = crate::sources::handles::ensure_x_handle_from_pack(&body, &pack, handles);
+    body = crate::sources::draft_footer::apply_rework_keyword_edits(&body, instructions);
     let pack_urls = stored.sources.clone();
     let (body, link_options) =
         finalize_rework_tweet_output(body, stored, &pack_urls, current, instructions, farce);
