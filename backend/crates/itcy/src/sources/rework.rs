@@ -120,90 +120,90 @@ pub async fn rework_stored_draft(
             rework_stored_draft_llm(router, stored, "", tools, handles, current_url, true).await
         }
         ReworkMode::Instruction => {
-            let prior = crate::sources::draft_footer::draft_prose_for_rework(&stored.body);
-            // Hard keywords like cite/quote: replace / is-handle must land in code.
-            if crate::sources::draft_footer::rework_instructions_are_keyword_edits_only(
-                instructions,
-            ) {
-                let edited =
-                    crate::sources::draft_footer::apply_rework_keyword_edits(&prior, instructions);
-                let missing = crate::sources::draft_footer::missing_rework_replace_outcomes(
-                    &prior,
-                    &edited,
-                    instructions,
-                );
-                if !missing.is_empty() {
-                    return Err(ReworkError::Operator(format!(
-                        "could not apply replace/handle edits: {}",
-                        missing.join("; ")
-                    )));
-                }
-                let out =
-                    apply_draft_replacement(stored, &edited, handles, current_url, instructions)
-                        .await?;
-                let after = crate::sources::draft_footer::draft_prose_for_rework(&out.body);
-                let missing = crate::sources::draft_footer::missing_rework_replace_outcomes(
-                    &prior,
-                    &after,
-                    instructions,
-                );
-                if !missing.is_empty() {
-                    return Err(ReworkError::Operator(format!(
-                        "could not apply replace/handle edits: {}",
-                        missing.join("; ")
-                    )));
-                }
-                return Ok(out);
-            }
-            let mut out = rework_stored_draft_llm(
-                router,
-                stored,
-                instructions,
-                tools,
-                handles,
-                current_url.clone(),
-                false,
-            )
-            .await?;
-            // Re-apply keyword edits after the model so Replace / is-handle cannot be ignored.
-            let prose = crate::sources::draft_footer::draft_prose_for_rework(&out.body);
-            let edited =
-                crate::sources::draft_footer::apply_rework_keyword_edits(&prose, instructions);
-            if edited != prose {
-                out = apply_draft_replacement(
-                    stored,
-                    &edited,
-                    handles,
-                    current_url.clone(),
-                    instructions,
-                )
-                .await?;
-            }
-            let prose_after = crate::sources::draft_footer::draft_prose_for_rework(&out.body);
-            let missing = crate::sources::draft_footer::missing_rework_replace_outcomes(
-                &prior,
-                &prose_after,
-                instructions,
-            );
-            if !missing.is_empty() {
-                return Err(ReworkError::Operator(format!(
-                    "writer did not apply replace/handle instructions: {}",
-                    missing.join("; ")
-                )));
-            }
-            out = enforce_required_quotes_draft(
-                router,
-                stored,
-                instructions,
-                tools,
-                handles,
-                current_url,
-                out,
-            )
-            .await?;
-            Ok(out)
+            rework_draft_instruction(router, stored, instructions, tools, handles, current_url)
+                .await
         }
     }
+}
+
+async fn rework_draft_instruction(
+    router: &FailoverRouter,
+    stored: &StoredDraft,
+    instructions: &str,
+    tools: Option<&dyn ToolProvider>,
+    handles: &HandlesIndex,
+    current_url: Option<String>,
+) -> Result<ReworkedDraft, ReworkError> {
+    let prior = crate::sources::draft_footer::draft_prose_for_rework(&stored.body);
+    // Hard keywords like cite/quote: replace / is-handle must land in code.
+    if crate::sources::draft_footer::rework_instructions_are_keyword_edits_only(instructions) {
+        let edited = crate::sources::draft_footer::apply_rework_keyword_edits(&prior, instructions);
+        let missing = crate::sources::draft_footer::missing_rework_replace_outcomes(
+            &prior,
+            &edited,
+            instructions,
+        );
+        if !missing.is_empty() {
+            return Err(ReworkError::Operator(format!(
+                "could not apply replace/handle edits: {}",
+                missing.join("; ")
+            )));
+        }
+        let out =
+            apply_draft_replacement(stored, &edited, handles, current_url, instructions).await?;
+        let after = crate::sources::draft_footer::draft_prose_for_rework(&out.body);
+        let missing = crate::sources::draft_footer::missing_rework_replace_outcomes(
+            &prior,
+            &after,
+            instructions,
+        );
+        if !missing.is_empty() {
+            return Err(ReworkError::Operator(format!(
+                "could not apply replace/handle edits: {}",
+                missing.join("; ")
+            )));
+        }
+        return Ok(out);
+    }
+    let mut out = rework_stored_draft_llm(
+        router,
+        stored,
+        instructions,
+        tools,
+        handles,
+        current_url.clone(),
+        false,
+    )
+    .await?;
+    // Re-apply keyword edits after the model so Replace / is-handle cannot be ignored.
+    let prose = crate::sources::draft_footer::draft_prose_for_rework(&out.body);
+    let edited = crate::sources::draft_footer::apply_rework_keyword_edits(&prose, instructions);
+    if edited != prose {
+        out = apply_draft_replacement(stored, &edited, handles, current_url.clone(), instructions)
+            .await?;
+    }
+    let prose_after = crate::sources::draft_footer::draft_prose_for_rework(&out.body);
+    let missing = crate::sources::draft_footer::missing_rework_replace_outcomes(
+        &prior,
+        &prose_after,
+        instructions,
+    );
+    if !missing.is_empty() {
+        return Err(ReworkError::Operator(format!(
+            "writer did not apply replace/handle instructions: {}",
+            missing.join("; ")
+        )));
+    }
+    enforce_required_quotes_draft(
+        router,
+        stored,
+        instructions,
+        tools,
+        handles,
+        current_url,
+        out,
+    )
+    .await
 }
 
 async fn enforce_required_quotes_draft(
