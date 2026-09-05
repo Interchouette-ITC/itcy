@@ -782,13 +782,14 @@ mod tests {
     }
 
     #[test]
-    fn spa_shell_without_meta_description_still_rejected() {
+    fn spa_shell_without_meta_description_has_no_articleish_text() {
+        // Ingest/browse may still want articleish text; cite probe no longer requires it.
         use crate::sources::publisher_url::evaluate_publisher_probe;
         let html = r"<!doctype html>
 <html><head><title>App</title></head>
 <body><app-root></app-root></body></html>";
         assert!(extract_articleish_text(html).is_none());
-        let err = evaluate_publisher_probe(200, html).expect_err("empty SPA");
-        assert!(err.contains("no article") || err.contains("thin"), "{err}");
+        evaluate_publisher_probe(200, html)
+            .expect("cite probe accepts HTTP 200 without article body");
     }
 }
