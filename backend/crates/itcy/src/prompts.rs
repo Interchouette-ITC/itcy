@@ -530,6 +530,10 @@ mod tests {
             !AI_CMO.contains("Curious owl: \"🦉 is watching how the rule becomes habit.\""),
             "AI_CMO must not teach the stock owl habit sticker as a voice-bank example"
         );
+        assert!(
+            !AI_CMO.contains("🦀 energy: careful diffs, honest process."),
+            "AI_CMO must not teach the stock crab energy / careful diffs sticker as a voice-bank example"
+        );
         for (name, body) in [
             ("AI_CMO", AI_CMO),
             ("DRAFT_SYSTEM_CORE", DRAFT_SYSTEM_CORE),
@@ -541,6 +545,14 @@ mod tests {
                 lower.contains("becomes habit")
                     && (lower.contains("forbidden") || lower.contains("never")),
                 "{name} must forbid watching-how/becomes-habit stock stickers"
+            );
+        }
+        for (name, body) in [("AI_CMO", AI_CMO), ("CREATIVE_LINKEDIN", CREATIVE_LINKEDIN)] {
+            let lower = body.to_ascii_lowercase();
+            assert!(
+                lower.contains("careful diffs")
+                    && (lower.contains("forbidden") || lower.contains("never")),
+                "{name} must forbid careful-diffs / honest-process stock stickers"
             );
         }
     }
