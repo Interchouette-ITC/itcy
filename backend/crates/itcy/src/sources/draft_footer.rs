@@ -850,6 +850,16 @@ pub fn rework_instructions_are_keyword_edits_only(instructions: &str) -> bool {
     for (from, to) in &replaces {
         known.push(from.to_ascii_lowercase());
         known.push(to.to_ascii_lowercase());
+        for part in from.split(|c: char| !c.is_ascii_alphanumeric() && c != '@') {
+            if !part.is_empty() {
+                known.push(part.to_ascii_lowercase());
+            }
+        }
+        for part in to.split(|c: char| !c.is_ascii_alphanumeric() && c != '@') {
+            if !part.is_empty() {
+                known.push(part.to_ascii_lowercase());
+            }
+        }
     }
     for (name, handle) in &handles {
         known.push(name.to_ascii_lowercase());
@@ -1961,29 +1971,30 @@ That distinction between embedded PostgreSQL and a runtime for embedding arbitra
     }
 
     #[test]
-    fn rework_replace_and_handle_keywords_from_operator_instruction() {
-        let instr = "Replace @wasmerio to \"Wasmer\" however \"Bytecode Alliance\" is handle @bytecodealliance";
+    fn rework_replace_keyword_applies_each_pair() {
+        // Hard keyword form: one replace per swap.
+        let instr =
+            "replace \"@wasmerio\" to \"Wasmer\" replace \"Bytecode Alliance\" to \"@bytecodealliance\"";
         assert_eq!(
             extract_rework_replaces(instr),
-            vec![("@wasmerio".into(), "Wasmer".into())]
-        );
-        assert_eq!(
-            extract_rework_handle_maps(instr),
-            vec![("Bytecode Alliance".into(), "@bytecodealliance".into())]
+            vec![
+                ("@wasmerio".into(), "Wasmer".into()),
+                ("Bytecode Alliance".into(), "@bytecodealliance".into()),
+            ]
         );
         assert!(rework_instructions_are_keyword_edits_only(instr));
-        let prior = "Built by the Bytecode Alliance, powering Wasmtime and @wasmerio with LLVM-rival speed.";
+        let prior =
+            "Built by the Bytecode Alliance, powering Wasmtime and @wasmerio with LLVM-rival speed.";
         let out = apply_rework_keyword_edits(prior, instr);
         assert!(
             out.contains("Wasmer") && !out.contains("@wasmerio"),
-            "replace must land: {out}"
+            "first replace must land: {out}"
         );
         assert!(
             out.contains("@bytecodealliance") && !out.contains("Bytecode Alliance"),
-            "handle map must land: {out}"
+            "second replace must land: {out}"
         );
         assert!(missing_rework_replace_outcomes(prior, &out, instr).is_empty());
-        // LLM-ignored body still fails the outcome check.
         let ignored = prior.to_string();
         let miss = missing_rework_replace_outcomes(prior, &ignored, instr);
         assert!(miss.iter().any(|m| m.contains("@wasmerio")), "{miss:?}");
