@@ -21,7 +21,7 @@ use crate::publish::{
     LinkedInMcpClient, PublishMode, XPublishRequest,
 };
 use crate::sources::linkedin_comment::{
-    draft_comment_reply_parts, ensure_one_emoji, parse_linkedin_comment_url,
+    draft_comment_reply_parts, ensure_one_emoji, parse_linkedin_comment_url, reply_echoes_parent,
 };
 use crate::sources::tweet_thread::{fits_x_limit, x_weighted_len, X_CHAR_LIMIT};
 use crate::sources::x_reply::{draft_tweet_reply_parts, parse_x_reply_url};
@@ -439,6 +439,12 @@ fn apply_replacement_reply(
                 .into(),
         );
     }
+    if reply_echoes_parent(&reply, reply_echo_target(meta)) {
+        return Err(
+            "replacement draft paraphrases the parent; write a distinct angle and /rework again"
+                .into(),
+        );
+    }
     if meta.is_x() && !fits_x_limit(&reply) {
         return Err(format!(
             "replacement draft is {} weighted chars (X limit {X_CHAR_LIMIT})",
@@ -568,6 +574,12 @@ Rewrite those parts only; do not paste them again."
 quote the exact sentences and try /rework again"
             .into());
     }
+    let echo_target = reply_echo_target(meta);
+    if reply_echoes_parent(&reply, echo_target) {
+        return Err(
+            "rework still paraphrased the parent; give a concrete angle and /rework again".into(),
+        );
+    }
     if meta.is_x() && !fits_x_limit(&reply) {
         return Err(format!(
             "LLM reply is {} weighted chars (X limit {X_CHAR_LIMIT})",
@@ -575,6 +587,14 @@ quote the exact sentences and try /rework again"
         ));
     }
     Ok((reply, trace))
+}
+
+fn reply_echo_target(meta: &ReplyMeta) -> &str {
+    if !meta.is_x() && !meta.target_body.trim().is_empty() {
+        meta.target_body.as_str()
+    } else {
+        meta.parent_body.as_str()
+    }
 }
 
 fn collapse_reply_ws(s: &str) -> String {

@@ -521,10 +521,29 @@ async fn generate_reply(
     ctx: &LinkedInCommentContext,
 ) -> Result<(String, crate::llm::client::CompletionTrace), String> {
     let user = comment_reply_user_message(&ctx.parent_post, &ctx.comment_author, &ctx.comment_body);
-    let messages = [
-        LlmMessage::system(COMMENT_REPLY_SYSTEM_CORE),
-        LlmMessage::user(user),
-    ];
+    let (reply, trace) = complete_reply(llm, COMMENT_REPLY_SYSTEM_CORE, &user).await?;
+    if !reply_echoes_parent(&reply, &ctx.comment_body) {
+        return Ok((reply, trace));
+    }
+    let louder = format!(
+        "{user}\n\nPRIOR DRAFT WAS A PARAPHRASE OF THE COMMENT. That is forbidden. \
+Write a new reply with a distinct angle. Do not restate the comment."
+    );
+    let (retry, trace2) = complete_reply(llm, COMMENT_REPLY_SYSTEM_CORE, &louder).await?;
+    if reply_echoes_parent(&retry, &ctx.comment_body) {
+        return Err(
+            "writer paraphrased the parent comment; try /rework with a concrete angle".into(),
+        );
+    }
+    Ok((retry, trace2))
+}
+
+async fn complete_reply(
+    llm: &Arc<FailoverRouter>,
+    system: &str,
+    user: &str,
+) -> Result<(String, crate::llm::client::CompletionTrace), String> {
+    let messages = [LlmMessage::system(system), LlmMessage::user(user)];
     let (resp, trace) = llm
         .complete(TaskKind::Freeform, &messages)
         .await
@@ -534,6 +553,63 @@ async fn generate_reply(
         return Err("LLM returned an empty reply".into());
     }
     Ok((ensure_one_emoji(&sanitize_itcy_text(raw)), trace))
+}
+
+/// True when `reply` mostly restates `parent` (paraphrase / near-copy).
+///
+/// Used to reject mediocre CREPLY/XREPLY drafts that echo the target instead of answering it.
+#[must_use]
+pub fn reply_echoes_parent(reply: &str, parent: &str) -> bool {
+    let reply_n = normalize_echo_text(reply);
+    let parent_n = normalize_echo_text(parent);
+    if reply_n.is_empty() || parent_n.is_empty() {
+        return false;
+    }
+    if parent_n.contains(&reply_n) || reply_n.contains(&parent_n) {
+        return true;
+    }
+    let reply_words = content_words(&reply_n);
+    if reply_words.len() < 5 {
+        return false;
+    }
+    let parent_words: std::collections::HashSet<String> =
+        content_words(&parent_n).into_iter().collect();
+    let hits = reply_words
+        .iter()
+        .filter(|w| parent_words.contains(*w))
+        .count();
+    // ≥70% of reply content words already appear in the parent.
+    hits * 10 >= reply_words.len() * 7
+}
+
+fn normalize_echo_text(s: &str) -> String {
+    let expanded = expand_emoji_shortcodes(s);
+    let mut out = String::new();
+    for c in expanded.chars() {
+        if count_emoji(&c.to_string()) > 0 {
+            continue;
+        }
+        if c.is_ascii_alphanumeric() || c == '\'' {
+            out.push(c.to_ascii_lowercase());
+        } else if !out.is_empty() && !out.ends_with(' ') {
+            out.push(' ');
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn content_words(normalized: &str) -> Vec<String> {
+    const STOP: &[&str] = &[
+        "a", "an", "the", "is", "are", "was", "were", "be", "been", "being", "to", "of", "for",
+        "in", "on", "at", "by", "and", "or", "but", "with", "as", "it", "this", "that", "these",
+        "those", "from", "into", "like", "just", "also", "very", "so",
+    ];
+    normalized
+        .split_whitespace()
+        .filter(|w| w.len() >= 3)
+        .filter(|w| !STOP.contains(w))
+        .map(str::to_string)
+        .collect()
 }
 
 /// Keep exactly one emoji glyph (inject owl if none; drop extras after the first).
@@ -648,6 +724,25 @@ Reply
         assert!(ensure_one_emoji("plain text").contains('🦉'));
         assert_eq!(count_emoji(&ensure_one_emoji("hi 🦉 there 🦀")), 1);
         assert_eq!(count_emoji(&ensure_one_emoji("already 🦉")), 1);
+    }
+
+    #[test]
+    fn reply_echoes_parent_catches_near_paraphrase() {
+        let parent = "Isolated looks like the missing link for multi-language agents. \
+The browser runtime alone cuts deployment headaches in half.";
+        let parrot = "Isolated is the missing link for multi-language agents. \
+The browser runtime alone cuts deployment headaches in half. 🦉";
+        assert!(
+            reply_echoes_parent(parrot, parent),
+            "near-copy of the parent must fail"
+        );
+        let distinct = "Shipping agents across languages without a shared browser runtime \
+is where the pain usually hides. Isolated betting on that layer is the interesting part. 🦉";
+        assert!(
+            !reply_echoes_parent(distinct, parent),
+            "distinct angle must pass: {distinct}"
+        );
+        assert!(!reply_echoes_parent("Nice catch 🦉", parent));
     }
 
     #[test]
