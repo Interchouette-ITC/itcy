@@ -8,7 +8,7 @@ use crate::llm::router::{FailoverRouter, TaskKind};
 use crate::llm::sanitize::sanitize_itcy_text;
 use crate::prompts::{tweet_reply_user_message, TWEET_REPLY_SYSTEM_CORE};
 use crate::publish::{ship_x_post, XPublishRequest};
-use crate::sources::linkedin_comment::ensure_one_emoji;
+use crate::sources::linkedin_comment::{ensure_one_emoji, reply_echoes_parent};
 use crate::sources::tweet_thread::{fits_x_limit, x_weighted_len, X_CHAR_LIMIT};
 use crate::sources::twitter::{TwitterTool, TwitterToolError};
 use crate::sources::url_hygiene::{is_x_status_url, x_status_id};
@@ -279,6 +279,33 @@ async fn generate_reply(
     ctx: &XReplyContext,
 ) -> Result<(String, crate::llm::client::CompletionTrace), String> {
     let user = tweet_reply_user_message(&ctx.author, &ctx.tweet_body);
+    let (reply, trace) = complete_x_reply(llm, &user).await?;
+    if !reply_echoes_parent(&reply, &ctx.tweet_body) {
+        return Ok((reply, trace));
+    }
+    let louder = format!(
+        "{user}\n\nPRIOR DRAFT WAS A PARAPHRASE OF THE PARENT TWEET. That is forbidden. \
+Write a new reply with a distinct angle. Do not restate the tweet."
+    );
+    let (retry, trace2) = complete_x_reply(llm, &louder).await?;
+    if reply_echoes_parent(&retry, &ctx.tweet_body) {
+        return Err(
+            "writer paraphrased the parent tweet; try /rework with a concrete angle".into(),
+        );
+    }
+    if !fits_x_limit(&retry) {
+        return Err(format!(
+            "LLM reply is {} weighted chars (X limit {X_CHAR_LIMIT})",
+            x_weighted_len(&retry)
+        ));
+    }
+    Ok((retry, trace2))
+}
+
+async fn complete_x_reply(
+    llm: &Arc<FailoverRouter>,
+    user: &str,
+) -> Result<(String, crate::llm::client::CompletionTrace), String> {
     let messages = [
         LlmMessage::system(TWEET_REPLY_SYSTEM_CORE),
         LlmMessage::user(user),
