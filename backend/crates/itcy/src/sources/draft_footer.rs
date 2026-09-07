@@ -388,10 +388,18 @@ pub fn draft_prose_for_rework(body: &str) -> String {
 ///
 /// Preserves existing paragraph breaks. Unlike X tweet aeration, each block stays
 /// multi-sentence (dense `LinkedIn` shape per Form craft).
+///
+/// Leading emoji-only paragraphs (e.g. a lone `🔧` above the hook) are woven onto the
+/// start of the next prose paragraph, same shape as other drafts that open with a
+/// context glyph.
 #[must_use]
 pub fn aerate_linkedin_draft(text: &str) -> String {
     let text = crate::sources::tweet_footer::join_soft_wrap_lines(text.trim());
-    if text.is_empty() || text.contains("\n\n") {
+    let text = weave_orphan_emoji_paragraphs_into_prose(&text);
+    if text.is_empty() {
+        return text;
+    }
+    if text.contains("\n\n") {
         return text;
     }
     let sentences = merge_trailing_decor_fragments(split_prose_sentences(&text));
@@ -402,7 +410,7 @@ pub fn aerate_linkedin_draft(text: &str) -> String {
     let mut out = String::new();
     for (start, end) in ranges {
         let block = sentences[start..end].join(" ");
-        if block.trim().is_empty() {
+        if block.trim().is_empty() || is_trailing_decor_only(&block) {
             continue;
         }
         if !out.is_empty() {
@@ -415,6 +423,49 @@ pub fn aerate_linkedin_draft(text: &str) -> String {
     } else {
         out
     }
+}
+
+/// Weave emoji-only paragraphs onto the following prose paragraph (`🔧\n\nHook` → `🔧 Hook`).
+fn weave_orphan_emoji_paragraphs_into_prose(text: &str) -> String {
+    let parts: Vec<&str> = text
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .collect();
+    if parts.is_empty() {
+        return String::new();
+    }
+    let mut out: Vec<String> = Vec::new();
+    let mut pending_decor = String::new();
+    for part in parts {
+        if is_trailing_decor_only(part) {
+            if !pending_decor.is_empty() {
+                pending_decor.push(' ');
+            }
+            pending_decor.push_str(part.trim());
+            continue;
+        }
+        let mut block = String::new();
+        if !pending_decor.is_empty() {
+            block.push_str(pending_decor.trim());
+            block.push(' ');
+            pending_decor.clear();
+        }
+        block.push_str(part);
+        out.push(block);
+    }
+    if !pending_decor.is_empty() {
+        // Trailing orphan decor with no following prose: keep on last block or alone.
+        if let Some(last) = out.last_mut() {
+            if !last.ends_with(' ') {
+                last.push(' ');
+            }
+            last.push_str(pending_decor.trim());
+        } else {
+            out.push(pending_decor);
+        }
+    }
+    out.join("\n\n")
 }
 
 fn split_prose_sentences(text: &str) -> Vec<String> {
@@ -2178,6 +2229,31 @@ Next sentence starts here.",
         );
         assert_eq!(s.len(), 2, "{s:?}");
         assert!(s[0].contains("130K"), "{s:?}");
+    }
+
+    #[test]
+    fn aerate_weaves_leading_orphan_emoji_into_hook() {
+        // DRAFT-20260907-000160: writer put a lone wrench above the hook.
+        let body = "\
+🔧\n\n\
+It's about sandboxing that's POSIX-compliant, Linux-compatible, and lets you run native tools like bash or Python without the overhead of full containers. 🦉 It's microsecond cold starts, memory-safe isolation, and a future where your code doesn't just run, it fits the hardware. 🦀\n\n\
+It's a library that lets you use more types of hardware, and do it all with fewer resources. And the fact that it's open source? That's the kind of move that makes developers take notice. 🚀\n\n\
+So if you're building for the edge, the cloud, or anywhere between, this is the kind of tool that could change how you think about sandboxing. And if you're not already thinking about it, you should be. 🤖\n\n\
+https://x.com/NathanFlurry/status/2096704470008889597";
+        let out = aerate_linkedin_draft(body);
+        assert!(
+            !out.contains("🔧\n\n"),
+            "orphan wrench must not stay on its own paragraph: {out:?}"
+        );
+        let first = out.split("\n\n").next().unwrap_or("").trim();
+        assert!(
+            first.starts_with("🔧 It's about sandboxing"),
+            "context glyph must open the hook paragraph: {first:?}"
+        );
+        assert!(
+            out.contains('🦉') && out.contains('🦀') && out.contains('🚀'),
+            "woven body emoji must remain: {out:?}"
+        );
     }
 
     #[test]
