@@ -1,4 +1,4 @@
--- Prior-calendar-day digest item keys for cross-day freshness.
+-- Prior digest item keys for cross-day freshness (lookback window in app code).
 -- Bounds are DIGEST-YYYYMMDD prefixes: >= lookback and < today (exclusive).
 SELECT di.url, di.title
 FROM digest_items di
