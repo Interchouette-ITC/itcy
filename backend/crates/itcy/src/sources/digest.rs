@@ -51,7 +51,7 @@ const MAX_FOR_YOU_ITEMS: usize = 20;
 const MAX_FOLLOWING_ITEMS: usize = 20;
 const MAX_ITC_ITEMS: usize = 10;
 const MAX_PER_HUB: usize = 2;
-const HUB_CANDIDATES: usize = 12;
+const HUB_CANDIDATES: usize = 24;
 /// Scan ceiling per hub extract (`DoS` guard only; not a freshness knob).
 const HUB_LINK_SCAN_MAX: usize = 100;
 /// Over-fetch press so listing drops after blurbs can still fill PRESS 20.
@@ -61,7 +61,10 @@ const MAX_SEARCH_PER_AUTHOR: usize = 2;
 /// Fair mix: at most this many hits kept per planned search query in the first pass.
 const MAX_PER_SEARCH_QUERY: usize = 3;
 /// Prior calendar days whose digest URLs/titles are excluded from today's build.
-const SEEN_LOOKBACK_DAYS: u64 = 7;
+/// Press hubs recycle the same evergreen tops; a short window lets them return after quiet weeks.
+const SEEN_LOOKBACK_DAYS: u64 = 365;
+/// Prefer press URLs whose path date is within this many days of today.
+const PRESS_FRESH_PATH_DAYS: i64 = 21;
 
 /// One numbered digest choice.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1113,8 +1116,12 @@ fn canonicalize_article_url(url: &str) -> String {
         .to_string()
 }
 
-/// Prefer deep article slugs; demote shallow /news/ section tails.
+/// Prefer deep article slugs; demote shallow /news/ section tails and stale dated paths.
 fn press_prefer_score(url: &str, title: &str) -> i32 {
+    press_prefer_score_on(url, title, Local::now().date_naive())
+}
+
+fn press_prefer_score_on(url: &str, title: &str, today: NaiveDate) -> i32 {
     let lower = url.to_ascii_lowercase();
     let mut s = 0i32;
     if lower.contains("/article/")
@@ -1146,7 +1153,52 @@ fn press_prefer_score(url: &str, title: &str) -> i32 {
     if is_listing_seo_copy(title, "") {
         s -= 80;
     }
+    if let Some(age) = dated_path_age_days(&lower, today) {
+        if age <= 7 {
+            s += 50;
+        } else if age <= PRESS_FRESH_PATH_DAYS {
+            s += 20;
+        } else if age <= 45 {
+            s -= 40;
+        } else {
+            s -= 90;
+        }
+    }
     s
+}
+
+/// Days since `/YYYY/MM/DD/` (or `/YYYY/MM/`) in the URL path, when parseable.
+fn dated_path_age_days(lower: &str, today: NaiveDate) -> Option<i64> {
+    let path = lower.split("://").nth(1).unwrap_or(lower);
+    let path = path.split_once('/').map_or(path, |(_, p)| p);
+    let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
+    for i in 0..parts.len() {
+        let y = parts[i];
+        if y.len() != 4 || !y.bytes().all(|b| b.is_ascii_digit()) {
+            continue;
+        }
+        let year: i32 = y.parse().ok()?;
+        if !(2020..=2035).contains(&year) {
+            continue;
+        }
+        let month: u32 = parts.get(i + 1)?.parse().ok()?;
+        if !(1..=12).contains(&month) {
+            continue;
+        }
+        let day: u32 = parts
+            .get(i + 2)
+            .and_then(|d| {
+                if d.len() == 2 && d.bytes().all(|b| b.is_ascii_digit()) {
+                    d.parse().ok()
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(1);
+        let then = NaiveDate::from_ymd_opt(year, month, day)?;
+        return Some((today - then).num_days());
+    }
+    None
 }
 
 fn looks_like_article_path(url: &str) -> bool {
@@ -1864,7 +1916,7 @@ fn candidate_seen_key(c: &Candidate) -> String {
     digest_item_seen_key(c.url.as_deref(), &c.title)
 }
 
-/// Loads URL/title keys from digests in `[today-7d, today)` (prior calendar days only).
+/// Loads URL/title keys from digests in `[today-lookback, today)` (prior calendar days only).
 ///
 /// # Errors
 ///
@@ -2264,10 +2316,10 @@ mod tests {
     }
 
     #[test]
-    fn outside_seven_day_window_kept() {
+    fn outside_lookback_window_kept() {
         let dir = tempfile::TempDir::new().unwrap();
         let db = dir.path().join("d.db");
-        let id = digest_id_days_ago(8, 1);
+        let id = digest_id_days_ago(SEEN_LOOKBACK_DAYS + 1, 1);
         insert_digest(
             &db,
             &id,
@@ -2278,6 +2330,76 @@ mod tests {
         let mut items = vec![freshness_cand("Ancient", Some("https://example.com/old"))];
         assert_eq!(filter_prior_day_seen(&mut items, &seen), 0);
         assert_eq!(items.len(), 1);
+    }
+
+    #[test]
+    fn eight_day_old_press_url_still_excluded() {
+        // Regression: short windows let the same hub evergreen return after a quiet week.
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = dir.path().join("d.db");
+        let id = digest_id_days_ago(8, 1);
+        insert_digest(
+            &db,
+            &id,
+            &[sample_item(
+                "Life before main",
+                Some("https://grack.com/blog/2026/06/11/life-before-main"),
+            )],
+        )
+        .unwrap();
+        let seen = load_prior_day_seen_keys(&db).unwrap();
+        let mut items = vec![freshness_cand(
+            "Life before main",
+            Some("https://grack.com/blog/2026/06/11/life-before-main"),
+        )];
+        assert_eq!(filter_prior_day_seen(&mut items, &seen), 1);
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn year_old_press_url_still_excluded() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db = dir.path().join("d.db");
+        let id = digest_id_days_ago(364, 1);
+        insert_digest(
+            &db,
+            &id,
+            &[sample_item(
+                "Yearling",
+                Some("https://example.com/yearling"),
+            )],
+        )
+        .unwrap();
+        let seen = load_prior_day_seen_keys(&db).unwrap();
+        let mut items = vec![freshness_cand(
+            "Yearling",
+            Some("https://example.com/yearling"),
+        )];
+        assert_eq!(filter_prior_day_seen(&mut items, &seen), 1);
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn press_prefer_demotes_stale_dated_path() {
+        let today = NaiveDate::from_ymd_opt(2026, 9, 7).unwrap();
+        assert_eq!(
+            dated_path_age_days("https://grack.com/blog/2026/06/11/life-before-main", today),
+            Some(88)
+        );
+        let fresh = press_prefer_score_on(
+            "https://www.infoq.com/news/2026/09/airbnb-server-driven-login",
+            "Airbnb Cuts Authentication",
+            today,
+        );
+        let stale = press_prefer_score_on(
+            "https://grack.com/blog/2026/06/11/life-before-main",
+            "Life before main",
+            today,
+        );
+        assert!(
+            fresh > stale,
+            "fresh dated path must outrank stale evergreen: fresh={fresh} stale={stale}"
+        );
     }
 
     #[test]
