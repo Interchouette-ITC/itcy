@@ -342,6 +342,18 @@ const SLOGAN_MUSH_NEEDLES: &[&str] = &[
     "watching how this change becomes habit",
     "watching how this shift becomes habit",
     "watching how these small changes become habits",
+    // Vague brochure openers / CTAs (subject never named; reader asks "what?").
+    "it's about",
+    "it is about",
+    "it's a library that",
+    "it is a library that",
+    "it's the kind of",
+    "it is the kind of",
+    "kind of move that makes",
+    "makes developers take notice",
+    "so if you're building",
+    "so if you are building",
+    "you should be",
     // Recycled ITCy voice-bank sludge (models clone these under every Rust subject).
     "feels right",
     "careful diffs",
@@ -678,8 +690,20 @@ writing code that feels right. And for those who care about systems, the 🦀 en
         assert!(body_has_slogan_mush(
             "I'm curious how this will shape the future of Rust tooling. Built for the long haul."
         ));
+        assert!(body_has_slogan_mush(
+            "It's about building systems that last.\n\n\
+It's a library that lets you define agents as durable workflows."
+        ));
+        assert!(body_has_slogan_mush(
+            "It's the kind of move that makes developers take notice.\n\n\
+So if you're building multi-agent systems, you should be."
+        ));
         assert!(!body_has_slogan_mush(
             "Mozilla shipped JPEG XL after a Rust decoder rewrite landed in Firefox."
+        ));
+        assert!(!body_has_slogan_mush(
+            "Rivet open-sourced agentOS: agents as durable workflows on actors, \
+not chat wrappers. That is the kind of runtime choice that shows up in production."
         ));
     }
 
