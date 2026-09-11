@@ -21,6 +21,52 @@ pub const LINK_OPTIONS_MIN: usize = 3;
 /// Ceiling: operator may keep up to this many Link slots (3 is the floor, not the cap).
 pub const LINK_OPTIONS_CAP: usize = 5;
 
+/// Cap a URL list to `cap`, preferring **one URL per publisher host** (order preserved).
+///
+/// First pass: distinct hosts. Second pass: fill remaining slots with leftover URLs.
+/// Used before probe so cite-page nav on one host cannot crowd out SERP publishers.
+#[must_use]
+pub fn cap_publisher_urls_by_domain(
+    urls: impl IntoIterator<Item = String>,
+    cap: usize,
+) -> Vec<String> {
+    if cap == 0 {
+        return Vec::new();
+    }
+    let urls: Vec<String> = urls.into_iter().collect();
+    let mut out: Vec<String> = Vec::new();
+    for u in &urls {
+        if out.len() >= cap {
+            break;
+        }
+        let scrubbed = scrub_https_url(u);
+        if scrubbed.is_empty() {
+            continue;
+        }
+        if out
+            .iter()
+            .any(|x| same_publisher_domain(x, &scrubbed) || x == &scrubbed)
+        {
+            continue;
+        }
+        out.push(scrubbed);
+    }
+    for u in urls {
+        if out.len() >= cap {
+            break;
+        }
+        let scrubbed = scrub_https_url(&u);
+        if scrubbed.is_empty() {
+            continue;
+        }
+        if out.iter().any(|x| x == &scrubbed) {
+            continue;
+        }
+        out.push(scrubbed);
+    }
+    out
+}
+
 const NOT_FOUND_HTML_MARKERS: &[&str] = &[
     "404 - file or directory not found",
     "this page doesn't exist",
@@ -399,6 +445,50 @@ mod tests {
             "Cloudflare bot check page (ingest blocked)"
         ));
         assert!(!cite_probe_soft_fail("HTTP 404"));
+    }
+
+    #[test]
+    fn cap_by_domain_keeps_serp_publishers_over_cite_nav_junk() {
+        // TWEET-20260911-000122: first-N truncate kept five cryptobreaking.com nav URLs
+        // and dropped KuCoin / Gate; domain dedupe then left Link:1 and the floor failed.
+        let candidates = vec![
+            "https://www.cryptobreaking.com/arya-ag-to-store-grain".into(),
+            "https://www.cryptobreaking.com".into(),
+            "https://www.cryptobreaking.com/category/news".into(),
+            "https://www.cryptobreaking.com/advertise".into(),
+            "https://www.cryptobreaking.com/shop".into(),
+            "https://www.cryptobreaking.com/login".into(),
+            "https://www.kucoin.com/news/flash/indian-agri-lending-firm-arya-ag-tests-tokenized-grain-warehouse-receipts-on-avalanche".into(),
+            "https://www.gate.com/news/detail/AVAX/indias-aryaag-partners-with-avalanche-to-pilot-tokenization-of-grain-24184746".into(),
+            "https://ct.com/news/arya-ag-tests-tokenized-grain-receipts-avalanche".into(),
+            "https://panews.io/articles/01a08adf-1d98-7682-b0e5-82484a7bf40a".into(),
+        ];
+        let capped = cap_publisher_urls_by_domain(candidates, LINK_OPTIONS_CAP);
+        assert_eq!(capped.len(), LINK_OPTIONS_CAP, "{capped:?}");
+        assert!(
+            capped[0].contains("cryptobreaking.com/arya-ag"),
+            "subject article first: {capped:?}"
+        );
+        assert!(
+            capped.iter().any(|u| u.contains("kucoin.com")),
+            "SERP publisher must survive cap: {capped:?}"
+        );
+        assert!(
+            capped.iter().any(|u| u.contains("gate.com")),
+            "second SERP host must survive: {capped:?}"
+        );
+        let hosts: Vec<_> = capped
+            .iter()
+            .filter_map(|u| crate::sources::url_hygiene::publisher_host(u))
+            .collect();
+        let mut unique = hosts.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(
+            unique.len(),
+            hosts.len(),
+            "cap first pass must be one host each: {capped:?}"
+        );
     }
 
     #[test]

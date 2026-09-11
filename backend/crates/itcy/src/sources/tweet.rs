@@ -114,18 +114,14 @@ pub async fn build_grounded_tweet(
         tweet_trace.model_label()
     );
     let tweet_body = ensure_tweet_handles_from_pack(tools, &tweet_body, &research_pack);
-    let mut pack_for_links = pack_urls.clone();
-    for u in refill_pool
-        .iter()
-        .chain(operator_https_urls(subject).iter())
-    {
-        if pack_for_links.len() >= crate::sources::publisher_url::LINK_OPTIONS_CAP {
-            break;
-        }
-        if !pack_for_links.iter().any(|x| x == u) {
-            pack_for_links.push(u.clone());
-        }
-    }
+    let pack_for_links = crate::sources::publisher_url::cap_publisher_urls_by_domain(
+        pack_urls
+            .iter()
+            .chain(refill_pool.iter())
+            .chain(operator_https_urls(subject).iter())
+            .cloned(),
+        crate::sources::publisher_url::LINK_OPTIONS_CAP,
+    );
     let (body, link_options) = attach_tweet_cites(&tweet_body, &pack_for_links, &tweet_id, subject);
     crate::sources::publisher_url::require_tweet_link_options_floor(subject, &link_options)
         .map_err(RagError::Store)?;
@@ -557,6 +553,50 @@ Sources:
         assert_eq!(opts[0], x);
         assert!(opts.iter().any(|u| u == p1));
         assert!(opts.iter().any(|u| u == p2));
+    }
+
+    #[test]
+    fn arya_ag_cite_nav_junk_still_yields_three_link_options() {
+        // TWEET-20260911-000122: draft Link:1..5 had diverse hosts; tweet pack truncate
+        // kept only cryptobreaking.com and failed require_tweet_link_options_floor (got 1).
+        let article = "https://www.cryptobreaking.com/arya-ag-to-store-grain";
+        let nav_junk = [
+            "https://www.cryptobreaking.com",
+            "https://www.cryptobreaking.com/category/news",
+            "https://www.cryptobreaking.com/advertise",
+            "https://www.cryptobreaking.com/shop",
+        ];
+        let serp = [
+            "https://www.kucoin.com/news/flash/indian-agri-lending-firm-arya-ag-tests-tokenized-grain-warehouse-receipts-on-avalanche",
+            "https://ct.com/news/arya-ag-tests-tokenized-grain-receipts-avalanche",
+            "https://panews.io/articles/01a08adf-1d98-7682-b0e5-82484a7bf40a",
+            "https://en.coinqm.com/news/311925.html",
+        ];
+        let mut candidates = vec![article.to_string()];
+        candidates.extend(nav_junk.iter().map(|s| (*s).to_string()));
+        candidates.extend(serp.iter().map(|s| (*s).to_string()));
+        let pack = crate::sources::publisher_url::cap_publisher_urls_by_domain(
+            candidates,
+            crate::sources::publisher_url::LINK_OPTIONS_CAP,
+        );
+        let brief = format!("Indian agricultural warehousing Arya.ag tokenization, cite {article}");
+        let (_out, opts) = attach_tweet_cites(
+            "Arya.ag is piloting tokenized warehouse receipts on Avalanche.\n\n#Avalanche #RWA\n",
+            &pack,
+            "TWEET-20260911-000122",
+            &brief,
+        );
+        crate::sources::publisher_url::require_tweet_link_options_floor(&brief, &opts)
+            .expect("diverse pack must pass tweet Link floor");
+        assert!(
+            opts.len() >= crate::sources::publisher_url::LINK_OPTIONS_MIN,
+            "got {opts:?}"
+        );
+        assert!(
+            opts.iter()
+                .any(|u| u.contains("kucoin") || u.contains("ct.com") || u.contains("panews")),
+            "SERP hosts in Link options: {opts:?}"
+        );
     }
 
     #[test]

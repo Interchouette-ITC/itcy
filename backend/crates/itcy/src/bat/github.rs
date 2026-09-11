@@ -9,6 +9,7 @@ use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
 use thiserror::Error;
+use tracing::warn;
 
 const DEFAULT_REVIEWER: &str = "gRoussac";
 
@@ -416,7 +417,9 @@ impl GithubClient {
         let pr = self
             .create_pull_same_repo(owner, title, body, branch, base)
             .await?;
-        self.request_reviewer_on(owner, pr.number).await?;
+        // CODEOWNERS often already requested the reviewer; a hard fail here used to abort
+        // /accept after the PR existed (DRAFT-164 empty body; TWEET-124 422 Validation Failed).
+        self.request_reviewer_best_effort(owner, pr.number).await;
         Ok(OpenedPr {
             number: pr.number,
             html_url: pr.html_url,
@@ -1220,6 +1223,31 @@ impl GithubClient {
         Ok(())
     }
 
+    /// Ask for BAT reviewer; never fails the PR open (CODEOWNERS / race / 422 are common).
+    async fn request_reviewer_best_effort(&self, owner: &str, number: u64) {
+        match self.request_reviewer_on(owner, number).await {
+            Ok(()) => {}
+            Err(e) => {
+                let msg = e.to_string();
+                if reviewer_request_failure_is_soft(&msg) {
+                    warn!(
+                        error = %e,
+                        owner,
+                        pr = number,
+                        "BAT: request reviewers soft-failed after PR open; continuing"
+                    );
+                } else {
+                    warn!(
+                        error = %e,
+                        owner,
+                        pr = number,
+                        "BAT: request reviewers failed after PR open; continuing"
+                    );
+                }
+            }
+        }
+    }
+
     /// Head branch name for a publications PR (e.g. `draft/DRAFT-…`, `mig-ymd/…`).
     ///
     /// # Errors
@@ -1567,6 +1595,17 @@ struct ReviewUser {
     login: String,
 }
 
+/// True when GitHub refused `requested_reviewers` in a non-fatal way (already requested /
+/// CODEOWNERS race). Hard `/accept` abort after PR create is wrong (TWEET-20260911-000124).
+#[must_use]
+pub fn reviewer_request_failure_is_soft(err: &str) -> bool {
+    let e = err.to_ascii_lowercase();
+    e.contains("request reviewers")
+        && (e.contains("validation failed")
+            || e.contains("could not add requested reviewers")
+            || e.contains("\"status\":\"422\""))
+}
+
 /// True when GitHub Contents API refused a direct put because the branch requires a PR.
 #[must_use]
 pub fn contents_put_blocked_by_branch_protection(api_body: &str) -> bool {
@@ -1876,6 +1915,16 @@ mod tests {
         let b = org_draft_pr_body("DRAFT-20260801-000001", "subject");
         assert!(b.contains("org **`drafts`**"));
         assert!(b.contains("2026/08/01/DRAFT-20260801-000001/"));
+    }
+
+    #[test]
+    fn reviewer_422_after_pr_open_is_soft() {
+        // TWEET-20260911-000124: CODEOWNERS already had gRoussac; API 422 aborted /accept.
+        let api = r#"github api: request reviewers: {"message":"Validation Failed","errors":["Could not add requested reviewers to pull request."],"documentation_url":"https://docs.github.com/rest/pulls/review-requests#request-reviewers-for-a-pull-request","status":"422"}"#;
+        assert!(reviewer_request_failure_is_soft(api));
+        assert!(!reviewer_request_failure_is_soft(
+            "github api: create pull: {\"message\":\"Bad credentials\"}"
+        ));
     }
 
     #[test]
