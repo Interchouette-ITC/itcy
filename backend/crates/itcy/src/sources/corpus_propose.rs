@@ -294,7 +294,10 @@ pub fn body_abandons_subject(body: &str, _subject: &str) -> bool {
 #[must_use]
 pub fn body_has_slogan_mush(body: &str) -> bool {
     let lower = normalize_ascii_apostrophes(&body.to_ascii_lowercase());
-    SLOGAN_MUSH_NEEDLES.iter().any(|n| lower.contains(*n))
+    if SLOGAN_MUSH_NEEDLES.iter().any(|n| lower.contains(*n)) {
+        return true;
+    }
+    body.split("\n\n").any(is_watching_sticker_paragraph)
 }
 
 /// Drop sentences that contain slogan mush; keeps paragraph breaks.
@@ -308,16 +311,30 @@ pub fn strip_slogan_mush_sentences(body: &str) -> String {
 }
 
 fn strip_slogan_mush_paragraph(para: &str) -> String {
+    if is_watching_sticker_paragraph(para) {
+        return String::new();
+    }
     let mut kept: Vec<String> = Vec::new();
     let normalized = para.replace('\n', " ");
     for chunk in normalized.split(". ") {
         let s = chunk.trim().trim_end_matches('.');
-        if s.is_empty() || body_has_slogan_mush(s) {
+        if s.is_empty() || body_has_slogan_mush(s) || is_watching_sticker_paragraph(s) {
             continue;
         }
         kept.push(s.to_string());
     }
     kept.join(". ")
+}
+
+/// True when the paragraph is only the stock `I'm watching.` sticker (+ optional emoji).
+fn is_watching_sticker_paragraph(para: &str) -> bool {
+    let lower = normalize_ascii_apostrophes(&para.to_ascii_lowercase());
+    let letters: String = lower
+        .chars()
+        .filter(|c| c.is_ascii_alphabetic() || c.is_ascii_whitespace() || *c == '\'')
+        .collect();
+    let compact = letters.split_whitespace().collect::<Vec<_>>().join(" ");
+    matches!(compact.as_str(), "i'm watching" | "im watching")
 }
 
 const SLOGAN_MUSH_NEEDLES: &[&str] = &[
@@ -366,6 +383,9 @@ const SLOGAN_MUSH_NEEDLES: &[&str] = &[
     "shape the future of",
     "built for the long haul",
     "writing code that feels right",
+    // Mascot sticker only (form_craft BAD contrast). Concrete "I'm watching how X …" stays.
+    "i'm watching.",
+    "im watching.",
 ];
 
 struct PickedAngle {
@@ -682,6 +702,16 @@ Builders care about stewardship without swallowing the community around the stac
         assert!(body_has_slogan_mush(
             "I'm watching how this change becomes habit."
         ));
+        assert!(
+            body_has_slogan_mush("I'm watching. 🦉"),
+            "bare watching sticker must fail (form_craft BAD contrast)"
+        );
+        assert!(
+            !body_has_slogan_mush(
+                "I'm watching how Astro 7 teams adopt the swap without rewriting plugins. 🦉"
+            ),
+            "concrete watching-how aside must stay"
+        );
         assert!(body_has_slogan_mush(
             "The framework's design is clean, its diffs honest, and its process clear. \
 For a maintainer, this means less friction and more room to focus on what matters: \

@@ -177,7 +177,9 @@ async fn assemble_and_probe_pack(
         "load_tweet: pack candidates before probe"
     );
     let refill_pool = urls.clone();
-    urls.truncate(PACK_CAP);
+    // Prefer one host per slot. Naive truncate kept cite-page nav on the subject host
+    // (TWEET-20260911-000122: five cryptobreaking.com URLs) and dropped SERP publishers.
+    urls = crate::sources::publisher_url::cap_publisher_urls_by_domain(urls, PACK_CAP);
     urls = crate::sources::publisher_url::filter_reachable_publisher_urls(urls).await;
     if !urls.iter().any(|u| u == parts.subject_url) {
         match crate::sources::publisher_url::probe_publisher_url(parts.subject_url).await {

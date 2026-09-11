@@ -691,16 +691,38 @@ fn looks_like_page_title_lede(t: &str) -> bool {
 }
 
 /// Remove substrings the operator quoted in `/rework` instructions (hard, not model hope).
+///
+/// Short multi-word stickers count (e.g. `"I'm watching."`) - a 16-char floor used to
+/// no-op Greg's removal and leave the sticker in the body.
 #[must_use]
 pub fn strip_rework_quoted_removals(body: &str, instructions: &str) -> String {
     let mut out = body.to_string();
     for phrase in quoted_phrases_in_instructions(instructions) {
-        if phrase.chars().count() < 16 {
+        if !quoted_removal_eligible(&phrase) {
             continue;
         }
         out = out.replace(&phrase, "");
     }
+    // Drop paragraphs that collapsed to emoji-only after the quote was excised.
+    out = out
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|p| !p.is_empty() && !is_trailing_decor_only(p))
+        .collect::<Vec<_>>()
+        .join("\n\n");
     collapse_blank_lines(&out).trim().to_string()
+}
+
+fn quoted_removal_eligible(phrase: &str) -> bool {
+    let n = phrase.chars().count();
+    if n >= 16 {
+        return true;
+    }
+    if n < 6 {
+        return false;
+    }
+    let words = phrase.split_whitespace().count();
+    words >= 2 || phrase.ends_with('.') || phrase.ends_with('!') || phrase.ends_with('?')
 }
 
 /// Phrases the operator wants rewritten (must not remain verbatim after `/rework`).
@@ -1856,6 +1878,33 @@ Our decision on Cursor following its acquisition by SpaceX | @openai August 28, 
             "quoted removal must apply: {out}"
         );
         assert!(out.contains("📜 Today"), "{out}");
+    }
+
+    #[test]
+    fn strip_rework_quoted_removals_drops_short_im_watching_sticker() {
+        // DRAFT-20260911-000165: Greg quoted "I'm watching." (<16 chars); old floor no-op'd.
+        let body = "\
+Strand-Rust-Coder-14B is fine-tuned for Rust builders who want idiomatic help.
+
+I'm watching. 🦉
+
+The model's focus on Rust means it can help with edge cases.
+";
+        let instructions = r#"Rework "I'm watching." it does not mean anything"#;
+        let out = strip_rework_quoted_removals(body, instructions);
+        assert!(
+            !out.to_ascii_lowercase().contains("i'm watching"),
+            "short quoted sticker must be excised: {out}"
+        );
+        assert!(
+            !out.split("\n\n").any(|p| {
+                let t = p.trim();
+                !t.is_empty() && !t.chars().any(char::is_alphabetic)
+            }),
+            "must not leave an emoji-only paragraph: {out}"
+        );
+        assert!(out.contains("Strand-Rust-Coder"), "{out}");
+        assert!(out.contains("edge cases"), "{out}");
     }
 
     #[test]

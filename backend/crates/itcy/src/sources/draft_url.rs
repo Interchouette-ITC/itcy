@@ -162,6 +162,17 @@ pub fn set_in_post_https_lines(body: &str, urls: &[String]) -> String {
         if cleaned.trim().is_empty() {
             continue;
         }
+        // `🦀 https://…` → after cite strip only `🦀` remains: weave onto prior prose,
+        // never leave a mascot-only paragraph above the URL (DRAFT-20260911-000165).
+        if is_emoji_or_punct_only(cleaned.trim()) {
+            if let Some(prev) = lines.iter_mut().rev().find(|l| !l.trim().is_empty()) {
+                if !prev.ends_with(' ') {
+                    prev.push(' ');
+                }
+                prev.push_str(cleaned.trim());
+            }
+            continue;
+        }
         lines.push(cleaned);
     }
     while lines.last().is_some_and(|l| l.trim().is_empty()) {
@@ -196,6 +207,12 @@ pub fn set_in_post_https_lines(body: &str, urls: &[String]) -> String {
         out.push_str(tail.trim_start());
     }
     out
+}
+
+/// True when a line has no letters (emoji / punctuation only) after cite URL strip.
+fn is_emoji_or_punct_only(text: &str) -> bool {
+    let t = text.trim();
+    !t.is_empty() && !t.chars().any(char::is_alphabetic)
 }
 
 /// Outcome of `/change_url` choice parsing.
@@ -328,6 +345,27 @@ mod tests {
             .unwrap()
             .contains("https://old.example/a"));
         assert!(out.contains("Link options"));
+    }
+
+    #[test]
+    fn set_single_does_not_leave_orphan_crab_above_url() {
+        // DRAFT-20260911-000165: writer put `🦀\n\nhttps://…`; cite strip left a lone crab.
+        let body = "\
+Strand-Rust-Coder-14B is fine-tuned for Rust builders who want idiomatic help. \
+The pack names Fortytwo and GGUF weights for local Ollama.
+
+🦀
+
+https://huggingface.co/Fortytwo-Network/Strand-Rust-Coder-14B-v1-GGUF
+";
+        let url = "https://huggingface.co/Fortytwo-Network/Strand-Rust-Coder-14B-v1-GGUF";
+        let out = set_single_in_post_url(body, url);
+        assert!(
+            !out.split("\n\n").any(|p| p.trim() == "🦀"),
+            "must not leave lone crab paragraph: {out:?}"
+        );
+        assert!(out.contains('🦀'), "crab must stay woven: {out}");
+        assert!(out.contains(url), "{out}");
     }
 
     #[test]

@@ -751,36 +751,52 @@ pub(crate) fn paste_subject_line(subject: &str) -> String {
 
 /// `LinkedIn` drafts: at least two unique emoji glyphs (same bar as tweets).
 ///
-/// Safety net when the writer under-ships emoji. Weaves missing 🦀/🦉 into the closing
-/// sentence — never inserts before a period (that produced `🦀.` paste glue).
+/// Safety net when the writer under-ships emoji. Weaves missing 🦀/🦉 into the **last
+/// prose sentence** — never a lone `🦀` paragraph and never `🦀.` paste glue.
 fn ensure_draft_emoji_bar(body: &str) -> String {
     if crate::llm::tweet_emoji_ok(body) {
         return body.to_string();
     }
     let mut out = body.trim_end().to_string();
-    if !out.contains('🦀') || !out.contains('🦉') {
-        let mut tail = String::new();
-        if !out.contains('🦀') {
-            tail.push('🦀');
+    let mut missing = String::new();
+    if !out.contains('🦀') {
+        missing.push('🦀');
+    }
+    if !out.contains('🦉') {
+        if !missing.is_empty() {
+            missing.push(' ');
         }
-        if !out.contains('🦉') {
-            if !tail.is_empty() {
-                tail.push(' ');
-            }
-            tail.push('🦉');
+        missing.push('🦉');
+    }
+    if missing.is_empty() {
+        return out;
+    }
+    // Append onto the last non-URL prose paragraph (not a new blank-line sticker block).
+    let mut parts: Vec<String> = out
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(str::to_string)
+        .collect();
+    if let Some(last) = parts.iter_mut().rev().find(|p| {
+        let t = p.trim();
+        !t.starts_with("https://") && t.chars().any(char::is_alphabetic)
+    }) {
+        if last.ends_with('.') {
+            last.pop();
         }
-        if out.ends_with('.') {
-            out.pop();
+        if !last.ends_with(' ') {
+            last.push(' ');
         }
+        last.push_str(&missing);
+    } else {
         if !out.ends_with(' ') {
             out.push(' ');
         }
-        out.push_str(&tail);
+        out.push_str(&missing);
+        return out;
     }
-    if !crate::llm::tweet_emoji_ok(&out) {
-        out.push_str("\n\n🦀 🦉");
-    }
-    out
+    parts.join("\n\n")
 }
 
 /// True when prose has emoji glued directly before a period (`🦀.` / `🚀.`).

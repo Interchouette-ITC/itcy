@@ -7585,3 +7585,10 @@ linkedin = "@seggwat"
 x = "@seggwat"
 linkedin_url = "https://www.linkedin.com/company/seggwat/"
 x_url = "https://x.com/seggwat"
+
+[[handle]]
+name = "Rivet"
+linkedin = "@rivet-dev"
+x = "@rivet-dev"
+linkedin_url = "https://www.linkedin.com/company/rivet-dev/"
+x_url = "https://x.com/rivet-dev"

@@ -306,36 +306,15 @@ async fn rework_stored_draft_llm(
         .complete_with_tools(TaskKind::Draft, &messages, tools, 6)
         .await?;
     let mut body = crate::llm::sanitize_itcy_text(response.message.content.trim());
-    body = crate::sources::draft_footer::strip_leading_page_title_lede(&body);
-    body = crate::sources::draft_footer::strip_leading_cite_instruction(&body);
-    body = crate::sources::draft_footer::strip_rework_quoted_removals(&body, instructions);
-    body = crate::sources::draft_footer::aerate_linkedin_draft(&body);
+    body = scrub_rework_draft_writer_body(&body, instructions)?;
     let pack_urls = stored.sources.clone();
-    let mut link_options = if stored.link_options.is_empty() {
-        pick_link_options(&pack_urls, &body)
-    } else {
-        stored.link_options.clone()
-    };
-    if link_options.is_empty() {
-        link_options = pick_link_options(&pack_urls, &body);
-    }
-    let primary = current_url
-        .clone()
-        .or_else(|| link_options.first().cloned())
-        .unwrap_or_default();
-    if primary.is_empty() {
-        body = ensure_primary_link_line(&body, link_options.first().map(String::as_str));
-    } else {
-        promote_link_option(&mut link_options, &primary);
-        body = set_single_in_post_url(&body, &primary);
-    }
-    (body, link_options) =
-        crate::sources::publisher_url::finalize_reachable_link_options_from_pool(
-            &body,
-            link_options,
-            &pack_urls,
-        )
-        .await;
+    let (mut body, link_options, primary) = attach_rework_draft_links(
+        body,
+        &pack_urls,
+        stored.link_options.clone(),
+        current_url.clone(),
+    )
+    .await;
     body = strip_leading_draft_id(&body);
     body = crate::sources::handles::ensure_linkedin_brand_mention(&body);
     body = crate::sources::handles::ensure_linkedin_handle_from_pack(&body, &pack, handles);
@@ -360,6 +339,64 @@ async fn rework_stored_draft_llm(
         link_options,
         research_pack: pack,
     })
+}
+
+/// Quote removals + slogan-mush salvage + aeration (same gate as `load_draft`).
+fn scrub_rework_draft_writer_body(body: &str, instructions: &str) -> Result<String, ReworkError> {
+    let mut body = crate::sources::draft_footer::strip_leading_page_title_lede(body);
+    body = crate::sources::draft_footer::strip_leading_cite_instruction(&body);
+    body = crate::sources::draft_footer::strip_rework_quoted_removals(&body, instructions);
+    if crate::sources::corpus_propose::body_has_slogan_mush(&body) {
+        let stripped = crate::sources::corpus_propose::strip_slogan_mush_sentences(&body);
+        if stripped.trim().is_empty()
+            || crate::sources::corpus_propose::body_has_slogan_mush(&stripped)
+        {
+            return Err(ReworkError::Operator(
+                "writer kept banned LinkedIn slogan mush after salvage; try shorter instructions"
+                    .into(),
+            ));
+        }
+        warn!("rework: slogan mush stripped from writer body");
+        body = stripped;
+    }
+    Ok(crate::sources::draft_footer::aerate_linkedin_draft(&body))
+}
+
+/// Pick Link options, lock in-post cite, probe/refill, re-aerate orphan mascot glyphs.
+async fn attach_rework_draft_links(
+    mut body: String,
+    pack_urls: &[String],
+    stored_options: Vec<String>,
+    current_url: Option<String>,
+) -> (String, Vec<String>, String) {
+    let mut link_options = if stored_options.is_empty() {
+        pick_link_options(pack_urls, &body)
+    } else {
+        stored_options
+    };
+    if link_options.is_empty() {
+        link_options = pick_link_options(pack_urls, &body);
+    }
+    let primary = current_url
+        .clone()
+        .or_else(|| link_options.first().cloned())
+        .unwrap_or_default();
+    if primary.is_empty() {
+        body = ensure_primary_link_line(&body, link_options.first().map(String::as_str));
+    } else {
+        promote_link_option(&mut link_options, &primary);
+        body = set_single_in_post_url(&body, &primary);
+    }
+    let (body, link_options) =
+        crate::sources::publisher_url::finalize_reachable_link_options_from_pool(
+            &body,
+            link_options,
+            pack_urls,
+        )
+        .await;
+    // Cite rewrite can leave a lone mascot glyph above the URL; fold into prose.
+    let body = crate::sources::draft_footer::aerate_linkedin_draft(&body);
+    (body, link_options, primary)
 }
 
 /// Apply a pasted full `LinkedIn` draft as `/rework` replace (no LLM).
