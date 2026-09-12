@@ -74,3 +74,6 @@
 /itcy-*.png
 /pw/llm-logs/
 /sql/piscine/
+
+# llvm-cov output
+/coverage/
