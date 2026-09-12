@@ -1,4 +1,8 @@
-.PHONY: lint test run build clean tor-up tor-down linkedin-enrich check-license-headers apply-license-headers corpus-rebuild obscura-parity
+.PHONY: lint test run build clean tor-up tor-down linkedin-enrich check-license-headers apply-license-headers corpus-rebuild obscura-parity \
+	coverage coverage-summary coverage-html audit deny machete outdated
+
+# Paths filtered from llvm-cov / Codecov upload.
+COVERAGE_IGNORE := examples/|benches/
 
 check-license-headers:
 	@if [ -f .cursor/scripts/check-license-headers.mjs ]; then \
@@ -22,6 +26,39 @@ lint: check-license-headers
 test:
 	cd backend && cargo test --workspace
 	node --test scripts/x-ship-resolve.test.mjs scripts/tweet-href-urls.test.mjs
+
+## Requires cargo-llvm-cov + llvm-tools-preview. Writes coverage/lcov.info.
+coverage:
+	mkdir -p coverage
+	cd backend && RUSTUP_TOOLCHAIN=stable cargo llvm-cov --workspace --locked --lcov \
+		--ignore-filename-regex '$(COVERAGE_IGNORE)' \
+		--output-path ../coverage/lcov.info
+
+coverage-summary:
+	cd backend && RUSTUP_TOOLCHAIN=stable cargo llvm-cov --workspace --locked --summary-only \
+		--ignore-filename-regex '$(COVERAGE_IGNORE)'
+
+coverage-html:
+	mkdir -p coverage
+	cd backend && RUSTUP_TOOLCHAIN=stable cargo llvm-cov --workspace --locked --html \
+		--ignore-filename-regex '$(COVERAGE_IGNORE)' \
+		--output-dir ../coverage/html
+
+## Requires `cargo install cargo-audit`.
+audit:
+	cd backend && cargo audit
+
+## Requires `cargo install cargo-deny` (config: backend/deny.toml).
+deny:
+	cd backend && cargo deny check
+
+## Unused workspace dependencies. Requires `cargo install cargo-machete`.
+machete:
+	cd backend && cargo machete
+
+## Outdated crates report. Requires `cargo install cargo-outdated`.
+outdated:
+	cd backend && cargo outdated --workspace
 
 # Drop cargo build artifacts only. Does not touch sql/ or .env.
 clean:
