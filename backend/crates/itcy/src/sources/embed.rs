@@ -120,18 +120,27 @@ impl EmbedClient for OllamaEmbedClient {
             "input": "warm",
             "keep_alive": embed_keep_alive_json(),
         });
-        let send = self.http.post(&url).json(&body).send();
-        let res = tokio::time::timeout(EMBED_WARM_TIMEOUT, send)
+        // Timeout must cover headers + body (same hang class as chat warm).
+        let warm = async {
+            let res = self
+                .http
+                .post(&url)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| EmbedError::Request(format!("warm {model}: {e}")))?;
+            let status = res.status();
+            let text = res.text().await.unwrap_or_default();
+            Ok::<_, EmbedError>((status, text))
+        };
+        let (status, text) = tokio::time::timeout(EMBED_WARM_TIMEOUT, warm)
             .await
             .map_err(|_| {
                 EmbedError::Request(format!(
                     "warm {model}: timed out after {}s",
                     EMBED_WARM_TIMEOUT.as_secs()
                 ))
-            })?
-            .map_err(|e| EmbedError::Request(format!("warm {model}: {e}")))?;
-        let status = res.status();
-        let text = res.text().await.unwrap_or_default();
+            })??;
         if !status.is_success() {
             let snippet: String = text.chars().take(400).collect();
             return Err(EmbedError::Request(format!(

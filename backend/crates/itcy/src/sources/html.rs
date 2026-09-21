@@ -379,6 +379,8 @@ fn html_entities_basic(s: &str) -> String {
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
+        .replace("&#x27;", "'")
+        .replace("&apos;", "'")
         .replace("&rsquo;", "'")
         .replace("&lsquo;", "'")
         .replace("&rdquo;", "\"")
