@@ -865,6 +865,72 @@ pub fn extract_rework_replaces(instructions: &str) -> Vec<(String, String)> {
     out
 }
 
+/// Phrases to delete from prose: `remove …` / `delete …` / `drop …` (hard keyword).
+///
+/// Unquoted value runs to end of the instruction line (so
+/// `remove and it's got a name: Eddie Zhang` keeps the full clause).
+#[must_use]
+pub fn extract_rework_removes(instructions: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let lower = instructions.to_ascii_lowercase();
+    for keyword in ["remove", "delete", "drop"] {
+        let mut search_from = 0_usize;
+        while search_from < lower.len() {
+            let Some(rel) = lower[search_from..].find(keyword) else {
+                break;
+            };
+            let start = search_from + rel;
+            let after_kw = start + keyword.len();
+            if !keyword_boundary_before(instructions, start)
+                || !keyword_boundary_after(instructions, after_kw)
+            {
+                search_from = start + 1;
+                continue;
+            }
+            let mut rest = instructions[after_kw..].trim_start();
+            rest = rest.strip_prefix(':').map_or(rest, str::trim_start);
+            let phrase = if rest.starts_with('"')
+                || rest.starts_with('\u{201c}')
+                || rest.starts_with('\u{2018}')
+                || rest.starts_with('\'')
+            {
+                take_directive_span(rest).map(|(v, _)| strip_wrapping_quotes(v).trim().to_string())
+            } else {
+                let line = rest.lines().next().unwrap_or(rest).trim();
+                let cut = next_rework_keyword_offset(line).unwrap_or(line.len());
+                let raw = line[..cut].trim().trim_end_matches(['.', ',', ';']);
+                (!raw.is_empty()).then(|| raw.to_string())
+            };
+            if let Some(p) = phrase {
+                if p.chars().count() >= 2 {
+                    out.push(p);
+                }
+            }
+            search_from = after_kw;
+        }
+    }
+    out
+}
+
+fn next_rework_keyword_offset(s: &str) -> Option<usize> {
+    let lower = s.to_ascii_lowercase();
+    let mut best: Option<usize> = None;
+    for kw in [
+        " replace",
+        " remove",
+        " delete",
+        " drop",
+        " is handle ",
+        " quote ",
+        " cite ",
+    ] {
+        if let Some(i) = lower.find(kw) {
+            best = Some(best.map_or(i, |b| b.min(i)));
+        }
+    }
+    best
+}
+
 /// `"Name" is handle @slug` maps (hard; do not leave to the model).
 #[must_use]
 pub fn extract_rework_handle_maps(instructions: &str) -> Vec<(String, String)> {
@@ -899,16 +965,20 @@ pub fn extract_rework_handle_maps(instructions: &str) -> Vec<(String, String)> {
     out
 }
 
-/// True when instructions are only `replace` / `is handle` edits (connectors OK).
+/// True when instructions are only `replace` / `remove` / `is handle` edits (connectors OK).
 #[must_use]
 pub fn rework_instructions_are_keyword_edits_only(instructions: &str) -> bool {
     let replaces = extract_rework_replaces(instructions);
     let handles = extract_rework_handle_maps(instructions);
-    if replaces.is_empty() && handles.is_empty() {
+    let removes = extract_rework_removes(instructions);
+    if replaces.is_empty() && handles.is_empty() && removes.is_empty() {
         return false;
     }
     let mut known: Vec<String> = vec![
         "replace".into(),
+        "remove".into(),
+        "delete".into(),
+        "drop".into(),
         "to".into(),
         "with".into(),
         "is".into(),
@@ -942,13 +1012,21 @@ pub fn rework_instructions_are_keyword_edits_only(instructions: &str) -> bool {
             known.push(part.to_ascii_lowercase());
         }
     }
+    for phrase in &removes {
+        known.push(phrase.to_ascii_lowercase());
+        for part in phrase.split(|c: char| !c.is_ascii_alphanumeric() && c != '@') {
+            if !part.is_empty() {
+                known.push(part.to_ascii_lowercase());
+            }
+        }
+    }
     instructions
         .split(|c: char| !c.is_ascii_alphanumeric() && c != '@')
         .filter(|w| !w.is_empty())
         .all(|w| known.iter().any(|k| k == &w.to_ascii_lowercase()))
 }
 
-/// Apply operator `replace` + `is handle` keyword edits to prose (hard).
+/// Apply operator `replace` / `remove` / `is handle` keyword edits to prose (hard).
 #[must_use]
 pub fn apply_rework_keyword_edits(body: &str, instructions: &str) -> String {
     let mut out = body.to_string();
@@ -958,10 +1036,60 @@ pub fn apply_rework_keyword_edits(body: &str, instructions: &str) -> String {
     for (name, handle) in extract_rework_handle_maps(instructions) {
         out = out.replace(&name, &handle);
     }
+    let removes = extract_rework_removes(instructions);
+    if removes.is_empty() {
+        return out;
+    }
+    for phrase in removes {
+        out = remove_rework_phrase(&out, &phrase);
+    }
+    tidy_after_rework_remove(&out)
+}
+
+fn normalize_rework_apostrophes(s: &str) -> String {
+    s.replace(['\u{2019}', '\u{2018}'], "'")
+}
+
+fn rework_phrase_variants(phrase: &str) -> Vec<String> {
+    let ascii = normalize_rework_apostrophes(phrase);
+    let curly = ascii.replace('\'', "\u{2019}");
+    let mut out = vec![phrase.to_string(), ascii, curly];
+    out.sort();
+    out.dedup();
     out
 }
 
-/// Missing `replace` outcomes: `from` still present, or `to` never landed when `from` was in prior.
+fn remove_rework_phrase(body: &str, phrase: &str) -> String {
+    for variant in rework_phrase_variants(phrase) {
+        if body.contains(&variant) {
+            return body.replace(&variant, "");
+        }
+    }
+    let norm_phrase = normalize_rework_apostrophes(phrase);
+    if norm_phrase.chars().count() < 2 {
+        return body.to_string();
+    }
+    let norm_body = normalize_rework_apostrophes(body);
+    if norm_body.contains(&norm_phrase) {
+        return norm_body.replacen(&norm_phrase, "", 1);
+    }
+    body.to_string()
+}
+
+fn tidy_after_rework_remove(s: &str) -> String {
+    let mut out = s.to_string();
+    for _ in 0..4 {
+        out = out.replace(" ,", ",");
+        out = out.replace(", .", ".");
+        out = out.replace(",.", ".");
+        out = out.replace(" .", ".");
+        out = out.replace("  ", " ");
+        out = out.replace(",,", ",");
+    }
+    out.trim().to_string()
+}
+
+/// Missing `replace` / `remove` outcomes after a rework pass.
 #[must_use]
 pub fn missing_rework_replace_outcomes(prior: &str, body: &str, instructions: &str) -> Vec<String> {
     let mut missing = Vec::new();
@@ -977,6 +1105,22 @@ pub fn missing_rework_replace_outcomes(prior: &str, body: &str, instructions: &s
             missing.push(format!("`{name}` must become `{handle}`"));
         } else if prior.contains(&name) && !body.contains(&handle) && !body.contains(&name) {
             missing.push(format!("missing handle `{handle}` for `{name}`"));
+        }
+    }
+    let norm_body = normalize_rework_apostrophes(body);
+    let norm_prior = normalize_rework_apostrophes(prior);
+    for phrase in extract_rework_removes(instructions) {
+        let norm_phrase = normalize_rework_apostrophes(&phrase);
+        let still = rework_phrase_variants(&phrase)
+            .iter()
+            .any(|v| body.contains(v))
+            || norm_body.contains(&norm_phrase);
+        let was_present = rework_phrase_variants(&phrase)
+            .iter()
+            .any(|v| prior.contains(v))
+            || norm_prior.contains(&norm_phrase);
+        if still && was_present {
+            missing.push(format!("still contains `{phrase}` (remove)"));
         }
     }
     missing
@@ -2098,6 +2242,36 @@ That distinction between embedded PostgreSQL and a runtime for embedding arbitra
         let ignored = prior.to_string();
         let miss = missing_rework_replace_outcomes(prior, &ignored, instr);
         assert!(miss.iter().any(|m| m.contains("@wasmerio")), "{miss:?}");
+    }
+
+    #[test]
+    fn rework_remove_keyword_drops_clause_including_curly_apostrophe() {
+        // TWEET-20260921-000141: `/rework … remove and it's got a name: Eddie Zhang`
+        // must be deterministic — not left to the LLM.
+        let instr = "remove and it's got a name: Eddie Zhang";
+        assert_eq!(
+            extract_rework_removes(instr),
+            vec!["and it's got a name: Eddie Zhang".to_string()]
+        );
+        assert!(rework_instructions_are_keyword_edits_only(instr));
+        let prior = "🦉 Local AI for penetration testing is now a thing, and it\u{2019}s got a name: Eddie Zhang.\n\n🚀 Imagine a tool.";
+        let out = apply_rework_keyword_edits(prior, instr);
+        assert!(
+            !normalize_rework_apostrophes(&out).contains("Eddie Zhang"),
+            "Eddie Zhang must be gone: {out}"
+        );
+        assert!(
+            !normalize_rework_apostrophes(&out).contains("got a name"),
+            "clause must be gone: {out}"
+        );
+        assert!(out.contains("Local AI for penetration testing is now a thing"));
+        assert!(missing_rework_replace_outcomes(prior, &out, instr).is_empty());
+        let miss = missing_rework_replace_outcomes(prior, prior, instr);
+        assert!(
+            miss.iter()
+                .any(|m| m.contains("Eddie Zhang") || m.contains("remove")),
+            "{miss:?}"
+        );
     }
 
     #[test]
