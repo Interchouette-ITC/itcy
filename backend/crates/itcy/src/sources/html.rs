@@ -27,11 +27,9 @@ pub fn extract_articleish_text(html: &str) -> Option<String> {
             return Some(apollo);
         }
     }
-    if let Some(ld) = extract_json_ld_article_text(html) {
-        if ld.chars().count() >= 120 {
-            return Some(ld);
-        }
-    }
+    // Prefer real DOM body over JSON-LD headline+description teasers. Project Black
+    // (and similar) ship Article JSON-LD without articleBody (~120 chars) while the
+    // `<article>` has the full post — early JSON-LD return made `/ingest` TooThin.
     let lower = html.to_ascii_lowercase();
     for tag in ["article", "main"] {
         for slice in all_element_inners(html, &lower, tag) {
@@ -53,6 +51,11 @@ pub fn extract_articleish_text(html: &str) -> Option<String> {
             if text.chars().count() >= 120 {
                 return Some(text);
             }
+        }
+    }
+    if let Some(ld) = extract_json_ld_article_text(html) {
+        if ld.chars().count() >= 120 {
+            return Some(ld);
         }
     }
     // SPA shells (Angular/React) often ship only social cards in the first HTML.
@@ -733,6 +736,29 @@ mod tests {
         assert!(text.contains("58%"));
         assert!(text.contains("Rust driver"));
         evaluate_publisher_probe(200, html).expect("probe accepts json-ld article page");
+    }
+
+    #[test]
+    fn extract_prefers_article_dom_over_thin_json_ld_teaser() {
+        // projectblack.io/blog/local-ai-for-cyber-security: Article JSON-LD is only
+        // headline+description (~123 chars) while <article> holds the full post.
+        let html = r#"<html><head>
+<title>Local AI for Penetration Testing &amp; Research</title>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Local AI for Penetration Testing &amp; Research","description":"How competent are local AI models for cyber security bug hunting and research?"}</script>
+</head><body>
+<article><p>Model intelligence and tradecraft have progressed enough that a local open-weight stack can support real bug-hunting workflows when the operator stays in the loop for verification and exploit triage.</p>
+<p>This post measures local models against cloud baselines on a fixed corpus of vulnerability research tasks, then walks through tooling choices for offline red-team labs.</p></article>
+</body></html>"#;
+        let text = extract_page_text(html);
+        assert!(
+            text.chars().count() > 200,
+            "must use <article> body, not JSON-LD teaser: len={}",
+            text.chars().count()
+        );
+        assert!(text.contains("bug-hunting workflows"));
+        assert!(!text.contains(
+            "How competent are local AI models for cyber security bug hunting and research?"
+        ));
     }
 
     #[test]
