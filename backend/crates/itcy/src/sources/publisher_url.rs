@@ -5,7 +5,6 @@
 
 use crate::sources::draft_footer::ensure_primary_link_line;
 use crate::sources::draft_url::{extract_in_post_url, set_single_in_post_url};
-use crate::sources::tweet_footer::extract_brief_cite;
 use crate::sources::url_hygiene::{
     is_allowed_tweet_cite, is_junk_or_search_url, is_x_non_status_url, is_x_status_url,
     same_publisher_domain, scrub_https_url,
@@ -16,9 +15,12 @@ use tracing::{info, warn};
 
 const PROBE_BODY_CAP: usize = 256_000;
 
-/// Floor: refill until at least this many reachable Link options (when the pool allows).
+/// Soft target: refill until at least this many reachable Link options (when the pool allows).
+/// Not a user-facing refuse threshold; see [`LINK_OPTIONS_USER_FLOOR`].
 pub const LINK_OPTIONS_MIN: usize = 3;
-/// Ceiling: operator may keep up to this many Link slots (3 is the floor, not the cap).
+/// User refuse floor: drafts/tweets need at least one reachable Link (refuse `Link:0` only).
+pub const LINK_OPTIONS_USER_FLOOR: usize = 1;
+/// Ceiling: operator may keep up to this many Link slots (3 is the soft target, not the cap).
 pub const LINK_OPTIONS_CAP: usize = 5;
 
 /// Cap a URL list to `cap`, preferring **one URL per publisher host** (order preserved).
@@ -77,22 +79,36 @@ const NOT_FOUND_HTML_MARKERS: &[&str] = &[
 ];
 
 /// True when HTML/title text looks like a not-found page (not an article about 404s).
+///
+/// Next.js / RSC shells often embed a "Page not found" route payload in the same
+/// document as a live page. When `<title>` / `og:title` looks like a real page,
+/// ignore body-wide soft-404 markers buried in that payload.
 #[must_use]
 pub fn html_page_looks_like_not_found(html: &str) -> bool {
     let lower = html.to_ascii_lowercase();
-    if NOT_FOUND_HTML_MARKERS.iter().any(|m| lower.contains(m)) {
-        return true;
-    }
-    if let Some(title) = extract_html_title(&lower) {
-        if title.contains("404")
-            || title.contains("not found")
-            || title.contains("page doesn't exist")
-            || title.contains("page does not exist")
-        {
+    if let Some(title) = document_title_for_soft_404(&lower) {
+        if title_looks_like_not_found(&title) {
             return true;
         }
+        return false;
     }
-    false
+    NOT_FOUND_HTML_MARKERS.iter().any(|m| lower.contains(m))
+}
+
+fn title_looks_like_not_found(title: &str) -> bool {
+    title.contains("404")
+        || title.contains("not found")
+        || title.contains("page doesn't exist")
+        || title.contains("page does not exist")
+}
+
+fn document_title_for_soft_404(lower_html: &str) -> Option<String> {
+    if let Some(t) = extract_html_title(lower_html) {
+        if !t.is_empty() {
+            return Some(t);
+        }
+    }
+    extract_og_title(lower_html).filter(|t| !t.is_empty())
 }
 
 fn extract_html_title(lower_html: &str) -> Option<String> {
@@ -101,6 +117,16 @@ fn extract_html_title(lower_html: &str) -> Option<String> {
     let gt = after.find('>')? + 1;
     let rest = &after[gt..];
     let end = rest.find("</title>")?;
+    Some(rest[..end].trim().to_string())
+}
+
+fn extract_og_title(lower_html: &str) -> Option<String> {
+    let key = "property=\"og:title\"";
+    let start = lower_html.find(key)?;
+    let after = &lower_html[start..];
+    let content = after.find("content=\"")?;
+    let rest = &after[content + "content=\"".len()..];
+    let end = rest.find('"')?;
     Some(rest[..end].trim().to_string())
 }
 
@@ -360,65 +386,38 @@ async fn require_ship_cite_url_reachable(
     })
 }
 
-/// Hard floor: drafts/tweets must keep at least [`LINK_OPTIONS_MIN`] reachable publisher URLs.
+/// Refuse drafts/tweets with no reachable publisher Link (`Link:0`).
 ///
+/// [`LINK_OPTIONS_MIN`] (3) is a refill soft target only; 1 or 2 Links still ship.
 /// Soft-warn alone let DRAFT-20260831-000137 save with `Link: 0` after scheme-only SERP junk.
 ///
 /// # Errors
 ///
-/// Returns operator-facing text when the floor is missed.
+/// Returns operator-facing text when there is no usable Link option.
 pub fn require_link_options_floor(link_options: &[String]) -> Result<(), String> {
-    require_link_options_floor_min(LINK_OPTIONS_MIN, link_options, None)
+    require_link_options_floor_min(LINK_OPTIONS_USER_FLOOR, link_options)
 }
 
-/// Tweet floor: locked X status cite needs only the operator URL; publisher cites need three.
+/// Same user refuse floor as [`require_link_options_floor`] (tweets included).
 ///
 /// # Errors
 ///
-/// Returns operator-facing text when the floor is missed.
+/// Returns operator-facing text when there is no usable Link option.
 pub fn require_tweet_link_options_floor(
     brief: &str,
     link_options: &[String],
 ) -> Result<(), String> {
-    let min = tweet_link_options_min(brief, link_options);
-    let hint = if min == 1 {
-        Some(
-            "Operator locked an X status cite; Link:1 is the quote card. \
-Add a publisher https in the brief for extra Link options.",
-        )
-    } else {
-        None
-    };
-    require_link_options_floor_min(min, link_options, hint)
+    let _ = brief;
+    require_link_options_floor(link_options)
 }
 
-/// Minimum Link options for tweets: 1 when operator brief locks an X status cite.
-#[must_use]
-pub fn tweet_link_options_min(brief: &str, link_options: &[String]) -> usize {
-    let _ = link_options;
-    if extract_brief_cite(brief).is_some_and(|u| is_x_status_url(&u)) {
-        1
-    } else {
-        LINK_OPTIONS_MIN
-    }
-}
-
-fn require_link_options_floor_min(
-    min: usize,
-    link_options: &[String],
-    hint: Option<&str>,
-) -> Result<(), String> {
+fn require_link_options_floor_min(min: usize, link_options: &[String]) -> Result<(), String> {
     if link_options.len() < min {
-        let mut msg = format!(
-            "Need at least {min} reachable publisher Link options (got {}). \
+        return Err(format!(
+            "Need at least one reachable publisher Link (got {}). \
 Refuse draft/tweet with Link:0. Retry with a live publisher URL, or `/draft_about` / `/tweet_about` with a cite.",
             link_options.len()
-        );
-        if let Some(h) = hint {
-            msg.push(' ');
-            msg.push_str(h);
-        }
-        return Err(msg);
+        ));
     }
     if link_options
         .iter()
@@ -503,6 +502,22 @@ mod tests {
             <body><h1>Not found</h1></body></html>";
         let err = evaluate_publisher_probe(200, html).expect_err("soft 404");
         assert!(err.contains("not found") || err.contains("404"), "{err}");
+    }
+
+    #[test]
+    fn evaluate_accepts_next_rsc_payload_with_buried_page_not_found() {
+        // DRAFT-20260921-000185: live LowLevelCraft track returned HTTP 200 with a real
+        // title, but Next.js Flight JSON also embeds a "Page not found" route — old
+        // body-wide marker scan false-rejected the cite after a successful /ingest.
+        let html = r#"<!DOCTYPE html><html><head>
+<title>Rust for Systems Programming — Language Foundations — LowLevelCraft</title>
+<meta property="og:title" content="Rust for Systems Programming — Language Foundations — LowLevelCraft"/>
+</head><body><h1>Rust for Systems Programming</h1>
+<script>self.__next_f.push([1,"children\":\"Page not found\"}])</script>
+<p>The page you're looking for doesn't exist or has moved.</p>
+</body></html>"#;
+        evaluate_publisher_probe(200, html)
+            .expect("real title must win over RSC-buried soft-404 chrome");
     }
 
     #[test]
@@ -687,18 +702,21 @@ mod tests {
             "https://techcrunch.com/c".into(),
         ];
         assert!(require_link_options_floor(&three).is_ok());
-        assert!(require_link_options_floor(&three[..2]).is_err());
+        // Soft target is 3; user refuse floor is 1 (1 or 2 Links still ship).
+        assert!(require_link_options_floor(&three[..2]).is_ok());
+        assert!(require_link_options_floor(&three[..1]).is_ok());
     }
 
     #[test]
-    fn tweet_link_floor_one_when_operator_locked_x_status_cite() {
+    fn tweet_and_draft_link_floor_allow_one_publisher() {
         let x = "https://x.com/nineshoot/status/2094567713113059575";
         let brief = format!("Obscura Rust browser, Short punchy take, Link cite {x}");
         let one = vec![x.to_string()];
         assert!(require_tweet_link_options_floor(&brief, &one).is_ok());
-        assert!(require_link_options_floor(&one).is_err());
+        assert!(require_link_options_floor(&one).is_ok());
         let publisher_brief = "Obscura Rust browser, cite https://labs.sogeti.com/obscura";
-        assert!(require_tweet_link_options_floor(publisher_brief, &one).is_err());
+        let one_pub = vec!["https://labs.sogeti.com/obscura".into()];
+        assert!(require_tweet_link_options_floor(publisher_brief, &one_pub).is_ok());
     }
 
     #[test]

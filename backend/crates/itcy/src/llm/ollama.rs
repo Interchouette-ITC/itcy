@@ -179,23 +179,29 @@ impl OllamaClient {
             "keep_alive": keep_alive_json(),
             "options": options_json(),
         });
-        let send = self
-            .http
-            .post(self.generate_url())
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send();
-        let res = tokio::time::timeout(WARM_TIMEOUT, send)
+        // Timeout must cover headers + body. Timing only `.send()` lets a hung
+        // CUDA runner leave boot stuck forever after the response starts.
+        let warm = async {
+            let res = self
+                .http
+                .post(self.generate_url())
+                .header("Content-Type", "application/json")
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| LlmError::Provider(format!("ollama warm {model}: {e}")))?;
+            let status = res.status();
+            let text = res.text().await.unwrap_or_default();
+            Ok::<_, LlmError>((status, text))
+        };
+        let (status, text) = tokio::time::timeout(WARM_TIMEOUT, warm)
             .await
             .map_err(|_| {
                 LlmError::Provider(format!(
                     "ollama warm {model}: timed out after {}s",
                     WARM_TIMEOUT.as_secs()
                 ))
-            })?
-            .map_err(|e| LlmError::Provider(format!("ollama warm {model}: {e}")))?;
-        let status = res.status();
-        let text = res.text().await.unwrap_or_default();
+            })??;
         if !status.is_success() {
             return Err(format_provider_http_error("ollama warm", status, &text));
         }

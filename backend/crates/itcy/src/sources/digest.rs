@@ -1058,6 +1058,8 @@ fn xml_text_decode(raw: &str) -> String {
     t.replace("&amp;", "&")
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
+        .replace("&#x27;", "'")
+        .replace("&apos;", "'")
         .replace("&lt;", "<")
         .replace("&gt;", ">")
         .replace('\n', " ")

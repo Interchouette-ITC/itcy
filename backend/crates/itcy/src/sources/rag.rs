@@ -619,7 +619,9 @@ pub(crate) fn scrub_and_validate_writer_body(
     }
     if body_copies_operator_subject(&body, paste_subject) {
         let stripped = strip_leading_subject_paste(&body, paste_subject);
-        if stripped.trim().is_empty() || body_copies_operator_subject(&stripped, paste_subject) {
+        // Soft target: drop a leading subject lede. Remaining prose ships even when it
+        // still mentions the topic (8-word runs are normal). Refuse only when nothing left.
+        if stripped.trim().is_empty() {
             return Err(RagError::Store(
                 "writer pasted the subject without adding commentary".into(),
             ));
@@ -1194,10 +1196,24 @@ fn normalize_token(w: &str) -> String {
         .collect()
 }
 
+/// Decode common HTML entities so digest subjects (`&#x27;`) match writer apostrophes.
+fn decode_paste_text(s: &str) -> String {
+    s.replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&#x27;", "'")
+        .replace("&apos;", "'")
+        .replace("&rsquo;", "'")
+        .replace("&lsquo;", "'")
+}
+
 /// True when the draft pastes a long contiguous word-run from the paste subject.
 /// Structural only: no phrase allow/deny lists.
 fn body_copies_operator_subject(body: &str, subject: &str) -> bool {
     const MIN_RUN: usize = 8;
+    let subject = decode_paste_text(subject);
+    let body = decode_paste_text(body);
     let subj: Vec<String> = subject
         .split_whitespace()
         .map(normalize_token)
@@ -1228,7 +1244,9 @@ fn body_copies_operator_subject(body: &str, subject: &str) -> bool {
 /// Drop a leading word-run copied from the paste subject when the body opens with the brief lede.
 fn strip_leading_subject_paste(body: &str, paste_subject: &str) -> String {
     const MIN_RUN: usize = 8;
-    let bod_words: Vec<&str> = body.split_whitespace().collect();
+    let paste_subject = decode_paste_text(paste_subject);
+    let body_decoded = decode_paste_text(body);
+    let bod_words: Vec<&str> = body_decoded.split_whitespace().collect();
     let subj: Vec<String> = paste_subject
         .split_whitespace()
         .map(normalize_token)
@@ -1887,7 +1905,7 @@ That matters when feature requests and bugs land from multiple surfaces at once.
     }
 
     #[tokio::test]
-    async fn grounded_draft_refuses_fewer_than_three_link_options() {
+    async fn grounded_draft_refuses_empty_link_options_only() {
         let dir = TempDir::new().expect("temp");
         let db_path = dir.path().join("s.db");
         let mut clients: HashMap<String, Arc<dyn LlmClient>> = HashMap::new();
@@ -1907,19 +1925,37 @@ That matters when feature requests and bugs land from multiple surfaces at once.
         )
         .await
         .expect_err("Link:0 must fail");
-        assert!(err.to_string().contains("at least 3"), "{err}");
-        let one = vec!["https://x.com/a/status/1".into()];
-        let err = build_grounded_draft_from_pack(
+        assert!(
+            err.to_string().contains("at least one") || err.to_string().contains("Link:0"),
+            "{err}"
+        );
+        let one = vec!["https://alpha.itcy.test/rust-async".into()];
+        let reply = build_grounded_draft_from_pack(
             &router,
             &db_path,
             "rust async",
-            "## ResearchPack\nsubject: rust async\n",
+            "## ResearchPack\nsubject: rust async\nsummary: mock pack\n",
             &one,
             None,
         )
         .await
-        .expect_err("one link must fail floor");
-        assert!(err.to_string().contains("at least 3"), "{err}");
+        .expect("one reachable Link must ship (soft target 3 is not a user refuse)");
+        assert_eq!(reply.link_options.len(), 1);
+        let two = vec![
+            "https://alpha.itcy.test/rust-async".into(),
+            "https://beta.itcy.test/tokio".into(),
+        ];
+        let reply2 = build_grounded_draft_from_pack(
+            &router,
+            &db_path,
+            "rust async",
+            "## ResearchPack\nsubject: rust async\nsummary: mock pack\n",
+            &two,
+            None,
+        )
+        .await
+        .expect("two Links must ship");
+        assert_eq!(reply2.link_options.len(), 2);
     }
 
     #[test]
@@ -2214,6 +2250,27 @@ the 🦀 energy is unmistakable. Cranelift is careful, deliberate, and built for
                 "error must not contain deleted fallback phrase: {err}"
             );
         }
+    }
+
+    #[test]
+    fn digest_html_entity_subject_paste_plus_commentary_ships() {
+        // DRAFT-20260916-000171: digest subject kept &#x27; while writer used Bolivia's;
+        // strip stopped mid-lede and leftover 8-word runs refused a real post.
+        let subject = "Led by former IBM Blockchain partner Jules Miller, Iris is helping \
+Bolivia&#x27;s VIVA use stablecoins for settlement, dollar reserves and new financial \
+services without replacing its existing telecom systems.";
+        let body = "Led by former IBM Blockchain partner Jules Miller, Iris is helping \
+Bolivia's VIVA use stablecoins for settlement, dollar reserves and new financial \
+services without replacing its existing telecom systems.\n\n\
+That settlement layer matters because carriers can add dollar rails without ripping \
+out BSS. Operators get a money path that sits beside prepaid and postpaid stacks. 🦀\n\n\
+Builders watching Latin America fintech should watch whether VIVA keeps custody \
+in-house. 🦉";
+        let out = scrub_and_validate_writer_body(body, &[], subject)
+            .expect("lede paste plus commentary must ship");
+        assert!(out.to_ascii_lowercase().contains("settlement"));
+        assert!(out.to_ascii_lowercase().contains("carriers") || out.contains("BSS"));
+        assert!(!out.contains("&#x27;"), "{out}");
     }
 
     #[test]
