@@ -2253,7 +2253,7 @@ mod tests {
         let seen = load_prior_day_seen_keys(&db).unwrap();
         let mut items = vec![freshness_cand("Old story", Some("https://example.com/a"))];
         assert_eq!(filter_prior_day_seen(&mut items, &seen), 1);
-        assert!(items.is_empty());
+        assert_eq!(items.len(), 0);
     }
 
     #[test]
@@ -2355,7 +2355,7 @@ mod tests {
             Some("https://grack.com/blog/2026/06/11/life-before-main"),
         )];
         assert_eq!(filter_prior_day_seen(&mut items, &seen), 1);
-        assert!(items.is_empty());
+        assert_eq!(items.len(), 0);
     }
 
     #[test]
@@ -2378,7 +2378,7 @@ mod tests {
             Some("https://example.com/yearling"),
         )];
         assert_eq!(filter_prior_day_seen(&mut items, &seen), 1);
-        assert!(items.is_empty());
+        assert_eq!(items.len(), 0);
     }
 
     #[test]
@@ -2413,7 +2413,7 @@ mod tests {
         let seen = load_prior_day_seen_keys(&db).unwrap();
         let mut items = vec![freshness_cand("same title", None)];
         assert_eq!(filter_prior_day_seen(&mut items, &seen), 1);
-        assert!(items.is_empty());
+        assert_eq!(items.len(), 0);
     }
 
     #[test]

@@ -589,7 +589,7 @@ mod tests {
         });
         let dead = format!("http://{addr}/dead");
         let out = filter_reachable_publisher_urls(vec![dead]).await;
-        assert!(out.is_empty(), "404 must not survive filter");
+        assert_eq!(out.len(), 0, "404 must not survive filter");
     }
 
     #[tokio::test]
@@ -635,7 +635,7 @@ mod tests {
         let dead = format!("http://{addr}/dead");
         let body = format!("Post prose.\n\n{dead}\n");
         let (_prose, opts) = finalize_reachable_link_options(&body, vec![dead.clone()]).await;
-        assert!(opts.is_empty(), "dead link must not remain in Link options");
+        assert_eq!(opts.len(), 0, "dead link must not remain in Link options");
     }
 
     #[tokio::test]
