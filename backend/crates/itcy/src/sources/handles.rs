@@ -1077,7 +1077,7 @@ mod tests {
         };
         let idx = load_handles_from(&path).expect("parse");
         assert!(idx.len() >= 2);
-        assert!(!idx.search("Interchouette").is_empty());
+        assert_ne!(idx.search("Interchouette").len(), 0);
     }
 
     #[test]
@@ -1091,9 +1091,9 @@ mod tests {
                 x_url: "https://x.com/rustlang".into(),
             }],
         };
-        assert!(!idx.search("rust").is_empty());
-        assert!(!idx.search("RUST").is_empty());
-        assert!(idx.search("anthropic").is_empty());
+        assert_ne!(idx.search("rust").len(), 0);
+        assert_ne!(idx.search("RUST").len(), 0);
+        assert_eq!(idx.search("anthropic").len(), 0);
     }
 
     #[test]
@@ -1737,8 +1737,8 @@ mod tests {
         assert_eq!(hit.name, "LocalStack");
         assert_eq!(hit.linkedin, "@localstack-cloud");
         assert_eq!(hit.x, "@localstack");
-        assert!(!hit.linkedin_url.is_empty());
-        assert!(!hit.x_url.is_empty());
+        assert_ne!(hit.linkedin_url.len(), 0);
+        assert_ne!(hit.x_url.len(), 0);
     }
 
     #[test]

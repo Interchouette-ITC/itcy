@@ -346,6 +346,12 @@ fn scrub_rework_draft_writer_body(body: &str, instructions: &str) -> Result<Stri
     let mut body = crate::sources::draft_footer::strip_leading_page_title_lede(body);
     body = crate::sources::draft_footer::strip_leading_cite_instruction(&body);
     body = crate::sources::draft_footer::strip_rework_quoted_removals(&body, instructions);
+    if crate::sources::rag::looks_like_writer_scratchpad(&body) {
+        return Err(ReworkError::Operator(
+            "writer returned planning/markdown dump instead of a LinkedIn post; try shorter instructions"
+                .into(),
+        ));
+    }
     if crate::sources::corpus_propose::body_has_slogan_mush(&body) {
         let stripped = crate::sources::corpus_propose::strip_slogan_mush_sentences(&body);
         if stripped.trim().is_empty()
@@ -359,7 +365,9 @@ fn scrub_rework_draft_writer_body(body: &str, instructions: &str) -> Result<Stri
         warn!("rework: slogan mush stripped from writer body");
         body = stripped;
     }
-    Ok(crate::sources::draft_footer::aerate_linkedin_draft(&body))
+    body = crate::llm::sanitize::collapse_consecutive_duplicate_emoji(&body);
+    let body = crate::sources::draft_footer::aerate_linkedin_draft(&body);
+    Ok(crate::sources::draft_footer::demote_handle_as_product_subject(&body))
 }
 
 /// Pick Link options, lock in-post cite, probe/refill, re-aerate orphan mascot glyphs.
@@ -833,7 +841,7 @@ fn apply_tweet_replacement(
         &format!("{}\n{paste}", stored.subject),
         handles,
     );
-    let mut body = scrub_rework_tweet_body(paste);
+    let mut body = crate::sources::tweet::scrub_tweet_body(paste);
     if farce {
         body = ensure_farce_mentions(&body);
     }
@@ -944,8 +952,16 @@ async fn rework_stored_tweet_llm(
             }),
         )
     };
-    let (mut body, trace) =
-        run_tweet_rework_llm(router, system, user, instructions, tools, farce).await?;
+    let (mut body, trace) = run_tweet_rework_llm(
+        router,
+        system,
+        user,
+        instructions,
+        tools,
+        farce,
+        &stored.subject,
+    )
+    .await?;
     if farce {
         body = ensure_farce_mentions(&body);
     }
@@ -985,6 +1001,7 @@ async fn run_tweet_rework_llm(
     instructions: &str,
     tools: Option<&dyn ToolProvider>,
     farce: bool,
+    subject: &str,
 ) -> Result<(String, crate::llm::client::CompletionTrace), ReworkError> {
     let tools_for_call = if farce || !tweet_rework_needs_tools(instructions) {
         None
@@ -995,16 +1012,30 @@ async fn run_tweet_rework_llm(
     let (response, trace) = router
         .complete_with_tools(TaskKind::Draft, &messages, tools_for_call, 2)
         .await?;
-    let body = scrub_rework_tweet_body(&response.message.content);
+    let body = scrub_rework_tweet_body(&response.message.content, subject)?;
     if tweet_body_exploded(&body) {
         warn!("rework: tweet writer dump coerced to tweet shape (no retry)");
-        return Ok((coerce_tweet_body(&body, "rework"), trace));
+        let coerced = coerce_tweet_body(&body, subject);
+        if !crate::sources::tweet::tweet_names_subject_entity(&coerced, subject) {
+            return Err(ReworkError::Operator(
+                "rework dropped the subject name; keep the product/entity words from the brief"
+                    .into(),
+            ));
+        }
+        return Ok((coerced, trace));
     }
     Ok((body, trace))
 }
 
-fn scrub_rework_tweet_body(raw: &str) -> String {
-    crate::sources::tweet::scrub_tweet_body(raw)
+fn scrub_rework_tweet_body(raw: &str, subject: &str) -> Result<String, ReworkError> {
+    let body = crate::sources::tweet::scrub_and_validate_tweet_body(raw)
+        .map_err(|e| ReworkError::Operator(format!("tweet scrub failed: {e}")))?;
+    if !crate::sources::tweet::tweet_names_subject_entity(&body, subject) {
+        return Err(ReworkError::Operator(
+            "rework dropped the subject name; keep the product/entity words from the brief".into(),
+        ));
+    }
+    Ok(body)
 }
 
 fn strip_leading_draft_id(body: &str) -> String {

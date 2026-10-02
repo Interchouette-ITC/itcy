@@ -2098,7 +2098,7 @@ mod tests {
     fn extract_links_same_host() {
         let html = r#"<a href="/article/foo-bar-baz-long">A very long enough title here</a>"#;
         let links = extract_article_links(html, "https://www.infoworld.com/");
-        assert!(!links.is_empty());
+        assert_ne!(links.len(), 0);
         assert!(links[0].0.contains("infoworld.com"));
     }
 
@@ -2253,7 +2253,7 @@ mod tests {
         let seen = load_prior_day_seen_keys(&db).unwrap();
         let mut items = vec![freshness_cand("Old story", Some("https://example.com/a"))];
         assert_eq!(filter_prior_day_seen(&mut items, &seen), 1);
-        assert!(items.is_empty());
+        assert_eq!(items.len(), 0);
     }
 
     #[test]
@@ -2355,7 +2355,7 @@ mod tests {
             Some("https://grack.com/blog/2026/06/11/life-before-main"),
         )];
         assert_eq!(filter_prior_day_seen(&mut items, &seen), 1);
-        assert!(items.is_empty());
+        assert_eq!(items.len(), 0);
     }
 
     #[test]
@@ -2378,7 +2378,7 @@ mod tests {
             Some("https://example.com/yearling"),
         )];
         assert_eq!(filter_prior_day_seen(&mut items, &seen), 1);
-        assert!(items.is_empty());
+        assert_eq!(items.len(), 0);
     }
 
     #[test]
@@ -2413,7 +2413,7 @@ mod tests {
         let seen = load_prior_day_seen_keys(&db).unwrap();
         let mut items = vec![freshness_cand("same title", None)];
         assert_eq!(filter_prior_day_seen(&mut items, &seen), 1);
-        assert!(items.is_empty());
+        assert_eq!(items.len(), 0);
     }
 
     #[test]
@@ -2777,7 +2777,7 @@ mod tests {
         assert_eq!(post.following_title, "```\nFOLLOWING 1\n```");
         assert_eq!(post.twitter_title, "```\nTWITTER 1\n```");
         assert_eq!(post.itc_title, "```\nINTERCHOUETTE 0\n```");
-        assert!(post.itc_items.is_empty());
+        assert_eq!(post.itc_items.len(), 0);
         assert_eq!(post.press_items.len(), 1);
         assert_eq!(post.for_you_items.len(), 1);
         assert_eq!(post.following_items.len(), 1);

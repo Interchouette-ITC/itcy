@@ -76,13 +76,13 @@ async fn status_returns_json_shape() {
 fn loads_default_config_toml() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config.toml");
     let cfg = itcy::config::Config::load(&path).expect("load config");
-    assert!(!cfg.server.bind.is_empty(), "server.bind must be set");
+    assert_ne!(cfg.server.bind.len(), 0, "server.bind must be set");
     assert_eq!(cfg.slack.events_transport, "socket");
     assert_eq!(cfg.slack.channel_env, "SLACK_ITCY_CHANNEL_ID");
     assert_eq!(cfg.runtime.max_context_messages, 20);
-    assert!(!cfg.runtime.state_db_path.is_empty());
-    assert!(!cfg.llm.freeform_route.is_empty());
-    assert!(!cfg.llm.draft_route.is_empty());
+    assert_ne!(cfg.runtime.state_db_path.len(), 0);
+    assert_ne!(cfg.llm.freeform_route.len(), 0);
+    assert_ne!(cfg.llm.draft_route.len(), 0);
     assert_eq!(cfg.linkedin.publish_mode, "playground");
     assert_eq!(cfg.x.publish_mode, "playground");
 }

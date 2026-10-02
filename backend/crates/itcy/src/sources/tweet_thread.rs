@@ -1304,7 +1304,7 @@ https://x.com/AstraKernel/status/2088224406187413962";
             40,
         );
         assert!(fits_x_limit(&prefix));
-        assert!(!suffix.is_empty());
+        assert_ne!(suffix.len(), 0);
         assert!(prefix.ends_with("limits,") || prefix.contains("spending"));
     }
 

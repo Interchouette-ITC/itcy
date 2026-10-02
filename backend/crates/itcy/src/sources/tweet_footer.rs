@@ -1112,7 +1112,7 @@ Link: 2
         assert_eq!(web_search_query(scylla, ""), scylla);
         assert_ne!(web_search_query(scylla, ""), "ScyllaDB");
         let (s, i) = crate::slack::commands::parse_draft_about_args(scylla);
-        assert!(i.is_empty());
+        assert_eq!(i.len(), 0);
         assert_eq!(web_search_query(&s, &i), scylla);
         let (s2, i2) = crate::slack::commands::parse_draft_about_args("rtk-ai CEO, find news");
         assert_eq!(web_search_query(&s2, &i2), "rtk-ai CEO find news");
@@ -1191,7 +1191,7 @@ What should you do next? Read more.";
             "## Only a heading\n\nBased on the information provided",
             "Amp by Sourcegraph",
         );
-        assert!(!out.is_empty());
+        assert_ne!(out.len(), 0);
         assert!(!tweet_body_exploded(&out), "{out}");
         assert!(out.contains("Amp") || out.contains("Sourcegraph"), "{out}");
     }

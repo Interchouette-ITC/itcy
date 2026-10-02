@@ -7592,3 +7592,10 @@ linkedin = "@rivet-dev"
 x = "@rivet-dev"
 linkedin_url = "https://www.linkedin.com/company/rivet-dev/"
 x_url = "https://x.com/rivet-dev"
+
+[[handle]]
+name = "Pydantic"
+linkedin = "@pydantic"
+x = "@pydantic"
+linkedin_url = "https://www.linkedin.com/company/pydantic/"
+x_url = "https://x.com/pydantic"

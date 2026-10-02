@@ -20,7 +20,7 @@ use crate::sources::rag::{
 use crate::sources::tweet_footer::{
     aerate_tweet_commentary, coerce_tweet_body, compose_tweet_message, ensure_tweet_cite_line,
     extract_brief_cite, in_tweet_publisher_url, operator_https_urls, pick_tweet_cite_options,
-    strip_brand_org_at_handles, tweet_body_exploded,
+    search_keywords, strip_brand_org_at_handles, tweet_body_exploded,
 };
 use crate::sources::tweet_load::run_short_cite_load;
 use crate::sources::url_hygiene::is_x_status_url;
@@ -344,9 +344,35 @@ fn finalize_tweet_writer_body(content: &str, subject: &str) -> Result<String, Ra
     let body = scrub_and_validate_tweet_body(content)?;
     if tweet_body_exploded(&body) {
         warn!("load_tweet: writer dump coerced to tweet shape (no retry)");
-        return Ok(coerce_tweet_body(&body, subject));
+        let coerced = coerce_tweet_body(&body, subject);
+        if !tweet_names_subject_entity(&coerced, subject) {
+            return Err(RagError::Store(
+                "writer dropped the subject entity name from the tweet".into(),
+            ));
+        }
+        return Ok(coerced);
+    }
+    if !tweet_names_subject_entity(&body, subject) {
+        return Err(RagError::Store(
+            "writer dropped the subject entity name from the tweet".into(),
+        ));
     }
     Ok(body)
+}
+
+/// True when commentary still names at least one subject keyword (len>=4) from the brief.
+#[must_use]
+pub(crate) fn tweet_names_subject_entity(body: &str, subject: &str) -> bool {
+    let keys: Vec<String> = search_keywords(subject)
+        .into_iter()
+        .filter(|k| k.chars().count() >= 4)
+        .take(3)
+        .collect();
+    if keys.is_empty() {
+        return true;
+    }
+    let bl = body.to_ascii_lowercase();
+    keys.iter().any(|k| bl.contains(&k.to_ascii_lowercase()))
 }
 
 fn tweet_has_commentary_beats(body: &str) -> bool {
@@ -450,6 +476,46 @@ fn ensure_tweet_handles_from_pack(tools: Option<&ItcyTools>, body: &str, pack: &
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scrub_tweet_body_strips_emoji_dot_glue() {
+        let raw = "📜 Rust got a new playground. 🦀. 🚀.\n\n#Rust #Android";
+        let out = scrub_tweet_body(raw);
+        assert!(
+            !out.contains("🦀.") && !out.contains("🚀."),
+            "tweet scrub must strip emoji-dot: {out:?}"
+        );
+        assert!(out.contains('🦀') && out.contains('🚀'), "{out}");
+    }
+
+    #[test]
+    fn scrub_and_validate_rejects_not_just_speed_one_liner() {
+        let raw =
+            "Pydantic Monty is a minimal interpreter in Rust, built for AI, not just speed.\n\n\
+#Rust #AI #Security #Python";
+        let err = scrub_and_validate_tweet_body(raw).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("slogan mush") || msg.contains("commentary beats"),
+            "must refuse not-just-speed sludge: {msg}"
+        );
+    }
+
+    #[test]
+    fn tweet_names_subject_entity_requires_product_word() {
+        let subject = "pydantic monty A minimal, secure Python interpreter";
+        assert!(tweet_names_subject_entity(
+            "🦀 Monty runs untrusted AI Python in under 1ms.\n\n#Rust",
+            subject
+        ));
+        assert!(
+            !tweet_names_subject_entity(
+                "🦀 It’s like a Rust-powered Python sandbox, but with fewer toys and more safety.\n\n#Rust",
+                subject
+            ),
+            "funny vague tweet without Monty/Pydantic must fail"
+        );
+    }
 
     #[test]
     fn scrub_tweet_body_strips_not_just_mush_keeps_other_beats() {

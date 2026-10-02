@@ -966,7 +966,7 @@ CONVERSATION ID,CONTENT
                 ..Default::default()
             })
             .expect("reactions");
-        assert!(reactions.is_empty(), "reactions must not be imported");
+        assert_eq!(reactions.len(), 0, "reactions must not be imported");
         let reposts = db
             .list_sources(&SourceListFilter {
                 activity: "repost".into(),

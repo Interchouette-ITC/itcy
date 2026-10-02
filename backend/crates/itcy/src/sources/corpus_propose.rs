@@ -316,14 +316,31 @@ fn strip_slogan_mush_paragraph(para: &str) -> String {
     }
     let mut kept: Vec<String> = Vec::new();
     let normalized = para.replace('\n', " ");
+    let trim = para.trim();
+    let restore_terminal = if trim.ends_with('!') {
+        Some('!')
+    } else if trim.ends_with('?') {
+        Some('?')
+    } else if trim.ends_with('.') || normalized.contains(". ") {
+        // Re-join drops the final `.` from `split(". ")`; put it back.
+        Some('.')
+    } else {
+        None
+    };
     for chunk in normalized.split(". ") {
-        let s = chunk.trim().trim_end_matches('.');
+        let s = chunk.trim().trim_end_matches(['.', '!', '?']);
         if s.is_empty() || body_has_slogan_mush(s) || is_watching_sticker_paragraph(s) {
             continue;
         }
         kept.push(s.to_string());
     }
-    kept.join(". ")
+    let mut out = kept.join(". ");
+    if let Some(t) = restore_terminal {
+        if !out.is_empty() && !out.ends_with(['.', '!', '?']) {
+            out.push(t);
+        }
+    }
+    out
 }
 
 /// True when the paragraph is only the stock `I'm watching.` sticker (+ optional emoji).
@@ -347,9 +364,12 @@ const SLOGAN_MUSH_NEEDLES: &[&str] = &[
     "isn't just about",
     "isn't just a",
     "isn't just another",
+    "isn't just",
     "this isn't just",
     "this is not just",
     "not just another tool",
+    "not just speed",
+    ", not just",
     "it's a shift",
     "this isn't just a shift",
     "broader trend",
@@ -728,6 +748,12 @@ It's a library that lets you define agents as durable workflows."
             "It's the kind of move that makes developers take notice.\n\n\
 So if you're building multi-agent systems, you should be."
         ));
+        assert!(body_has_slogan_mush(
+            "Tokio isn't just reliable, it's a platform."
+        ));
+        assert!(body_has_slogan_mush(
+            "Pydantic Monty is a minimal interpreter in Rust, built for AI, not just speed."
+        ));
         assert!(!body_has_slogan_mush(
             "Mozilla shipped JPEG XL after a Rust decoder rewrite landed in Firefox."
         ));
@@ -783,6 +809,17 @@ Para three closes with builders who ship.";
     fn strip_slogan_mush_does_not_split_on_newlines_inside_paragraph() {
         let body = "Line one still here.\nLine two still here.";
         let out = strip_slogan_mush_sentences(body);
-        assert_eq!(out, "Line one still here. Line two still here");
+        assert_eq!(out, "Line one still here. Line two still here.");
+    }
+
+    #[test]
+    fn strip_slogan_mush_keeps_paragraph_final_period() {
+        let body = "First claim names the ship. Second claim names the runtime.";
+        let out = strip_slogan_mush_sentences(body);
+        assert!(
+            out.ends_with('.'),
+            "mush strip must not eat the final period: {out:?}"
+        );
+        assert_eq!(out, body);
     }
 }

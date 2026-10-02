@@ -1295,13 +1295,13 @@ mod hygiene_tests {
     #[test]
     fn tab_indices_to_close_empty_when_no_current() {
         let list = "### Open tabs\n- 0: [only](https://example.com)\n";
-        assert!(tab_indices_to_close(list).is_empty());
+        assert_eq!(tab_indices_to_close(list).len(), 0);
     }
 
     #[test]
     fn tab_indices_to_close_noop_when_only_current() {
         let list = "### Open tabs\n- 0: (current) [ok](https://example.com)\n";
-        assert!(tab_indices_to_close(list).is_empty());
+        assert_eq!(tab_indices_to_close(list).len(), 0);
     }
 
     #[test]

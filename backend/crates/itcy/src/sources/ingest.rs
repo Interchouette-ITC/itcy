@@ -638,14 +638,14 @@ mod tests {
         .await
         .expect("ingest");
         assert!(report.source_id > 0);
-        assert!(!report.subject.is_empty());
+        assert_ne!(report.subject.len(), 0);
         assert!(report.chars >= MIN_STORE_CHARS);
         assert!(report.slack_message().contains("Ingest complete"));
         let db = SourceDb::open(&db_path).expect("db");
         let chunks = db
             .get_chunk_candidates(&report.subject, 10)
             .expect("chunks");
-        assert!(!chunks.is_empty());
+        assert_ne!(chunks.len(), 0);
     }
 
     #[tokio::test]

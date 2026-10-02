@@ -28,9 +28,89 @@ pub fn sanitize_itcy_text(input: &str) -> String {
     collapse_spaces(&mut s);
     tidy_commas(&mut s);
     s = expand_emoji_shortcodes(&s);
+    s = collapse_consecutive_duplicate_emoji(&s);
+    s = strip_spurious_period_after_emoji(&s);
     collapse_spaces(&mut s);
     s = strip_single_star_italic(&s);
     s
+}
+
+/// True when prose has emoji glued directly before a period (`🦀.` / `🚀.`).
+#[must_use]
+pub fn has_emoji_dot_glue(body: &str) -> bool {
+    let chars: Vec<char> = body.chars().collect();
+    chars
+        .windows(2)
+        .any(|w| char_is_emoji_like(w[0]) && w[1] == '.')
+}
+
+/// Remove a spurious `.` immediately after an emoji (`🚀.` → `🚀`); emoji glyphs stay.
+///
+/// Runs in [`sanitize_itcy_text`] so drafts **and** tweets share one path.
+#[must_use]
+pub fn strip_spurious_period_after_emoji(body: &str) -> String {
+    if !has_emoji_dot_glue(body) {
+        return body.to_string();
+    }
+    let mut out = String::with_capacity(body.len());
+    let mut chars = body.chars().peekable();
+    while let Some(c) = chars.next() {
+        if char_is_emoji_like(c) {
+            out.push(c);
+            if chars.peek() == Some(&'.') {
+                chars.next();
+                if chars.peek() == Some(&' ') {
+                    out.push(' ');
+                    chars.next();
+                } else if chars.peek().is_some() {
+                    out.push(' ');
+                }
+                continue;
+            }
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Collapse repeated same emoji in a row (`🦉🦉` → `🦉`). Resets on non-emoji.
+#[must_use]
+pub fn collapse_consecutive_duplicate_emoji(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut last_emoji: Option<char> = None;
+    for c in input.chars() {
+        if char_is_emoji_like(c) && last_emoji == Some(c) {
+            continue;
+        }
+        if char_is_emoji_like(c) {
+            last_emoji = Some(c);
+        } else {
+            last_emoji = None;
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Parse a leading run of `:shortcode:` tokens (e.g. `:owl::owl:`) for rework `replace`.
+#[must_use]
+pub fn split_leading_emoji_shortcodes(s: &str) -> Option<(String, &str)> {
+    let mut i = 0_usize;
+    while i < s.len() && s.as_bytes()[i] == b':' {
+        let Some((_, consumed)) = take_shortcode(&s[i..]) else {
+            break;
+        };
+        i += consumed;
+    }
+    if i == 0 {
+        return None;
+    }
+    let raw = &s[..i];
+    let expanded = expand_emoji_shortcodes(raw);
+    if expanded.is_empty() {
+        return None;
+    }
+    Some((expanded, &s[i..]))
 }
 
 /// Strip `*word*` and `**word**` Markdown italic/bold spans that models leak into
@@ -504,6 +584,58 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:1 out:1";
         let s = sanitize_itcy_text("Hello 🦉💻");
         assert!(s.contains('🦉'));
         assert!(s.contains('💻'));
+    }
+
+    #[test]
+    fn sanitize_strips_emoji_dot_glue_on_tweets_and_drafts() {
+        // TWEET-20261002-000146: model glued periods after mascots.
+        let raw = "📜 Rust got a new playground, @Google’s Android team just dropped a free \
+course called Comprehensive Rust. 🦀. 🚀.\n\nWant to see how it stacks up?";
+        let out = sanitize_itcy_text(raw);
+        assert!(
+            !has_emoji_dot_glue(&out),
+            "sanitize must strip emoji-dot on every surface: {out:?}"
+        );
+        assert!(out.contains('🦀') && out.contains('🚀'), "{out}");
+        assert!(
+            out.contains("Rust. 🦀 🚀") || out.contains("Rust. 🦀  🚀"),
+            "keep glyphs, drop dots: {out:?}"
+        );
+        assert!(!out.contains("🦀.") && !out.contains("🚀."), "{out:?}");
+    }
+
+    #[test]
+    fn collapse_consecutive_duplicate_emoji_dedupes_mascots() {
+        assert_eq!(
+            collapse_consecutive_duplicate_emoji("🦉🦉 Monty"),
+            "🦉 Monty"
+        );
+        assert_eq!(
+            collapse_consecutive_duplicate_emoji("tooling. 🦀🦀 The fact"),
+            "tooling. 🦀 The fact"
+        );
+        assert_eq!(
+            collapse_consecutive_duplicate_emoji("🦉 rust 🦉"),
+            "🦉 rust 🦉"
+        );
+    }
+
+    #[test]
+    fn split_leading_emoji_shortcodes_parses_doubled_colon_form() {
+        let (expanded, rest) =
+            split_leading_emoji_shortcodes(":owl::owl: to :owl:").expect("parse");
+        assert_eq!(expanded, "🦉🦉");
+        assert_eq!(rest.trim_start(), "to :owl:");
+    }
+
+    #[test]
+    fn sanitize_dedupes_double_emoji_after_shortcode_expand() {
+        let s = sanitize_itcy_text(":owl::owl: hello");
+        assert!(
+            !s.contains("🦉🦉"),
+            "sanitize must collapse doubled mascot: {s:?}"
+        );
+        assert!(s.starts_with("🦉 "));
     }
 
     #[test]
