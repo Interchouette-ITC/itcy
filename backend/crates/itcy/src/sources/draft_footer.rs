@@ -2454,17 +2454,23 @@ That distinction between embedded PostgreSQL and a runtime for embedding arbitra
         assert!(missing_required_quoted_spans("no slogan here", &required)
             .iter()
             .any(|s| s.contains("Ship the App")));
-        assert!(missing_required_quoted_spans(
-            "We say \"Ship the App, not the Plumbing.\" today",
-            &required
-        )
-        .is_empty());
+        assert_eq!(
+            missing_required_quoted_spans(
+                "We say \"Ship the App, not the Plumbing.\" today",
+                &required
+            )
+            .len(),
+            0
+        );
         assert!(missing_quotes_operator_error(&required).contains("Ship the App"));
         // Bare \"…\" without the quote keyword is not required.
-        assert!(rework_required_quoted_spans(
-            "include slogan exactly as \"Ship the App, not the Plumbing.\" with double quotes"
-        )
-        .is_empty());
+        assert_eq!(
+            rework_required_quoted_spans(
+                "include slogan exactly as \"Ship the App, not the Plumbing.\" with double quotes"
+            )
+            .len(),
+            0
+        );
         let prior_long = "word ".repeat(40);
         let stub = "Cheers, great point 🦉";
         assert!(rework_collapsed_too_much(
@@ -2517,7 +2523,7 @@ It's part of the Pydantic Stack, which includes Pydantic AI.";
             "must not invent nonsense subject: {out:?}"
         );
         assert_eq!(out.matches("Pydantic Stack").count(), 0);
-        assert!(missing_rework_replace_outcomes(prior, &out, instr).is_empty());
+        assert_eq!(missing_rework_replace_outcomes(prior, &out, instr).len(), 0);
     }
 
     #[test]
@@ -2553,7 +2559,7 @@ It's part of the Pydantic Stack, which includes Pydantic AI.";
             out.contains("@bytecodealliance") && !out.contains("Bytecode Alliance"),
             "second replace must land: {out}"
         );
-        assert!(missing_rework_replace_outcomes(prior, &out, instr).is_empty());
+        assert_eq!(missing_rework_replace_outcomes(prior, &out, instr).len(), 0);
         let ignored = prior.to_string();
         let miss = missing_rework_replace_outcomes(prior, &ignored, instr);
         assert!(miss.iter().any(|m| m.contains("@wasmerio")), "{miss:?}");
@@ -2580,7 +2586,7 @@ It's part of the Pydantic Stack, which includes Pydantic AI.";
             "clause must be gone: {out}"
         );
         assert!(out.contains("Local AI for penetration testing is now a thing"));
-        assert!(missing_rework_replace_outcomes(prior, &out, instr).is_empty());
+        assert_eq!(missing_rework_replace_outcomes(prior, &out, instr).len(), 0);
         let miss = missing_rework_replace_outcomes(prior, prior, instr);
         assert!(
             miss.iter()
@@ -2612,7 +2618,10 @@ It's part of the Pydantic Stack, which includes Pydantic AI.";
             final_body.contains("Wasmer") && !final_body.contains("@wasmerio"),
             "operator replace must beat handle inject: {final_body}"
         );
-        assert!(missing_rework_replace_outcomes(prior, &final_body, instr).is_empty());
+        assert_eq!(
+            missing_rework_replace_outcomes(prior, &final_body, instr).len(),
+            0
+        );
     }
 
     #[test]

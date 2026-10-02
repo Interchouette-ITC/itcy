@@ -714,7 +714,7 @@ mod tests {
         assert_eq!(p.pack_url_allowlist, pack);
         let empty = draft_writer_policy(&[]);
         assert!(empty.allow_web_search);
-        assert!(empty.pack_url_allowlist.is_empty());
+        assert_eq!(empty.pack_url_allowlist.len(), 0);
     }
 
     #[test]

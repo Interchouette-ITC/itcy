@@ -147,6 +147,6 @@ mod tests {
         let db = MemoryDb::open(dir.path().join("runtime.db")).expect("open");
         db.append_message("C1", "user", "   ").expect("empty");
         let got = db.get_last_messages("C1", 10).expect("get");
-        assert!(got.is_empty());
+        assert_eq!(got.len(), 0);
     }
 }

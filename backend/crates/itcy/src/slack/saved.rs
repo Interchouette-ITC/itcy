@@ -544,6 +544,6 @@ mod tests {
         assert!(footer.contains(":link: Org drafts:"), "{footer}");
         assert!(footer.contains("pull/58"), "{footer}");
         assert!(footer.contains("pull/101"), "{footer}");
-        assert!(format_pending_pr_footer(&[]).is_empty());
+        assert_eq!(format_pending_pr_footer(&[]).len(), 0);
     }
 }

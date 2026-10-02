@@ -1416,7 +1416,7 @@ Amp commentary here.\n\n\
                 instructions,
             } => {
                 assert_eq!(draft_id, "CREPLY-20260902-000006");
-                assert!(instructions.is_empty());
+                assert_eq!(instructions.len(), 0);
             }
             other => panic!("{other:?}"),
         }
@@ -1957,7 +1957,7 @@ Amp commentary here.\n\n\
         assert!(!ack.contains('`'), "no pink code spans in ack: {ack}");
         assert!(!ack.contains(" | "), "no pipe join in ack: {ack}");
         assert!(!ack.to_ascii_lowercase().contains("30-90"));
-        assert!(command_ack_text(&OperatorCommand::Help).is_empty());
+        assert_eq!(command_ack_text(&OperatorCommand::Help).len(), 0);
     }
 
     #[test]

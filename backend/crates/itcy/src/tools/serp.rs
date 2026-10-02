@@ -786,6 +786,6 @@ await page.evaluate('() => { const blocked = !!(/verifying you.?re not a bot|pow
             r#"[{"url":"https://www.example.com/x","title":"x"},{"url":"https://www.google.com/search?q=y","title":"y"}]"#,
             "",
         );
-        assert!(links.is_empty());
+        assert_eq!(links.len(), 0);
     }
 }

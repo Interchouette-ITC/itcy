@@ -698,10 +698,10 @@ mod tests {
         assert_eq!(tweets.len(), 1);
         assert_eq!(tweets[0].draft_id, "TWEET-20260814-000001");
         assert!(store.delete("TWEET-20260814-000001").expect("del"));
-        assert!(store
-            .list_by_id_prefix("TWEET-", 10)
-            .expect("empty")
-            .is_empty());
+        assert_eq!(
+            store.list_by_id_prefix("TWEET-", 10).expect("empty").len(),
+            0
+        );
         assert!(store.get("DRAFT-20260814-000001").expect("keep").is_some());
         assert!(!store.delete("TWEET-20260814-000001").expect("gone"));
 
@@ -724,10 +724,10 @@ mod tests {
         assert!(store
             .mark_status_from("TWEET-20260814-000002", status::ACCEPTED, status::PUBLISHED)
             .expect("pubst"));
-        assert!(store
-            .list_by_id_prefix("TWEET-", 10)
-            .expect("hide")
-            .is_empty());
+        assert_eq!(
+            store.list_by_id_prefix("TWEET-", 10).expect("hide").len(),
+            0
+        );
         assert_eq!(
             store
                 .delete_prefix_status("TWEET-", status::PUBLISHED)
