@@ -647,8 +647,9 @@ pub(crate) fn scrub_and_validate_writer_body(
         warn!("load_draft: slogan mush stripped from writer body");
         body = ensure_draft_emoji_bar(&stripped);
     }
-    body = strip_spurious_period_after_emoji(&body);
+    body = crate::llm::sanitize::strip_spurious_period_after_emoji(&body);
     body = crate::sources::draft_footer::aerate_linkedin_draft(&body);
+    body = crate::sources::draft_footer::demote_handle_as_product_subject(&body);
     Ok(body)
 }
 
@@ -784,9 +785,7 @@ fn ensure_draft_emoji_bar(body: &str) -> String {
         let t = p.trim();
         !t.starts_with("https://") && t.chars().any(char::is_alphabetic)
     }) {
-        if last.ends_with('.') {
-            last.pop();
-        }
+        // Keep terminal `.` / `!` / `?` (`platform. 🦉`). Do not pop it.
         if !last.ends_with(' ') {
             last.push(' ');
         }
@@ -799,41 +798,6 @@ fn ensure_draft_emoji_bar(body: &str) -> String {
         return out;
     }
     parts.join("\n\n")
-}
-
-/// True when prose has emoji glued directly before a period (`🦀.` / `🚀.`).
-#[must_use]
-pub(crate) fn linkedin_draft_has_emoji_dot_glue(body: &str) -> bool {
-    let chars: Vec<char> = body.chars().collect();
-    chars
-        .windows(2)
-        .any(|w| crate::llm::char_is_emoji_like(w[0]) && w[1] == '.')
-}
-
-/// Remove a spurious `.` immediately after an emoji (`🚀.` → `🚀`); emoji glyphs stay.
-fn strip_spurious_period_after_emoji(body: &str) -> String {
-    if !linkedin_draft_has_emoji_dot_glue(body) {
-        return body.to_string();
-    }
-    let mut out = String::with_capacity(body.len());
-    let mut chars = body.chars().peekable();
-    while let Some(c) = chars.next() {
-        if crate::llm::char_is_emoji_like(c) {
-            out.push(c);
-            if chars.peek() == Some(&'.') {
-                chars.next();
-                if chars.peek() == Some(&' ') {
-                    out.push(' ');
-                    chars.next();
-                } else if chars.peek().is_some() {
-                    out.push(' ');
-                }
-                continue;
-            }
-        }
-        out.push(c);
-    }
-    out
 }
 
 /// Load phase then draft writer. LOAD may `web_search` / `browse_url`. The writer
@@ -1152,7 +1116,20 @@ fn looks_like_x_shaped_linkedin(body: &str) -> bool {
         })
         .collect();
     let hashtag_line = prose_lines.iter().any(|l| {
-        l.starts_with('#') || (l.contains('#') && l.split_whitespace().all(|w| w.starts_with('#')))
+        if l.starts_with('#') {
+            return true;
+        }
+        if !l.contains('#') {
+            return false;
+        }
+        // Leading emoji used to hide dumps like `🦉 #AI #Rust`.
+        let words: Vec<&str> = l.split_whitespace().collect();
+        words.iter().any(|w| w.starts_with('#'))
+            && words.iter().all(|w| {
+                w.starts_with('#')
+                    || w.chars()
+                        .all(|c| crate::llm::char_is_emoji_like(c) || matches!(c, '*' | '_' | '~'))
+            })
     });
     if hashtag_line {
         return true;
@@ -1169,8 +1146,9 @@ fn looks_like_x_shaped_linkedin(body: &str) -> bool {
     short * 2 >= prose_lines.len() && blank_separated
 }
 
-/// True when the model dumped planning / tool narration instead of a `LinkedIn` post.
-fn looks_like_writer_scratchpad(body: &str) -> bool {
+/// True when the model dumped planning / tool narration / markdown notes instead of a post.
+#[must_use]
+pub(crate) fn looks_like_writer_scratchpad(body: &str) -> bool {
     let l = body.to_ascii_lowercase();
     l.contains("i will write")
         || l.contains("i'll write")
@@ -1187,6 +1165,16 @@ fn looks_like_writer_scratchpad(body: &str) -> bool {
         || l.contains("i need to write an english linkedin")
         || l.contains("this is the key info i have")
         || l.contains("draft based on what i know")
+        // Markdown / bullet dump (not a LinkedIn post).
+        || l.contains("### key points")
+        || l.contains("key points:")
+        || l.contains("let me know if you'd like")
+        || l.contains("let me know if you would like")
+        || l.contains("let me know if you'd like to rework")
+        || (l.contains("stars:") && l.contains("forks:"))
+        || (l.contains("\n### ") || l.starts_with("### "))
+        || (l.contains("\n## ") || l.starts_with("## "))
+        || body.contains("](https://")
 }
 
 fn normalize_token(w: &str) -> String {
@@ -1560,6 +1548,14 @@ Let me look at my corpus search again - this is the key info I have. Let me draf
         assert!(!looks_like_writer_scratchpad(
             "Leadership moves at RTK AI Labs matter for builders watching open tooling mature."
         ));
+        let md_dump = "🦉 pydantic/monty is a minimal interpreter.\n\n\
+### Key Points:\nLanguage: Rust.\nGitHub: [https://github.com/pydantic/monty](https://github.com/pydantic/monty)\n\
+Stars: 8.5k.\nForks: 442.\n\n\
+Let me know if you'd like to rework or share this! 🦉";
+        assert!(
+            looks_like_writer_scratchpad(md_dump),
+            "markdown Key Points dump must refuse"
+        );
     }
 
     #[test]
@@ -1572,6 +1568,12 @@ https://example.com/policy";
         assert!(looks_like_x_shaped_linkedin(x_shaped));
         let with_tags = "Builders care about review habit.\n\n#Rust #LLM #OpenSource";
         assert!(looks_like_x_shaped_linkedin(with_tags));
+        let emoji_prefixed_tags = "Prose about AI productivity stays concrete.\n\n\
+🦉 #AI #Productivity #Investing #SoftwareEngineering";
+        assert!(
+            looks_like_x_shaped_linkedin(emoji_prefixed_tags),
+            "leading emoji must not hide hashtag dump"
+        );
         let linkedin = "When a major code forge publishes a written LLM contribution policy, the interesting part is not the headline - it is the review habit that follows. Maintainers finally get a line they can point at when a contribution leans on a model instead of guessing from vibes.\n\n\
 I'm watching how disclose-your-tooling turns into something boring and useful: show the work, keep the tree auditable, skip the press-release fog that says everything and commits to nothing. When the stack is Rust-shaped, named crates and reviewable commits beat slogans for builders who actually ship.\n\n\
 https://example.com/policy";
@@ -2048,13 +2050,34 @@ Maintainers who measure compile graphs and cache hits will notice the gap first 
     #[test]
     fn strip_spurious_period_after_emoji_normalizes_model_x_beat_habit() {
         let raw = "maintainable stack. 🚀. But here's the kicker";
-        let out = strip_spurious_period_after_emoji(raw);
+        let out = crate::llm::sanitize::strip_spurious_period_after_emoji(raw);
         assert!(
-            !linkedin_draft_has_emoji_dot_glue(&out),
+            !crate::llm::sanitize::has_emoji_dot_glue(&out),
             "must remove period after emoji, not the emoji: {out:?}"
         );
         assert!(out.contains('🚀'), "emoji must remain: {out:?}");
         assert!(out.contains("stack. 🚀 But"), "{out}");
+    }
+
+    #[test]
+    fn scrub_writer_body_strips_emoji_dot_glue_comprehensive_rust() {
+        // LinkedIn-shaped body with the same 🦀. 🚀. glue Greg saw on tweets.
+        let body = "Google’s Android team shipped Comprehensive Rust as a free course \
+for engineers who already ship native code. 🦀. 🚀.\n\n\
+The curriculum walks from ownership basics into Android FFI without treating \
+Rust as a novelty slide deck. That matters when the next platform feature \
+expects memory-safe systems work, not another wrapper around JNI.\n\n\
+If you already write C++ or Kotlin for Android, this is the shortest path \
+into the same problem space with stronger guarantees. Keep the course open \
+while you prototype the next native module.";
+        let out = scrub_and_validate_writer_body(body, &[], "Comprehensive Rust Google Android")
+            .expect("scrub must accept body after emoji-dot strip");
+        assert!(
+            !crate::llm::sanitize::has_emoji_dot_glue(&out),
+            "draft scrub must strip emoji-dot: {out:?}"
+        );
+        assert!(!out.contains("🦀.") && !out.contains("🚀."), "{out:?}");
+        assert!(out.contains('🦀') && out.contains('🚀'), "{out}");
     }
 
     // Regression: strip_spurious_period_after_emoji must NOT touch periods that
@@ -2071,7 +2094,7 @@ Maintainers who measure compile graphs and cache hits will notice the gap first 
             "That's the quiet power of local AI.",
         ];
         for case in &cases {
-            let out = strip_spurious_period_after_emoji(case);
+            let out = crate::llm::sanitize::strip_spurious_period_after_emoji(case);
             assert_eq!(
                 out, *case,
                 "period must be untouched when no emoji precedes it: {out:?}"
@@ -2084,7 +2107,26 @@ Maintainers who measure compile graphs and cache hits will notice the gap first 
     fn strip_spurious_period_preserves_all_non_emoji_periods() {
         let body =
             "No cloud dependency, no waiting for a server to reboot. Just code that keeps going.";
-        assert_eq!(strip_spurious_period_after_emoji(body), body);
+        assert_eq!(
+            crate::llm::sanitize::strip_spurious_period_after_emoji(body),
+            body
+        );
+    }
+
+    #[test]
+    fn ensure_draft_emoji_bar_keeps_terminal_period() {
+        let body = "\
+First paragraph names the engine and why builders care about compile time.\n\n\
+Second paragraph names native GFM without a plugin zoo.";
+        let out = ensure_draft_emoji_bar(body);
+        assert!(
+            out.contains("zoo. 🦀") || out.contains("zoo. 🦉") || out.contains("zoo. 🦀 🦉"),
+            "must keep period before woven emoji: {out:?}"
+        );
+        assert!(
+            !out.contains("zoo 🦀") && !out.contains("zoo 🦉"),
+            "must not eat the terminal period: {out:?}"
+        );
     }
 
     #[test]
@@ -2096,7 +2138,7 @@ Second paragraph names native GFM, math, and wikilinks without a plugin zoo on t
 That keeps dependency graphs smaller when CI already runs linters, tests, and type checks on every push.";
         let out = ensure_draft_emoji_bar(thin);
         assert!(
-            !linkedin_draft_has_emoji_dot_glue(&out),
+            !crate::llm::sanitize::has_emoji_dot_glue(&out),
             "scrub must not glue emoji before a period: {out:?}"
         );
         assert!(
@@ -2119,7 +2161,7 @@ Maintainers who measure compile graphs and cache hits will notice the gap first 
         let out =
             scrub_and_validate_writer_body(body, &[], "Sätteri Astro Markdown Rust").expect("ok");
         assert!(
-            !linkedin_draft_has_emoji_dot_glue(&out),
+            !crate::llm::sanitize::has_emoji_dot_glue(&out),
             "writer-woven emoji must not get dot glue: {out:?}"
         );
         assert!(out.contains('🦀') && out.contains('🦉') && out.contains('🚀'));

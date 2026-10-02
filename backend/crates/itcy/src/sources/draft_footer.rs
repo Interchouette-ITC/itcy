@@ -834,9 +834,8 @@ pub fn extract_rework_replaces(instructions: &str) -> Vec<(String, String)> {
             search_from = start + 7;
             continue;
         }
-        let mut rest = instructions[start + 7..].trim_start();
-        rest = rest.strip_prefix(':').map_or(rest, str::trim_start);
-        let Some((from, after_from)) = take_directive_span(rest) else {
+        let rest = instructions[start + 7..].trim_start();
+        let Some((from, after_from)) = take_rework_replace_operand(rest) else {
             search_from = start + 7;
             continue;
         };
@@ -851,12 +850,12 @@ pub fn extract_rework_replaces(instructions: &str) -> Vec<(String, String)> {
             search_from = start + 7;
             continue;
         };
-        let Some((to, _)) = take_directive_span(after_sep) else {
+        let Some((to, _)) = take_rework_replace_operand(after_sep) else {
             search_from = start + 7;
             continue;
         };
-        let from = strip_wrapping_quotes(from).trim().to_string();
-        let to = strip_wrapping_quotes(to).trim().to_string();
+        let from = strip_wrapping_quotes(&from).trim().to_string();
+        let to = strip_wrapping_quotes(&to).trim().to_string();
         if from.chars().count() >= 2 && !to.is_empty() && from != to {
             out.push((from, to));
         }
@@ -965,13 +964,61 @@ pub fn extract_rework_handle_maps(instructions: &str) -> Vec<(String, String)> {
     out
 }
 
-/// True when instructions are only `replace` / `remove` / `is handle` edits (connectors OK).
+/// `add @slug` / `add handle @slug` (hard; do not leave to the model).
+#[must_use]
+pub fn extract_rework_add_handles(instructions: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let lower = instructions.to_ascii_lowercase();
+    let mut search_from = 0_usize;
+    while search_from < lower.len() {
+        let Some(rel) = lower[search_from..].find("add") else {
+            break;
+        };
+        let start = search_from + rel;
+        if !keyword_boundary_before(instructions, start)
+            || !keyword_boundary_after(instructions, start + 3)
+        {
+            search_from = start + 3;
+            continue;
+        }
+        let mut rest = instructions[start + 3..].trim_start();
+        rest = rest.strip_prefix(':').map_or(rest, str::trim_start);
+        if let Some(r) = strip_prefix_ci(rest, "handle ") {
+            rest = r.trim_start();
+        }
+        let Some((raw, _)) = take_directive_span(rest) else {
+            search_from = start + 3;
+            continue;
+        };
+        let mut handle = strip_wrapping_quotes(raw).trim().to_string();
+        if !handle.starts_with('@') {
+            if handle
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+                && handle.len() >= 2
+            {
+                handle = format!("@{handle}");
+            } else {
+                search_from = start + 3;
+                continue;
+            }
+        }
+        if handle.len() >= 2 && !out.iter().any(|h: &String| h.eq_ignore_ascii_case(&handle)) {
+            out.push(handle);
+        }
+        search_from = start + 3;
+    }
+    out
+}
+
+/// True when instructions are only `replace` / `remove` / `add @` / `is handle` edits.
 #[must_use]
 pub fn rework_instructions_are_keyword_edits_only(instructions: &str) -> bool {
     let replaces = extract_rework_replaces(instructions);
     let handles = extract_rework_handle_maps(instructions);
     let removes = extract_rework_removes(instructions);
-    if replaces.is_empty() && handles.is_empty() && removes.is_empty() {
+    let adds = extract_rework_add_handles(instructions);
+    if replaces.is_empty() && handles.is_empty() && removes.is_empty() && adds.is_empty() {
         return false;
     }
     let mut known: Vec<String> = vec![
@@ -979,10 +1026,16 @@ pub fn rework_instructions_are_keyword_edits_only(instructions: &str) -> bool {
         "remove".into(),
         "delete".into(),
         "drop".into(),
+        "add".into(),
         "to".into(),
         "with".into(),
         "is".into(),
         "handle".into(),
+        "in".into(),
+        "the".into(),
+        "draft".into(),
+        "tweet".into(),
+        "post".into(),
         "however".into(),
         "and".into(),
         "also".into(),
@@ -1012,6 +1065,10 @@ pub fn rework_instructions_are_keyword_edits_only(instructions: &str) -> bool {
             known.push(part.to_ascii_lowercase());
         }
     }
+    for handle in &adds {
+        known.push(handle.to_ascii_lowercase());
+        known.push(handle.trim_start_matches('@').to_ascii_lowercase());
+    }
     for phrase in &removes {
         known.push(phrase.to_ascii_lowercase());
         for part in phrase.split(|c: char| !c.is_ascii_alphanumeric() && c != '@') {
@@ -1021,21 +1078,30 @@ pub fn rework_instructions_are_keyword_edits_only(instructions: &str) -> bool {
         }
     }
     instructions
-        .split(|c: char| !c.is_ascii_alphanumeric() && c != '@')
+        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '@' || c == '-' || c == '_'))
         .filter(|w| !w.is_empty())
         .all(|w| known.iter().any(|k| k == &w.to_ascii_lowercase()))
 }
 
-/// Apply operator `replace` / `remove` / `is handle` keyword edits to prose (hard).
+/// Apply operator `replace` / `remove` / `add @` / `is handle` keyword edits to prose (hard).
 #[must_use]
 pub fn apply_rework_keyword_edits(body: &str, instructions: &str) -> String {
     let mut out = body.to_string();
     for (from, to) in extract_rework_replaces(instructions) {
         out = out.replace(&from, &to);
+        let to_expanded = crate::llm::sanitize::expand_emoji_shortcodes(&to);
+        if to_expanded != to {
+            out = out.replace(&from, &to_expanded);
+        }
     }
+    out = crate::llm::sanitize::collapse_consecutive_duplicate_emoji(&out);
     for (name, handle) in extract_rework_handle_maps(instructions) {
         out = out.replace(&name, &handle);
     }
+    for handle in extract_rework_add_handles(instructions) {
+        out = inject_rework_add_handle(&out, &handle);
+    }
+    out = demote_handle_as_product_subject(&out);
     let removes = extract_rework_removes(instructions);
     if removes.is_empty() {
         return out;
@@ -1044,6 +1110,188 @@ pub fn apply_rework_keyword_edits(body: &str, instructions: &str) -> String {
         out = remove_rework_phrase(&out, &phrase);
     }
     tidy_after_rework_remove(&out)
+}
+
+/// Put `@slug` in prose: replace bare Title-case slug label, else weave after first sentence.
+fn inject_rework_add_handle(body: &str, handle: &str) -> String {
+    if body
+        .to_ascii_lowercase()
+        .contains(&handle.to_ascii_lowercase())
+    {
+        return body.to_string();
+    }
+    let slug = handle.trim_start_matches('@');
+    if slug.is_empty() {
+        return body.to_string();
+    }
+    // Prefer replacing "Pydantic" / "pydantic" word (not already `@pydantic`).
+    let label = title_case_slug(slug);
+    if let Some(out) = replace_bare_label_with_handle(body, &label, handle) {
+        return out;
+    }
+    if let Some(out) = replace_bare_label_with_handle(body, slug, handle) {
+        return out;
+    }
+    // Fallback: append once after the first paragraph's terminal punctuation.
+    let mut parts: Vec<String> = body
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(str::to_string)
+        .collect();
+    if let Some(first) = parts.first_mut() {
+        if first.ends_with(['.', '!', '?']) {
+            let punct = first.pop().unwrap_or('.');
+            first.push(' ');
+            first.push_str(handle);
+            first.push(punct);
+        } else {
+            first.push(' ');
+            first.push_str(handle);
+        }
+    } else {
+        return handle.to_string();
+    }
+    parts.join("\n\n")
+}
+
+/// `@company runs …` is nonsense when the product was already named (`Monty is … @pydantic runs`).
+///
+/// Restores the opening product name as the grammatical subject.
+#[must_use]
+pub fn demote_handle_as_product_subject(body: &str) -> String {
+    let Some(product) = opening_product_name(body) else {
+        return body.to_string();
+    };
+    let product_l = product.to_ascii_lowercase();
+    let mut out = body.to_string();
+    // Scan for `@slug` + product-ish verb; skip when slug is the product itself.
+    let lower = out.to_ascii_lowercase();
+    let mut search = 0usize;
+    let mut replacements: Vec<(usize, usize, String)> = Vec::new();
+    while let Some(rel) = lower[search..].find('@') {
+        let at = search + rel;
+        let after_at = &out[at + 1..];
+        let slug_len = after_at
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+            .map(char::len_utf8)
+            .sum::<usize>();
+        if slug_len < 2 {
+            search = at + 1;
+            continue;
+        }
+        let slug = &after_at[..slug_len];
+        if slug.eq_ignore_ascii_case(&product_l) {
+            search = at + 1 + slug_len;
+            continue;
+        }
+        let rest = after_at[slug_len..].trim_start();
+        let trimmed_off = after_at[slug_len..].len() - rest.len();
+        let verb_ok = [
+            "runs ",
+            "ships ",
+            "executes ",
+            "starts ",
+            "exposes ",
+            "provides ",
+            "builds ",
+            "offers ",
+            "reaches ",
+        ]
+        .iter()
+        .any(|v| rest.len() >= v.len() && rest[..v.len()].eq_ignore_ascii_case(v));
+        if verb_ok {
+            let end = at + 1 + slug_len + trimmed_off;
+            replacements.push((at, end, format!("{product} ")));
+        }
+        search = at + 1 + slug_len;
+    }
+    for (start, end, with) in replacements.into_iter().rev() {
+        out.replace_range(start..end, &with);
+    }
+    out
+}
+
+fn opening_product_name(body: &str) -> Option<String> {
+    let mut t = body.trim_start();
+    // Drop leading emoji / decoration tokens.
+    while let Some(c) = t.chars().next() {
+        if crate::llm::char_is_emoji_like(c) || c.is_whitespace() {
+            t = t[c.len_utf8()..].trim_start();
+            continue;
+        }
+        break;
+    }
+    let word = t.split_whitespace().next()?;
+    let name = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '_');
+    if name.len() < 2 || !name.chars().next()?.is_uppercase() {
+        return None;
+    }
+    // Require `Name is` so we do not grab a random Title Case word.
+    let after = t.get(word.len()..)?.trim_start();
+    if !after.to_ascii_lowercase().starts_with("is ") {
+        return None;
+    }
+    Some(name.to_string())
+}
+
+fn title_case_slug(slug: &str) -> String {
+    let mut out = String::new();
+    let mut cap = true;
+    for c in slug.chars() {
+        if c == '-' || c == '_' {
+            out.push(c);
+            cap = true;
+            continue;
+        }
+        if cap {
+            out.extend(c.to_uppercase());
+            cap = false;
+        } else {
+            out.extend(c.to_lowercase());
+        }
+    }
+    out
+}
+
+fn replace_bare_label_with_handle(body: &str, label: &str, handle: &str) -> Option<String> {
+    if label.chars().count() < 2 {
+        return None;
+    }
+    let hay_l = body.to_ascii_lowercase();
+    let needle = label.to_ascii_lowercase();
+    let mut from = 0usize;
+    while from < hay_l.len() {
+        let Some(rel) = hay_l.get(from..).and_then(|s| s.find(needle.as_str())) else {
+            break;
+        };
+        let start = from + rel;
+        let end = start + needle.len();
+        if end > body.len() {
+            break;
+        }
+        let before_at = start > 0 && body.as_bytes()[start - 1] == b'@';
+        let before_ok = start == 0
+            || body[..start]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !c.is_alphanumeric());
+        let after_ok = end >= body.len()
+            || body[end..]
+                .chars()
+                .next()
+                .is_none_or(|c| !c.is_alphanumeric());
+        if !before_at && before_ok && after_ok {
+            let mut out = String::with_capacity(body.len() + handle.len());
+            out.push_str(&body[..start]);
+            out.push_str(handle);
+            out.push_str(&body[end..]);
+            return Some(out);
+        }
+        from = start.saturating_add(1);
+    }
+    None
 }
 
 fn normalize_rework_apostrophes(s: &str) -> String {
@@ -1123,6 +1371,14 @@ pub fn missing_rework_replace_outcomes(prior: &str, body: &str, instructions: &s
             missing.push(format!("still contains `{phrase}` (remove)"));
         }
     }
+    for handle in extract_rework_add_handles(instructions) {
+        if !body
+            .to_ascii_lowercase()
+            .contains(&handle.to_ascii_lowercase())
+        {
+            missing.push(format!("missing `{handle}` (add)"));
+        }
+    }
     missing
 }
 
@@ -1149,6 +1405,15 @@ fn strip_prefix_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
     } else {
         None
     }
+}
+
+fn take_rework_replace_operand(s: &str) -> Option<(String, &str)> {
+    let s = s.trim_start();
+    if let Some((expanded, after)) = crate::llm::sanitize::split_leading_emoji_shortcodes(s) {
+        return Some((expanded, after));
+    }
+    let (raw, after) = take_directive_span(s)?;
+    Some((raw.to_string(), after))
 }
 
 fn take_directive_span(s: &str) -> Option<(&str, &str)> {
@@ -2212,6 +2477,56 @@ That distinction between embedded PostgreSQL and a runtime for embedding arbitra
             stub,
             "make it shorter"
         ));
+    }
+
+    #[test]
+    fn demote_handle_as_product_subject_fixes_company_runs() {
+        let body = "🦉 Monty is a secure Python sandbox, written in Rust. \
+@pydantic runs in under 1ms compared to traditional sandboxing. 🦀\n\n\
+It's part of the Pydantic Stack.";
+        let out = demote_handle_as_product_subject(body);
+        assert!(
+            out.contains("Monty runs in under 1ms"),
+            "company must not be the subject of runs: {out:?}"
+        );
+        assert!(
+            !out.contains("@pydantic runs"),
+            "must drop @company runs: {out:?}"
+        );
+        // Still allow a later add/@ mention of the company name as a label.
+        assert!(out.contains("Pydantic Stack"));
+    }
+
+    #[test]
+    fn rework_add_handle_keyword_replaces_bare_name() {
+        let instr = "add @pydantic in the draft";
+        assert!(rework_instructions_are_keyword_edits_only(instr));
+        assert_eq!(
+            extract_rework_add_handles(instr),
+            vec!["@pydantic".to_string()]
+        );
+        let prior = "🦉 Monty is a secure sandbox.\n\n\
+It's part of the Pydantic Stack, which includes Pydantic AI.";
+        let out = apply_rework_keyword_edits(prior, instr);
+        assert!(
+            out.contains("@pydantic Stack") || out.contains("@pydantic"),
+            "must inject @pydantic: {out:?}"
+        );
+        assert!(
+            !out.contains("@pydantic runs"),
+            "must not invent nonsense subject: {out:?}"
+        );
+        assert_eq!(out.matches("Pydantic Stack").count(), 0);
+        assert!(missing_rework_replace_outcomes(prior, &out, instr).is_empty());
+    }
+
+    #[test]
+    fn rework_replace_colon_owl_dedupes_unicode_double() {
+        let instr = "remove double emojis stop doing that replace :owl::owl: to :owl:";
+        let prior = "🦉🦉 Monty is a secure Python sandbox, written in Rust.";
+        let out = apply_rework_keyword_edits(prior, instr);
+        assert!(!out.contains("🦉🦉"), "double owl must be fixed: {out:?}");
+        assert!(out.starts_with("🦉 Monty"), "{out:?}");
     }
 
     #[test]
