@@ -466,13 +466,8 @@ async fn apply_draft_replacement(
     body = crate::sources::handles::ensure_linkedin_handle_from_pack(&body, &pack, handles);
     body = crate::sources::draft_footer::apply_rework_keyword_edits(&body, keyword_instructions);
     let body = compose_draft_message(&body, &stored.draft_id, &link_options);
-    let trace = crate::llm::client::CompletionTrace {
-        provider: "operator".into(),
-        model: "rework-replace".into(),
-        prompt_tokens: 0,
-        completion_tokens: 0,
-    };
-    let body = with_disclosure(&body, &trace);
+    // Keyword / paste replace is not a new model call: keep the writer's disclosure.
+    let (body, model, tokens_in, tokens_out) = preserve_prior_disclosure(&body, stored);
     info!(
         draft_id = %stored.draft_id,
         in_post = %primary,
@@ -482,13 +477,27 @@ async fn apply_draft_replacement(
         draft_id: stored.draft_id.clone(),
         subject: stored.subject.clone(),
         body,
-        model: format!("rework={}", trace.model_label()),
-        tokens_in: 0,
-        tokens_out: 0,
+        model,
+        tokens_in,
+        tokens_out,
         sources: pack_urls,
         link_options,
         research_pack: pack,
     })
+}
+
+/// Keep the original writer model/token line when `/rework` is keyword-only or paste replace.
+fn preserve_prior_disclosure(body: &str, stored: &StoredDraft) -> (String, String, u32, u32) {
+    let model = if stored.model.trim().is_empty() {
+        "operator/keyword-edit".into()
+    } else {
+        stored.model.clone()
+    };
+    let tokens_in = stored.tokens_in;
+    let tokens_out = stored.tokens_out;
+    let body =
+        crate::llm::disclosure::ensure_stored_disclosure(body, &model, tokens_in, tokens_out);
+    (body, model, tokens_in, tokens_out)
 }
 
 fn tweet_rework_system_prompt(farce: bool) -> String {
@@ -858,13 +867,7 @@ fn apply_tweet_replacement(
     let (body, link_options) =
         finalize_rework_tweet_output(body, stored, &pack_urls, current, paste, farce);
     let body = compose_tweet_message(&body, &stored.draft_id, &link_options);
-    let trace = crate::llm::client::CompletionTrace {
-        provider: "operator".into(),
-        model: "rework-replace".into(),
-        prompt_tokens: 0,
-        completion_tokens: 0,
-    };
-    let body = with_disclosure(&body, &trace);
+    let (body, model, tokens_in, tokens_out) = preserve_prior_disclosure(&body, stored);
     info!(
         tweet_id = %stored.draft_id,
         "rework: tweet replace applied (no LLM)"
@@ -873,9 +876,9 @@ fn apply_tweet_replacement(
         draft_id: stored.draft_id.clone(),
         subject: stored.subject.clone(),
         body,
-        model: format!("rework={}", trace.model_label()),
-        tokens_in: 0,
-        tokens_out: 0,
+        model,
+        tokens_in,
+        tokens_out,
         sources: pack_urls,
         link_options,
         research_pack: pack,
@@ -1339,5 +1342,54 @@ Cite = option 1\n";
         );
         assert!(user.contains("previous body was not a tweet"));
         assert!(!user.contains("What is the Interchouette Project"));
+    }
+}
+
+#[cfg(test)]
+mod keyword_disclosure_tests {
+    use super::preserve_prior_disclosure;
+    use crate::bat::store::StoredDraft;
+    use crate::llm::disclosure::DISCLOSURE_PREFIX;
+
+    fn stub_stored(model: &str, tokens_in: u32, tokens_out: u32) -> StoredDraft {
+        StoredDraft {
+            draft_id: "DRAFT-20261003-000202".into(),
+            subject: "Mago".into(),
+            body: String::new(),
+            model: model.into(),
+            tokens_in,
+            tokens_out,
+            sources: vec![],
+            link_options: vec![],
+            research_pack: String::new(),
+            status: "open".into(),
+            created_at: String::new(),
+            updated_at: String::new(),
+            fork_pr_number: None,
+            fork_pr_url: String::new(),
+        }
+    }
+
+    #[test]
+    fn keyword_rework_keeps_writer_disclosure_not_rework_replace_zeros() {
+        // POST-20261003-000202: keyword replace stamped operator/rework-replace <in:0 out:0>.
+        let stored = stub_stored(
+            "load=short-load/cite+web+x | draft=ollama/qwen3:8b",
+            8668,
+            252,
+        );
+        let body = "Draft ID: DRAFT-20261003-000202\n\nMago 1.51.2 is out. 🦉\n\nLink: 1";
+        let (out, model, ti, to) = preserve_prior_disclosure(body, &stored);
+        assert_eq!(model, stored.model);
+        assert_eq!((ti, to), (8668, 252));
+        assert!(
+            out.contains("model ollama/qwen3:8b - tokens in:8668 out:252"),
+            "must keep writer tokens: {out}"
+        );
+        assert!(
+            !out.contains("rework-replace") && !out.contains("<in:0 out:0>"),
+            "must not invent operator/rework-replace zeros: {out}"
+        );
+        assert_eq!(out.matches(DISCLOSURE_PREFIX).count(), 1);
     }
 }

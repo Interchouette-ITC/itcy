@@ -817,7 +817,7 @@ pub fn classify_rework_mode(instructions: &str) -> ReworkMode {
     ReworkMode::Instruction
 }
 
-/// `replace FROM to|with TO` pairs from operator instructions (hard keyword, like `cite` / `quote`).
+/// `replace FROM to|with|by TO` pairs from operator instructions (hard keyword, like `cite` / `quote`).
 #[must_use]
 pub fn extract_rework_replaces(instructions: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
@@ -843,6 +843,9 @@ pub fn extract_rework_replaces(instructions: &str) -> Vec<(String, String)> {
         let after_sep = if let Some(r) = strip_prefix_ci(after_from, "to ") {
             r
         } else if let Some(r) = strip_prefix_ci(after_from, "with ") {
+            r
+        } else if let Some(r) = strip_prefix_ci(after_from, "by ") {
+            // Operator habit: `/rework … replace 1.51.0 by 1.51.2`
             r
         } else if let Some(r) = after_from.strip_prefix("->") {
             r.trim_start()
@@ -1029,6 +1032,7 @@ pub fn rework_instructions_are_keyword_edits_only(instructions: &str) -> bool {
         "add".into(),
         "to".into(),
         "with".into(),
+        "by".into(),
         "is".into(),
         "handle".into(),
         "in".into(),
@@ -2563,6 +2567,25 @@ It's part of the Pydantic Stack, which includes Pydantic AI.";
         let ignored = prior.to_string();
         let miss = missing_rework_replace_outcomes(prior, &ignored, instr);
         assert!(miss.iter().any(|m| m.contains("@wasmerio")), "{miss:?}");
+    }
+
+    #[test]
+    fn rework_replace_by_applies_version_bump() {
+        // DRAFT-20261003-000202: `/rework … replace 1.51.0 by 1.51.2` must not leave 1.51.0.
+        let instr = "replace 1.51.0 by 1.51.2";
+        assert_eq!(
+            extract_rework_replaces(instr),
+            vec![("1.51.0".into(), "1.51.2".into())]
+        );
+        assert!(
+            rework_instructions_are_keyword_edits_only(instr),
+            "version replace-by must be keyword-only (no LLM)"
+        );
+        let prior = "📜 Mago 1.51.0 is out! 🚀\n\nMago 1.51.0 is out. The question is, will you be using it? 🦉";
+        let out = apply_rework_keyword_edits(prior, instr);
+        assert!(!out.contains("1.51.0"), "old version must be gone: {out:?}");
+        assert_eq!(out.matches("1.51.2").count(), 2, "{out:?}");
+        assert_eq!(missing_rework_replace_outcomes(prior, &out, instr).len(), 0);
     }
 
     #[test]
