@@ -352,6 +352,12 @@ fn scrub_rework_draft_writer_body(body: &str, instructions: &str) -> Result<Stri
                 .into(),
         ));
     }
+    if crate::sources::rag::linkedin_prose_too_thin(&body) {
+        return Err(ReworkError::Operator(
+            "writer returned thin LinkedIn body (URL-only or stub); try again with clearer instructions"
+                .into(),
+        ));
+    }
     if crate::sources::corpus_propose::body_has_slogan_mush(&body) {
         let stripped = crate::sources::corpus_propose::strip_slogan_mush_sentences(&body);
         if stripped.trim().is_empty()

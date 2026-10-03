@@ -479,6 +479,7 @@ fn parse_response(text: &str) -> Result<LlmResponse, LlmError> {
     };
     // Qwen / thinking models often leave `content` empty and put a monologue in `thinking`.
     // Never promote thinking to the visible answer (that leaked into Slack as fake "drafts").
+    // Fail the completion so draft/rework scrub retry can run instead of shipping URL-only stubs.
     let content = parsed.message.content;
     if content.trim().is_empty() && tool_calls.as_ref().is_none_or(std::vec::Vec::is_empty) {
         let thinking_chars = parsed
@@ -489,8 +490,12 @@ fn parse_response(text: &str) -> Result<LlmResponse, LlmError> {
         if thinking_chars > 0 {
             warn!(
                 thinking_chars,
-                "ollama: empty content with non-empty thinking; leaving content empty"
+                "ollama: empty content with non-empty thinking; failing completion"
             );
+            return Err(LlmError::Provider(
+                "ollama returned empty content with thinking monologue (think=false ignored?)"
+                    .into(),
+            ));
         }
     }
     Ok(LlmResponse {
