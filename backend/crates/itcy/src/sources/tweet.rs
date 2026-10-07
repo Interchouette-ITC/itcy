@@ -366,7 +366,6 @@ pub(crate) fn tweet_names_subject_entity(body: &str, subject: &str) -> bool {
     let keys: Vec<String> = search_keywords(subject)
         .into_iter()
         .filter(|k| k.chars().count() >= 4)
-        .take(3)
         .collect();
     if keys.is_empty() {
         return true;
@@ -514,6 +513,18 @@ mod tests {
                 subject
             ),
             "funny vague tweet without Monty/Pydantic must fail"
+        );
+    }
+
+    #[test]
+    fn tweet_names_subject_entity_accepts_topic_on_marketing_lede() {
+        let subject = "A clear-headed look at what's still missing from Rust error handling, and a crate exploring a solution.";
+        assert!(
+            tweet_names_subject_entity(
+                "🦉 eros composes Rust error sets without a new enum at every call site.\n\n#Rust",
+                subject
+            ),
+            "must accept a tweet that names Rust / error, not require clear/headed/look"
         );
     }
 
