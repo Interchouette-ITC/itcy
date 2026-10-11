@@ -589,6 +589,9 @@ pub(crate) async fn checkpoint_building_pack(
     let _ = store.upsert(&row);
 }
 
+/// Minimum non-URL prose words for a `LinkedIn` draft (blocks URL-only / 31-char junk).
+const MIN_LINKEDIN_PROSE_WORDS: usize = 60;
+
 pub(crate) fn scrub_and_validate_writer_body(
     body_raw: &str,
     pack_urls: &[String],
@@ -608,6 +611,11 @@ pub(crate) fn scrub_and_validate_writer_body(
     body = crate::sources::draft_url::strip_sources_section(&body);
     body = crate::sources::draft_footer::strip_leading_page_title_lede(&body);
     body = crate::sources::draft_footer::strip_leading_cite_instruction(&body);
+    if body.trim().is_empty() {
+        return Err(RagError::Store(
+            "writer returned empty content after scrub (no LinkedIn post)".into(),
+        ));
+    }
     if looks_like_writer_scratchpad(&body) {
         warn!(
             prose_words = prose_word_count(&body),
@@ -650,7 +658,29 @@ pub(crate) fn scrub_and_validate_writer_body(
     body = crate::llm::sanitize::strip_spurious_period_after_emoji(&body);
     body = crate::sources::draft_footer::aerate_linkedin_draft(&body);
     body = crate::sources::draft_footer::demote_handle_as_product_subject(&body);
+    refuse_thin_linkedin_prose(&body)?;
     Ok(body)
+}
+
+fn refuse_thin_linkedin_prose(body: &str) -> Result<(), RagError> {
+    if linkedin_prose_too_thin(body) {
+        let words = prose_word_count(body);
+        warn!(
+            prose_words = words,
+            min = MIN_LINKEDIN_PROSE_WORDS,
+            "load_draft: writer body too thin (URL-only or stub)"
+        );
+        return Err(RagError::Store(format!(
+            "writer returned thin LinkedIn body ({words} prose words; need {MIN_LINKEDIN_PROSE_WORDS}+)"
+        )));
+    }
+    Ok(())
+}
+
+/// True when non-URL prose is below the `LinkedIn` draft floor (URL-only / stub bodies).
+#[must_use]
+pub(crate) fn linkedin_prose_too_thin(body: &str) -> bool {
+    prose_word_count(body) < MIN_LINKEDIN_PROSE_WORDS
 }
 
 async fn draft_body_with_scrub_retry(
@@ -1165,6 +1195,18 @@ pub(crate) fn looks_like_writer_scratchpad(body: &str) -> bool {
         || l.contains("i need to write an english linkedin")
         || l.contains("this is the key info i have")
         || l.contains("draft based on what i know")
+        // Qwen planning monologue (DRAFT-197) when thinking chrome was not stripped.
+        || l.contains("okay, let's lock")
+        || l.contains("let's lock in on the subject")
+        || l.contains("the operator brief is")
+        || l.contains("let me structure the post")
+        || l.contains("i'll start with that")
+        || l.contains("i need to weave")
+        || l.contains("alright, let's put it all together")
+        || l.contains("let's put it all together")
+        || l.contains("write only the finished")
+        || body.contains("</think>")
+        || body.contains("<think>")
         // Markdown / bullet dump (not a LinkedIn post).
         || l.contains("### key points")
         || l.contains("key points:")
@@ -1545,6 +1587,13 @@ model={model} ctx_len={}",
             "The Sogeti page is not found (404), so I can't cite it. The operator subject was RTK. \
 Let me look at my corpus search again - this is the key info I have. Let me draft based on what I know."
         ));
+        assert!(
+            looks_like_writer_scratchpad(
+                "Okay, let's lock in on the subject. The operator brief is about GitHub. \
+I need to weave the owl emoji. Alright, let's put it all together."
+            ),
+            "Qwen planning dump must refuse"
+        );
         assert!(!looks_like_writer_scratchpad(
             "Leadership moves at RTK AI Labs matter for builders watching open tooling mature."
         ));
@@ -1556,6 +1605,45 @@ Let me know if you'd like to rework or share this! 🦉";
             looks_like_writer_scratchpad(md_dump),
             "markdown Key Points dump must refuse"
         );
+    }
+
+    #[test]
+    fn scrub_refuses_url_only_thin_writer_body() {
+        // DRAFT-199: model returned ~31 chars; cite inject left URL-only Slack paste.
+        let err = scrub_and_validate_writer_body(
+            "https://thenewstack.io/github-copilot-anthropic-rust-migration",
+            &["https://thenewstack.io/github-copilot-anthropic-rust-migration".into()],
+            "Anthropic agents Rust rewrites",
+        )
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("thin") || msg.contains("empty"),
+            "URL-only body must refuse: {msg}"
+        );
+    }
+
+    #[test]
+    fn scrub_strips_thinking_chrome_then_accepts_real_post() {
+        let post = "GitHub and Anthropic used their own agents for major Rust rewrites, \
+and the playbooks diverge in ways builders can steal. 🦉 Copilot's runtime move \
+into Rust with agent help is not a press slide; it is a bet that reviewable diffs \
+and honest tooling scale when the corpus is hundreds of thousands of lines. 🦀 \
+Anthropic's internal agents look more like a rewrite factory than a single patch bot. \
+For teams shipping Rust systems, the peer lesson is to treat agents as draft labor \
+under human review, not as a license to skip the hard parts of migration. 🚀";
+        let raw = format!(
+            "Okay, let's lock in on the subject. I need to weave emojis.\n</think>\n\n{post}"
+        );
+        let out = scrub_and_validate_writer_body(
+            &raw,
+            &["https://thenewstack.io/github-copilot-anthropic-rust-migration".into()],
+            "Anthropic agents Rust rewrites",
+        )
+        .expect("post after thinking chrome must pass");
+        assert!(!out.to_ascii_lowercase().contains("okay, let's lock"));
+        assert!(out.contains("GitHub and Anthropic"));
+        assert!(prose_word_count(&out) >= MIN_LINKEDIN_PROSE_WORDS);
     }
 
     #[test]

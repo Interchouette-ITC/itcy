@@ -19,7 +19,8 @@ pub const EN_DASH: char = '\u{2013}';
 /// and `LinkedIn` cannot render colon codes).
 #[must_use]
 pub fn sanitize_itcy_text(input: &str) -> String {
-    let mut s = tight_hyphen_digit_en_dashes(input);
+    let mut s = strip_model_thinking_chrome(input);
+    s = tight_hyphen_digit_en_dashes(&s);
     s = s.replace(&format!(" {EM_DASH} "), ", ");
     s = s.replace(EM_DASH, ", ");
     s = s.replace(&format!(" {EN_DASH} "), ", ");
@@ -33,6 +34,28 @@ pub fn sanitize_itcy_text(input: &str) -> String {
     collapse_spaces(&mut s);
     s = strip_single_star_italic(&s);
     s
+}
+
+/// Drop Qwen-style thinking dumps (`…</think>` / `<think>…`) so only the answer remains.
+///
+/// Models often put a planning monologue before `</think>`, then the real post.
+/// Keeping the monologue leaked into Slack drafts (DRAFT-197).
+#[must_use]
+pub fn strip_model_thinking_chrome(input: &str) -> String {
+    // Prefer the finished answer after the last close tag.
+    let after_close = input
+        .rfind("</think>")
+        .map_or(input, |i| input[i + "</think>".len()..].trim_start());
+    // Unclosed open tag: drop from that point (no usable answer after).
+    let without_open = after_close
+        .find("<think>")
+        .map_or(after_close, |i| after_close[..i].trim_end());
+    // Stray close tags must not remain in shipped prose.
+    without_open
+        .replace("</think>", "")
+        .replace("<think>", "")
+        .trim()
+        .to_string()
 }
 
 /// True when prose has emoji glued directly before a period (`🦀.` / `🚀.`).
@@ -584,6 +607,17 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:1 out:1";
         let s = sanitize_itcy_text("Hello 🦉💻");
         assert!(s.contains('🦉'));
         assert!(s.contains('💻'));
+    }
+
+    #[test]
+    fn strip_model_thinking_chrome_keeps_answer_after_close_tag() {
+        let raw = "Okay, let's lock in on the subject. I need to weave the owl.\n\
+</think>\n\n\
+GitHub and Anthropic ran agent-shaped Rust rewrites with different playbooks. 🦉";
+        let out = strip_model_thinking_chrome(raw);
+        assert!(!out.to_ascii_lowercase().contains("okay, let's lock"));
+        assert!(out.contains("GitHub and Anthropic"));
+        assert!(!out.contains("</think>") && !out.contains("<think>"));
     }
 
     #[test]

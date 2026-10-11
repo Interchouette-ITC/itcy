@@ -394,6 +394,9 @@ pub fn extract_brief_cite(brief: &str) -> Option<String> {
 }
 
 /// Keywords from the operator subject (first comma clause; drop URLs and filler).
+///
+/// Ranked by salience (capitalization / digits, then length), not left-to-right order, so
+/// X search and entity checks prefer real topic tokens over leading prose filler.
 #[must_use]
 pub fn search_keywords(brief: &str) -> Vec<String> {
     let mut s = brief.to_string();
@@ -418,11 +421,17 @@ pub fn search_keywords(brief: &str) -> Vec<String> {
             continue;
         }
         out.push(t.to_string());
-        if out.len() == 6 {
-            break;
-        }
     }
+    out.sort_by_key(|a| std::cmp::Reverse(keyword_salience(a)));
+    out.truncate(6);
     out
+}
+
+fn keyword_salience(token: &str) -> (u8, usize) {
+    let boost = u8::from(
+        token.bytes().any(|b| b.is_ascii_digit()) || token.chars().any(|c| c.is_ascii_uppercase()),
+    );
+    (boost, token.chars().count())
 }
 
 const SEARCH_STOP: &[&str] = &[
@@ -1099,7 +1108,7 @@ Link: 2
             search_keywords(
                 "Casper vs RWA and x402 payments, quote this and comment https://x.com/a/status/1"
             ),
-            vec!["Casper", "RWA", "x402", "payments"]
+            vec!["Casper", "x402", "RWA", "payments"]
         );
         assert_eq!(
             web_search_query(
@@ -1120,7 +1129,24 @@ Link: 2
             x_search_query(
                 "Casper vs RWA and x402 payments, quote this and comment https://x.com/a/status/1"
             ),
-            "Casper (RWA OR x402 OR payments)"
+            "Casper (x402 OR RWA OR payments)"
+        );
+        // Marketing lede: capitalized topic wins over leading filler (item 36 failure mode).
+        let lede_keys = search_keywords(
+            "A clear-headed look at what's still missing from Rust error handling, and a crate exploring a solution.",
+        );
+        assert_eq!(
+            lede_keys.first().map(String::as_str),
+            Some("Rust"),
+            "salient topic first, not clear/headed/look: {lede_keys:?}"
+        );
+        assert_eq!(
+            x_search_query(
+                "A clear-headed look at what's still missing from Rust error handling, and a crate exploring a solution."
+            )
+            .split_whitespace()
+            .next(),
+            Some("Rust")
         );
         // DRAFT-20260831-000137: propose boilerplate must not pollute SERP.
         let propose = "Propose one company-page LinkedIn post from corpus memory on this subject. \

@@ -181,10 +181,32 @@ function assertLoggedIn(page, html, where) {
   }
 }
 
+async function listHomeTabNames(page) {
+  return page.evaluate(() => {
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    return tabs.map((t) => ({
+      name: (t.getAttribute("aria-label") || t.innerText || "").replace(/\s+/g, " ").trim(),
+      selected: t.getAttribute("aria-selected"),
+    }));
+  });
+}
+
 async function clickHomeTab(page, nameRe) {
-  const tab = page.getByRole("tab", { name: nameRe }).first();
+  let tab = page.getByRole("tab", { name: nameRe }).first();
   if ((await tab.count()) === 0) {
-    throw new Error(`home tab not found: ${nameRe}`);
+    // Home chrome sometimes mounts For you before Following; one short wait + reload.
+    await page.waitForTimeout(2500);
+    tab = page.getByRole("tab", { name: nameRe }).first();
+  }
+  if ((await tab.count()) === 0) {
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
+    await page.waitForTimeout(2000);
+    tab = page.getByRole("tab", { name: nameRe }).first();
+  }
+  if ((await tab.count()) === 0) {
+    const seen = await listHomeTabNames(page).catch(() => []);
+    const dump = seen.map((t) => JSON.stringify(t)).join(" | ") || "(no role=tab)";
+    throw new Error(`home tab not found: ${nameRe}; seen=${dump}`);
   }
   const selected = await tab.getAttribute("aria-selected");
   if (selected !== "true") {
