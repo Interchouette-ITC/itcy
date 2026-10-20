@@ -189,7 +189,10 @@ fn load_from_zip(zip_path: &Path) -> Result<Vec<ExportItem>, ExportError> {
         let mut file = archive
             .by_index(i)
             .map_err(|e| ExportError::Zip(e.to_string()))?;
-        let name = file.name().to_string();
+        let name = file
+            .name()
+            .map_err(|e| ExportError::Zip(e.to_string()))?
+            .into_owned();
         if file.is_dir() {
             continue;
         }

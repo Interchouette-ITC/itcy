@@ -2336,7 +2336,13 @@ the 🦀 energy is unmistakable. Cranelift is careful, deliberate, and built for
 
     #[test]
     fn scrub_injects_emoji_when_writer_omits_them() {
-        let thin = "Teams shipping internal agent platforms need honest audit trails and scoped credentials before they trust automated code review at scale.";
+        // Floor is MIN_LINKEDIN_PROSE_WORDS; keep this above it while still emoji-less.
+        let thin = "Teams shipping internal agent platforms need honest audit trails and \
+scoped credentials before they trust automated code review at scale. Review queues \
+only work when every agent action is attributable to a human owner. Scoped tokens \
+beat shared bot accounts when the blast radius is a production monorepo. Builders \
+watching Flux-class stacks should treat policy as code, not a slide deck, and keep \
+rollback paths boring enough that on-call can run them without a war room.";
         let out = scrub_and_validate_writer_body(thin, &[], "DoorDash Flux agent platform")
             .expect("short writer prose must pass scrub");
         assert!(
@@ -2395,7 +2401,10 @@ services without replacing its existing telecom systems.\n\n\
 That settlement layer matters because carriers can add dollar rails without ripping \
 out BSS. Operators get a money path that sits beside prepaid and postpaid stacks. 🦀\n\n\
 Builders watching Latin America fintech should watch whether VIVA keeps custody \
-in-house. 🦉";
+in-house. The interesting part is not the press line about stablecoins; it is whether \
+ops teams can reconcile telecom billing with on-chain settlement without a second \
+ledger. Peer takeaway: ship the rails next to BSS, keep custody boring, and measure \
+settlement failure the same way you measure prepaid top-ups. 🦉";
         let out = scrub_and_validate_writer_body(body, &[], subject)
             .expect("lede paste plus commentary must ship");
         assert!(out.to_ascii_lowercase().contains("settlement"));
