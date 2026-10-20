@@ -1092,10 +1092,11 @@ pub fn rework_instructions_are_keyword_edits_only(instructions: &str) -> bool {
 pub fn apply_rework_keyword_edits(body: &str, instructions: &str) -> String {
     let mut out = body.to_string();
     for (from, to) in extract_rework_replaces(instructions) {
-        out = out.replace(&from, &to);
+        // Match ASCII / curly apostrophe variants (models often emit U+2019).
+        out = replace_rework_phrase(&out, &from, &to);
         let to_expanded = crate::llm::sanitize::expand_emoji_shortcodes(&to);
         if to_expanded != to {
-            out = out.replace(&from, &to_expanded);
+            out = replace_rework_phrase(&out, &from, &to_expanded);
         }
     }
     out = crate::llm::sanitize::collapse_consecutive_duplicate_emoji(&out);
@@ -1311,6 +1312,33 @@ fn rework_phrase_variants(phrase: &str) -> Vec<String> {
     out
 }
 
+/// Replace `from` with `to`, matching curly/ASCII apostrophe variants in the body.
+fn replace_rework_phrase(body: &str, from: &str, to: &str) -> String {
+    for variant in rework_phrase_variants(from) {
+        if body.contains(&variant) {
+            return body.replace(&variant, to);
+        }
+    }
+    let norm_from = normalize_rework_apostrophes(from);
+    if norm_from.chars().count() < 2 {
+        return body.to_string();
+    }
+    let norm_body = normalize_rework_apostrophes(body);
+    if !norm_body.contains(&norm_from) {
+        return body.to_string();
+    }
+    // Body only had a curly form; rewrite on the normalized string so the
+    // operator's ASCII `to` lands even when byte-identical replace missed.
+    norm_body.replace(&norm_from, to)
+}
+
+fn body_contains_rework_phrase(body: &str, phrase: &str) -> bool {
+    rework_phrase_variants(phrase)
+        .iter()
+        .any(|v| body.contains(v))
+        || normalize_rework_apostrophes(body).contains(&normalize_rework_apostrophes(phrase))
+}
+
 fn remove_rework_phrase(body: &str, phrase: &str) -> String {
     for variant in rework_phrase_variants(phrase) {
         if body.contains(&variant) {
@@ -1346,9 +1374,12 @@ fn tidy_after_rework_remove(s: &str) -> String {
 pub fn missing_rework_replace_outcomes(prior: &str, body: &str, instructions: &str) -> Vec<String> {
     let mut missing = Vec::new();
     for (from, to) in extract_rework_replaces(instructions) {
-        if body.contains(&from) {
+        let still_from = body_contains_rework_phrase(body, &from);
+        let had_from = body_contains_rework_phrase(prior, &from);
+        let has_to = body_contains_rework_phrase(body, &to);
+        if still_from {
             missing.push(format!("still contains `{from}` (replace with `{to}`)"));
-        } else if prior.contains(&from) && !body.contains(&to) {
+        } else if had_from && !has_to {
             missing.push(format!("missing `{to}` after replacing `{from}`"));
         }
     }
@@ -2567,6 +2598,33 @@ It's part of the Pydantic Stack, which includes Pydantic AI.";
         let ignored = prior.to_string();
         let miss = missing_rework_replace_outcomes(prior, &ignored, instr);
         assert!(miss.iter().any(|m| m.contains("@wasmerio")), "{miss:?}");
+    }
+
+    #[test]
+    fn rework_replace_matches_curly_apostrophe_in_body() {
+        // DRAFT-20261020-000236: body had U+2019 in "I've"; operator typed ASCII.
+        let instr = "replace \"I've seen\" to \"we've seen\"";
+        assert_eq!(
+            extract_rework_replaces(instr),
+            vec![("I've seen".into(), "we've seen".into())]
+        );
+        assert!(
+            rework_instructions_are_keyword_edits_only(instr),
+            "quoted replace must be keyword-only (no LLM)"
+        );
+        let prior = "nvx achieves the lightest micro-VM I\u{2019}ve seen, perfect for builders.";
+        let out = apply_rework_keyword_edits(prior, instr);
+        assert!(
+            out.contains("we've seen") && !out.contains("I\u{2019}ve seen"),
+            "curly I've must become we've: {out}"
+        );
+        assert!(!out.contains("I've seen"), "{out}");
+        assert_eq!(missing_rework_replace_outcomes(prior, &out, instr).len(), 0);
+        let miss = missing_rework_replace_outcomes(prior, prior, instr);
+        assert!(
+            miss.iter().any(|m| m.contains("I've seen")),
+            "unchanged curly body must fail outcome check: {miss:?}"
+        );
     }
 
     #[test]
