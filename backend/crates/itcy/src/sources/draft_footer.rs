@@ -1014,6 +1014,13 @@ pub fn extract_rework_add_handles(instructions: &str) -> Vec<String> {
     out
 }
 
+/// Tokens in `/rework` keyword instructions (`@slug`, hyphens, underscores kept).
+fn rework_keyword_tokens(s: &str) -> impl Iterator<Item = String> + '_ {
+    s.split(|c: char| !(c.is_ascii_alphanumeric() || c == '@' || c == '-' || c == '_'))
+        .filter(|w| !w.is_empty())
+        .map(str::to_ascii_lowercase)
+}
+
 /// True when instructions are only `replace` / `remove` / `add @` / `is handle` edits.
 #[must_use]
 pub fn rework_instructions_are_keyword_edits_only(instructions: &str) -> bool {
@@ -1048,43 +1055,23 @@ pub fn rework_instructions_are_keyword_edits_only(instructions: &str) -> bool {
         "but".into(),
     ];
     for (from, to) in &replaces {
-        known.push(from.to_ascii_lowercase());
-        known.push(to.to_ascii_lowercase());
-        for part in from.split(|c: char| !c.is_ascii_alphanumeric() && c != '@') {
-            if !part.is_empty() {
-                known.push(part.to_ascii_lowercase());
-            }
-        }
-        for part in to.split(|c: char| !c.is_ascii_alphanumeric() && c != '@') {
-            if !part.is_empty() {
-                known.push(part.to_ascii_lowercase());
-            }
-        }
+        known.extend(rework_keyword_tokens(from));
+        known.extend(rework_keyword_tokens(to));
     }
     for (name, handle) in &handles {
-        known.push(name.to_ascii_lowercase());
-        known.push(handle.to_ascii_lowercase());
+        known.extend(rework_keyword_tokens(name));
+        known.extend(rework_keyword_tokens(handle));
         known.push(handle.trim_start_matches('@').to_ascii_lowercase());
-        for part in name.split_whitespace() {
-            known.push(part.to_ascii_lowercase());
-        }
     }
     for handle in &adds {
-        known.push(handle.to_ascii_lowercase());
+        known.extend(rework_keyword_tokens(handle));
         known.push(handle.trim_start_matches('@').to_ascii_lowercase());
     }
     for phrase in &removes {
-        known.push(phrase.to_ascii_lowercase());
-        for part in phrase.split(|c: char| !c.is_ascii_alphanumeric() && c != '@') {
-            if !part.is_empty() {
-                known.push(part.to_ascii_lowercase());
-            }
-        }
+        known.extend(rework_keyword_tokens(phrase));
     }
-    instructions
-        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '@' || c == '-' || c == '_'))
-        .filter(|w| !w.is_empty())
-        .all(|w| known.iter().any(|k| k == &w.to_ascii_lowercase()))
+    // Same tokenizer for leftovers: hyphenated @handles must not force an LLM pass.
+    rework_keyword_tokens(instructions).all(|w| known.iter().any(|k| k == &w))
 }
 
 /// Apply operator `replace` / `remove` / `add @` / `is handle` keyword edits to prose (hard).
@@ -1377,9 +1364,13 @@ pub fn missing_rework_replace_outcomes(prior: &str, body: &str, instructions: &s
         let still_from = body_contains_rework_phrase(body, &from);
         let had_from = body_contains_rework_phrase(prior, &from);
         let has_to = body_contains_rework_phrase(body, &to);
+        // `to` may embed `from` ("From @x, LayerFS is rewriting") - that is success.
+        if has_to {
+            continue;
+        }
         if still_from {
             missing.push(format!("still contains `{from}` (replace with `{to}`)"));
-        } else if had_from && !has_to {
+        } else if had_from {
             missing.push(format!("missing `{to}` after replacing `{from}`"));
         }
     }
@@ -2625,6 +2616,33 @@ It's part of the Pydantic Stack, which includes Pydantic AI.";
             miss.iter().any(|m| m.contains("I've seen")),
             "unchanged curly body must fail outcome check: {miss:?}"
         );
+    }
+
+    #[test]
+    fn rework_replace_with_hyphenated_at_handle_is_keyword_only() {
+        // DRAFT-238: `replace "LayerFS is rewriting" to "From @rust-bytes-weekly, …"`
+        // used to miss keyword-only because `@rust-bytes-weekly` was split on `-`.
+        let instr =
+            "replace \"LayerFS is rewriting\" to \"From @rust-bytes-weekly, LayerFS is rewriting\"";
+        assert_eq!(
+            extract_rework_replaces(instr),
+            vec![(
+                "LayerFS is rewriting".into(),
+                "From @rust-bytes-weekly, LayerFS is rewriting".into()
+            )]
+        );
+        assert!(
+            rework_instructions_are_keyword_edits_only(instr),
+            "hyphenated @handle replace must be keyword-only (no LLM)"
+        );
+        let prior = "LayerFS is rewriting the storage path for Rust crates that need \
+layered filesystem semantics without dragging a full container stack.";
+        let out = apply_rework_keyword_edits(prior, instr);
+        assert!(
+            out.starts_with("From @rust-bytes-weekly, LayerFS is rewriting"),
+            "{out}"
+        );
+        assert_eq!(missing_rework_replace_outcomes(prior, &out, instr).len(), 0);
     }
 
     #[test]
