@@ -450,6 +450,15 @@ pub(crate) fn scrub_and_validate_tweet_body(raw: &str) -> Result<String, RagErro
             "writer returned empty tweet after scrub".into(),
         ));
     }
+    if let Some(reason) = crate::sources::rag::writer_incomplete_cite_hole_reason(&body) {
+        warn!(
+            reason,
+            "load_tweet: writer left an incomplete cite hole; refusing"
+        );
+        return Err(RagError::Store(
+            "writer left an incomplete cite hole (empty URL / empty parentheses)".into(),
+        ));
+    }
     if crate::sources::corpus_propose::body_has_slogan_mush(&body) {
         return Err(RagError::Store(
             "writer kept banned X slogan mush after salvage".into(),
@@ -475,6 +484,16 @@ fn ensure_tweet_handles_from_pack(tools: Option<&ItcyTools>, body: &str, pack: &
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scrub_and_validate_refuses_empty_paren_cite_hole() {
+        let raw = "🚀 Finally, an OpenVMM sandbox that's lighter than a whisper! 🦉 \
+MSR/AzSRG just open-sourced nvx (), a uVM so stripped down, it's a minimalist AI dream.\n\n\
+✨ And yes, it's @github-ready. Let's build the future.\n\n\
+#OpenSource #AI\n\nhttps://github.com/microsoft/nvx";
+        let err = scrub_and_validate_tweet_body(raw).expect_err("nvx () must refuse");
+        assert!(err.to_string().contains("incomplete cite hole"), "{err}");
+    }
 
     #[test]
     fn scrub_tweet_body_strips_emoji_dot_glue() {

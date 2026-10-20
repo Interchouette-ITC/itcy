@@ -352,6 +352,12 @@ fn scrub_rework_draft_writer_body(body: &str, instructions: &str) -> Result<Stri
                 .into(),
         ));
     }
+    if let Some(reason) = crate::sources::rag::writer_incomplete_cite_hole_reason(&body) {
+        warn!(reason, "rework: incomplete cite hole in writer body");
+        return Err(ReworkError::Operator(
+            "writer left an incomplete cite hole (empty URL / empty parentheses); try again".into(),
+        ));
+    }
     if crate::sources::rag::linkedin_prose_too_thin(&body) {
         return Err(ReworkError::Operator(
             "writer returned thin LinkedIn body (URL-only or stub); try again with clearer instructions"

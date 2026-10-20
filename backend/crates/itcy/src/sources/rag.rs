@@ -625,6 +625,15 @@ pub(crate) fn scrub_and_validate_writer_body(
             "writer returned planning monologue instead of a LinkedIn post".into(),
         ));
     }
+    if let Some(reason) = writer_incomplete_cite_hole_reason(&body) {
+        warn!(
+            reason,
+            "load_draft: writer left an incomplete cite hole; refusing to post"
+        );
+        return Err(RagError::Store(
+            "writer left an incomplete cite hole (empty URL / empty parentheses)".into(),
+        ));
+    }
     if body_copies_operator_subject(&body, paste_subject) {
         let stripped = strip_leading_subject_paste(&body, paste_subject);
         // Soft target: drop a leading subject lede. Remaining prose ships even when it
@@ -1176,6 +1185,44 @@ fn looks_like_x_shaped_linkedin(body: &str) -> bool {
     short * 2 >= prose_lines.len() && blank_separated
 }
 
+/// Incomplete mid-sentence cite holes (`hosted at,` / `nvx ()`) that must not ship.
+///
+/// Writers often reserve a URL slot then leave it empty because the bare https line
+/// lives below. Same failure as DRAFT-236 `nvx ()` and DRAFT-237 `hosted at,`.
+#[must_use]
+pub(crate) fn writer_incomplete_cite_hole_reason(body: &str) -> Option<&'static str> {
+    if body.contains("()") || body.contains("( )") {
+        return Some("empty parentheses");
+    }
+    let l = body.to_ascii_lowercase();
+    for needle in [
+        "hosted at,",
+        "hosted at.",
+        "available at,",
+        "available at.",
+        "found at,",
+        "found at.",
+        "lives at,",
+        "lives at.",
+        "repo at,",
+        "project at,",
+        "see at,",
+        "open-sourced at,",
+        "open sourced at,",
+    ] {
+        if l.contains(needle) {
+            return Some(needle);
+        }
+    }
+    // "… at, and …" when the URL was never filled.
+    for needle in [" at, and", " at, but", " at, which", " at, it", " at, the"] {
+        if l.contains(needle) {
+            return Some("dangling at,");
+        }
+    }
+    None
+}
+
 /// True when the model dumped planning / tool narration / markdown notes instead of a post.
 #[must_use]
 pub(crate) fn looks_like_writer_scratchpad(body: &str) -> bool {
@@ -1605,6 +1652,49 @@ Let me know if you'd like to rework or share this! 🦉";
             looks_like_writer_scratchpad(md_dump),
             "markdown Key Points dump must refuse"
         );
+    }
+
+    #[test]
+    fn scrub_refuses_incomplete_hosted_at_cite_hole() {
+        // DRAFT-237: "The project is hosted at, and it's already picking up traction."
+        let body = "🦉 Iris Chat is a messaging tool without phone numbers. Identities are Nostr \
+public keys, so you can start with just a name. It works offline over Bluetooth or Wi-Fi. \
+The CLI is agent-friendly for builders who integrate chat into workflows.\n\n\
+The project is hosted at, and it's already picking up traction. A tweet from @marttimalmi \
+highlights its core principles. For builders, this respects your time and infrastructure. \
+No need to sign up, no need to sync, just connect.\n\n\
+If you're looking for a messaging app that feels like a clean slate, Iris Chat is worth \
+a closer look. 🦉\n\nhttps://irischat.org";
+        assert_eq!(
+            writer_incomplete_cite_hole_reason(body),
+            Some("hosted at,"),
+            "must detect hosted at, hole"
+        );
+        let err =
+            scrub_and_validate_writer_body(body, &["https://irischat.org".into()], "Iris Chat")
+                .expect_err("incomplete hosted at, must refuse");
+        assert!(err.to_string().contains("incomplete cite hole"), "{err}");
+    }
+
+    #[test]
+    fn scrub_refuses_empty_parentheses_cite_hole() {
+        // DRAFT-236 / TWEET-183: "open-sourcing of nvx () marks a pivotal moment"
+        let body = "Microsoft's OpenVMM project is delivering a lightweight sandbox for agentic \
+workloads. The recent open-sourcing of nvx () marks a pivotal moment in secure virtualization. \
+By stripping unnecessary components, nvx achieves a light micro-VM for resource-constrained \
+environments. Builders get fewer overheads and a stronger isolation foundation. Peer takeaway: \
+treat hardware-isolated sandboxes as reviewable infrastructure, not a press slide. 🦉🦀🔧";
+        assert_eq!(
+            writer_incomplete_cite_hole_reason(body),
+            Some("empty parentheses")
+        );
+        let err = scrub_and_validate_writer_body(
+            body,
+            &["https://github.com/microsoft/nvx".into()],
+            "OpenVMM nvx",
+        )
+        .expect_err("empty () must refuse");
+        assert!(err.to_string().contains("incomplete cite hole"), "{err}");
     }
 
     #[test]
