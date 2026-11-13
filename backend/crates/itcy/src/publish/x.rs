@@ -74,6 +74,18 @@ pub async fn ship_x_post(
     );
     let audit = PublishAuditStore::open(state_db_path.as_ref())
         .map_err(|e| PublishError::Other(e.to_string()))?;
+    if mode == PublishMode::Production
+        && trim_opt_id(request.in_reply_to_tweet_id.as_deref()).is_none()
+    {
+        if let Some(detail) = audit
+            .incomplete_x_thread(request.tweet_id.as_deref(), &request.body)
+            .map_err(|e| PublishError::Other(e.to_string()))?
+        {
+            return Err(PublishError::Other(format!(
+                "refusing to duplicate a root from an incomplete thread; recover its reply explicitly: {detail}"
+            )));
+        }
+    }
     let linkedin_req = PublishRequest {
         draft_id: request.tweet_id.clone(),
         pubs_pr_number: request.pubs_pr_number,
@@ -100,13 +112,17 @@ async fn ship_x_inner(
     mode: PublishMode,
     request: &XPublishRequest,
 ) -> Result<PublishResult, PublishError> {
+    let (_, reply) = ship_texts(&request.body)?;
+    let parent = trim_opt_id(request.in_reply_to_tweet_id.as_deref());
+    reject_quote_with_in_reply(request.quote_tweet_id.as_deref(), parent)?;
+    reject_overflow_with_in_reply(parent, reply.is_some())?;
     match mode {
-        PublishMode::Playground => Ok(playground_x_post(request)),
+        PublishMode::Playground => playground_x_post(request),
         PublishMode::Production => production_x_post(request).await,
     }
 }
 
-fn playground_x_post(request: &XPublishRequest) -> PublishResult {
+fn playground_x_post(request: &XPublishRequest) -> Result<PublishResult, PublishError> {
     let slug = request
         .tweet_id
         .as_deref()
@@ -116,7 +132,7 @@ fn playground_x_post(request: &XPublishRequest) -> PublishResult {
         .map_or_else(|| "unknown".into(), |s| s.replace(['/', ' '], "-"));
     let status_id = format!("playground-{slug}");
     let url = x_status_public_url(&status_id);
-    let texts = tweet_texts_for_api(&request.body);
+    let texts = tweet_texts_for_api(&request.body)?;
     let reply = texts.get(1).map(|_| format!("{url}-2"));
     let mut detail = x_ship_detail(
         Some(&url),
@@ -124,12 +140,12 @@ fn playground_x_post(request: &XPublishRequest) -> PublishResult {
         reply.as_deref(),
     );
     detail = append_in_reply_detail(detail, trim_opt_id(request.in_reply_to_tweet_id.as_deref()));
-    PublishResult {
+    Ok(PublishResult {
         mode: PublishMode::Playground,
         linkedin_urn: Some(status_id),
         linkedin_url: Some(url),
         detail,
-    }
+    })
 }
 
 async fn production_x_post(request: &XPublishRequest) -> Result<PublishResult, PublishError> {
@@ -245,7 +261,7 @@ fn brave_result_from_stdout(
 ) -> Result<PublishResult, PublishError> {
     let parsed: serde_json::Value = serde_json::from_str(stdout).map_err(|e| {
         PublishError::Other(format!(
-            "Brave X post JSON parse: {e}; stdout={stdout}; stderr={stderr}"
+            "partial X thread: root=unresolved; Brave returned invalid post confirmation: {e}; stdout={stdout}; stderr={stderr}; verify before retrying"
         ))
     })?;
     if parsed.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
@@ -258,28 +274,42 @@ fn brave_result_from_stdout(
         )));
     }
     let quote_id = trim_opt_id(request.quote_tweet_id.as_deref());
-    let posted = posted_status_from_brave(&parsed, quote_id);
-    if posted.is_none() {
-        warn!(
-            quote = quote_id.unwrap_or(""),
-            stdout = %stdout,
-            "publish: Brave JSON did not include our posted tweet URL"
-        );
-    }
+    let (id, public) = posted_status_from_brave(&parsed, quote_id).ok_or_else(|| {
+        PublishError::Other(
+            "partial X thread: root=unresolved; Brave reported success without a valid posted status; verify before retrying".into()
+        )
+    })?;
     let reply_url = parsed
         .get("reply_url")
         .and_then(serde_json::Value::as_str)
         .map(str::trim)
         .filter(|s| !s.is_empty());
-    let (id, public) = posted.unzip();
+    if ship_texts(&request.body)?.1.is_some() {
+        let reply_id = parsed
+            .get("reply_status_id")
+            .and_then(serde_json::Value::as_str);
+        if !reply_id.is_some_and(|rid| {
+            !rid.is_empty()
+                && rid != id
+                && rid.bytes().all(|b| b.is_ascii_digit())
+                && reply_url
+                    .and_then(crate::sources::url_hygiene::x_status_id)
+                    .as_deref()
+                    == Some(rid)
+        }) {
+            return Err(PublishError::Other(format!(
+                "partial X thread: root={id} url={public}; Brave did not confirm the expected reply; verify before recovery, do not repost root"
+            )));
+        }
+    }
     let detail = append_in_reply_detail(
-        x_ship_detail(public.as_deref(), quote_id, reply_url),
+        x_ship_detail(Some(&public), quote_id, reply_url),
         in_reply_to,
     );
     Ok(PublishResult {
         mode: PublishMode::Production,
-        linkedin_urn: id,
-        linkedin_url: public,
+        linkedin_urn: Some(id),
+        linkedin_url: Some(public),
         detail,
     })
 }
@@ -300,7 +330,7 @@ fn ship_body_has_x_status_url(body: &str) -> bool {
 }
 
 fn ship_texts(body: &str) -> Result<(String, Option<String>), PublishError> {
-    let mut iter = tweet_texts_for_api(body)
+    let mut iter = tweet_texts_for_api(body)?
         .into_iter()
         .filter(|s| !s.trim().is_empty());
     let first = iter
@@ -314,6 +344,11 @@ fn ship_texts(body: &str) -> Result<(String, Option<String>), PublishError> {
         )));
     }
     let reply = iter.next();
+    if iter.next().is_some() {
+        return Err(PublishError::Other(
+            "refusing to ship more than two tweets".into(),
+        ));
+    }
     if let Some(ref r) = reply {
         if !crate::sources::tweet_thread::fits_x_limit(r) {
             return Err(PublishError::Other(format!(
@@ -325,11 +360,9 @@ fn ship_texts(body: &str) -> Result<(String, Option<String>), PublishError> {
     }
     let own_at = format!("@{X_PUBLIC_HANDLE}");
     let own_at_lower = own_at.to_ascii_lowercase();
-    if first
-        .lines()
-        .next()
-        .is_some_and(|l| l.trim().eq_ignore_ascii_case(&own_at))
-        || first.to_ascii_lowercase().contains(&own_at_lower)
+    if std::iter::once(&first)
+        .chain(reply.iter())
+        .any(|part| part.to_ascii_lowercase().contains(&own_at_lower))
     {
         return Err(PublishError::Other(format!(
             "refusing to ship: tweet text still contains {own_at} (own-handle spam)"
@@ -395,13 +428,17 @@ async fn api_x_post(request: &XPublishRequest) -> Result<PublishResult, PublishE
     if !status.is_success() {
         return Err(PublishError::Http(format!("X tweets API {status}: {body}")));
     }
-    let id = parse_created_tweet_id(&body).unwrap_or_else(|| "unknown".into());
+    let id = parse_created_tweet_id(&body).ok_or_else(|| PublishError::Other(
+        "partial X thread: root=unresolved; X accepted the root but returned no status id; verify the account before recovery, do not repost root".into()
+    ))?;
     let public = x_status_public_url(&id);
     let reply_url = if let Some(reply_text) = reply {
-        api_reply_tweet(&http, &creds, &id, &reply_text)
+        let rid = api_reply_tweet(&http, &creds, &id, &reply_text)
             .await
-            .ok()
-            .map(|rid| x_status_public_url(&rid))
+            .map_err(|e| PublishError::Other(format!(
+                "partial X thread: root={id} url={public}; reply failed: {e}; do not repost root, recover the reply explicitly"
+            )))?;
+        Some(x_status_public_url(&rid))
     } else {
         None
     };
@@ -446,13 +483,21 @@ async fn api_reply_tweet(
     if !status.is_success() {
         return Err(PublishError::Http(format!("X reply API {status}: {body}")));
     }
-    Ok(parse_created_tweet_id(&body).unwrap_or_else(|| "unknown".into()))
+    parse_created_tweet_id(&body).ok_or_else(|| {
+        PublishError::Other(
+            "X accepted reply but returned no status id; verify before retrying".into(),
+        )
+    })
 }
 
 /// Drop Slack footer / ID header; keep tweet text (+ publisher / X status URL).
 /// Operator Link:1 stays in the body. Quote is a separate field (`quote_tweet_id`).
 #[must_use]
 pub fn tweet_text_for_api(body: &str) -> String {
+    crate::llm::sanitize_itcy_text(&tweet_text_without_chrome(body))
+}
+
+fn tweet_text_without_chrome(body: &str) -> String {
     let mut lines: Vec<&str> = Vec::new();
     for line in body.lines() {
         let t = line.trim();
@@ -472,8 +517,7 @@ pub fn tweet_text_for_api(body: &str) -> String {
     }
     let joined = lines.join("\n").trim().to_string();
     let joined = crate::sources::tweet_footer::join_soft_wrap_lines(&joined);
-    let joined = crate::sources::tweet_footer::strip_own_x_handle(&joined);
-    crate::llm::sanitize_itcy_text(&joined)
+    crate::sources::tweet_footer::strip_own_x_handle(&joined)
 }
 
 fn is_tweet_operator_chrome(t: &str) -> bool {
@@ -507,9 +551,47 @@ fn is_tweet_footer_break(t: &str) -> bool {
 }
 
 /// Root tweet first; optional reply second (tags + publisher URL when over 280).
-#[must_use]
-pub fn tweet_texts_for_api(body: &str) -> Vec<String> {
-    crate::sources::tweet_thread::layout_x_thread(&tweet_text_for_api(body))
+///
+/// # Errors
+///
+/// Rejects invalid approved prose or content without a complete two-tweet layout.
+pub fn tweet_texts_for_api(body: &str) -> Result<Vec<String>, PublishError> {
+    let text = tweet_text_without_chrome(body);
+    if crate::llm::prose::normalize_publication_prose(&text) != text {
+        return Err(PublishError::Other(
+            "tweet has invalid punctuation or paragraph boundaries around closing emoji; /rework before approval or publishing".into()
+        ));
+    }
+    if crate::llm::sanitize_itcy_text(&text) != text {
+        return Err(PublishError::Other(
+            "tweet requires text hygiene rework before publishing; approved text was not changed"
+                .into(),
+        ));
+    }
+    crate::sources::tweet_thread::layout_x_thread(&text)
+        .map_err(|e| PublishError::Other(e.to_string()))
+}
+
+/// Display the exact checked layout without adding preview chrome to stored/public prose.
+///
+/// # Errors
+///
+/// Returns the same validation errors as publishing.
+pub fn tweet_preview_for_operator(body: &str) -> Result<String, PublishError> {
+    let parts = tweet_texts_for_api(body)?;
+    Ok(parts
+        .iter()
+        .enumerate()
+        .map(|(i, part)| {
+            format!(
+                "Tweet {}/{} ({} / 280 weighted)\n```\n{part}\n```",
+                i + 1,
+                parts.len(),
+                crate::sources::tweet_thread::x_weighted_len(part)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n"))
 }
 
 fn posted_status_from_brave(
@@ -520,7 +602,7 @@ fn posted_status_from_brave(
         .get("status_id")
         .and_then(serde_json::Value::as_str)?;
     let id = id.trim();
-    if id.is_empty() || id == "unknown" {
+    if id.is_empty() || !id.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
     let public = parsed
@@ -563,7 +645,11 @@ fn x_ship_detail(
 
 fn parse_created_tweet_id(body: &str) -> Option<String> {
     let v: serde_json::Value = serde_json::from_str(body).ok()?;
-    v.get("data")?.get("id")?.as_str().map(ToString::to_string)
+    v.get("data")?
+        .get("id")?
+        .as_str()
+        .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()))
+        .map(ToString::to_string)
 }
 
 fn oauth1_header(method: &str, url: &str, creds: &TwitterCreds) -> Result<String, PublishError> {
@@ -643,7 +729,8 @@ mod tests {
             body: "hi".into(),
             quote_tweet_id: None,
             in_reply_to_tweet_id: None,
-        });
+        })
+        .unwrap();
         assert!(link.linkedin_url.unwrap().contains("Interchouette"));
         assert!(link.detail.contains("https://x.com/Interchouette/status/"));
         assert!(!link.detail.contains("Quote of"));
@@ -653,7 +740,8 @@ mod tests {
             body: "hi".into(),
             quote_tweet_id: Some("99".into()),
             in_reply_to_tweet_id: None,
-        });
+        })
+        .unwrap();
         assert!(quote.linkedin_url.unwrap().contains("Interchouette"));
         assert!(quote.detail.contains("https://x.com/Interchouette/status/"));
         assert!(quote.detail.contains("Quote of https://x.com/i/status/99"));
@@ -664,7 +752,8 @@ mod tests {
             body: "owl reply".into(),
             quote_tweet_id: None,
             in_reply_to_tweet_id: Some("2092338421779796069".into()),
-        });
+        })
+        .unwrap();
         assert!(threaded
             .detail
             .contains("reply to https://x.com/i/status/2092338421779796069"));
@@ -698,6 +787,44 @@ mod tests {
     }
 
     #[test]
+    fn brave_success_requires_confirmed_root_and_expected_reply() {
+        let request = XPublishRequest {
+            tweet_id: None,
+            pubs_pr_number: None,
+            body: format!("{}.\n\n{}.", "a".repeat(200), "b".repeat(200)),
+            quote_tweet_id: None,
+            in_reply_to_tweet_id: None,
+        };
+        for value in [
+            serde_json::json!({"ok": true}),
+            serde_json::json!({"ok": true, "status_id": "unknown"}),
+            serde_json::json!({"ok": true, "status_id": "123"}),
+            serde_json::json!({"ok": true, "status_id": "123", "reply_status_id": "123", "reply_url": "https://x.com/Interchouette/status/123"}),
+        ] {
+            let err = brave_result_from_stdout(&value.to_string(), "", &request, None).unwrap_err();
+            assert!(err.to_string().contains("partial X thread:"));
+        }
+        let confirmed = serde_json::json!({
+            "ok": true,
+            "status_id": "123",
+            "reply_status_id": "456",
+            "reply_url": "https://x.com/Interchouette/status/456"
+        });
+        assert!(brave_result_from_stdout(&confirmed.to_string(), "", &request, None).is_ok());
+        for body in [
+            "{}",
+            r#"{"data":{"id":"unknown"}}"#,
+            r#"{"data":{"id":""}}"#,
+        ] {
+            assert!(parse_created_tweet_id(body).is_none());
+        }
+        assert_eq!(
+            parse_created_tweet_id(r#"{"data":{"id":"123"}}"#).as_deref(),
+            Some("123")
+        );
+    }
+
+    #[test]
     fn playground_splits_overlong_publisher_body() {
         let body = "\
 🦉 GitHub Models' retirement feels like a quiet end to a promising experiment.
@@ -718,9 +845,10 @@ https://blog.dante.company/en/articles/github-models-retirement-migration-2026-0
             body: body.into(),
             quote_tweet_id: None,
             in_reply_to_tweet_id: None,
-        });
+        })
+        .unwrap();
         assert!(r.detail.contains("-2"), "{}", r.detail);
-        let texts = tweet_texts_for_api(body);
+        let texts = tweet_texts_for_api(body).unwrap();
         assert_eq!(texts.len(), 2);
         assert!(
             texts[0].contains("GitHub Models"),
@@ -753,7 +881,7 @@ https://x.com/AstraKernel/status/2088224406187413962
 Link: 1
 0 = no link. /change_url TWEET-1 <0|1|2|3|4|5|url>
 1. https://x.com/AstraKernel/status/2088224406187413962";
-        let texts = tweet_texts_for_api(body);
+        let texts = tweet_texts_for_api(body).unwrap();
         assert_eq!(texts.len(), 2, "tags+URL push a reply: {texts:?}");
         assert!(texts[0].contains("tinyboot"));
         assert!(!texts
@@ -803,7 +931,7 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
         let mut req = XPublishRequest {
             tweet_id: Some("XPOST-20260820-000046".into()),
             pubs_pr_number: Some(45),
-            body: body.into(),
+            body: crate::sources::tweet_footer::aerate_tweet_commentary(body),
             quote_tweet_id: Some("2089811385899160055".into()),
             in_reply_to_tweet_id: None,
         };
@@ -836,8 +964,7 @@ Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
     }
 
     #[test]
-    fn agentpay_ship_texts_forward_word_split() {
-        // XPOST-20260822-000062: forward word split from the top; reply = rest + tags + link.
+    fn agentpay_ship_texts_refuses_required_mid_sentence_split() {
         let body = "\
 Tweet ID: TWEET-20260822-000062
 
@@ -856,35 +983,10 @@ Link: 1
 1. https://alsaecas.dev/projects/cspr-agentpay-guard
 
 Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
-        let (root, reply) = ship_texts(body).expect("ship texts");
-        let reply = reply.expect("overflow must ship a reply");
-        assert!(
-            root.starts_with('📜') && root.contains("spending limits"),
-            "root: {root}"
-        );
-        assert!(!root.contains('#'), "root: {root}");
-        assert!(
-            reply.contains("Testnet proof") && reply.contains("guardrail"),
-            "reply: {reply}"
-        );
-        assert!(
-            reply.contains("#CSPR") && reply.contains("alsaecas.dev"),
-            "reply tags+link: {reply}"
-        );
-        assert!(
-            !root.trim_end().ends_with("building on"),
-            "root must not mid-cut: {root}"
-        );
-        assert!(
-            crate::sources::tweet_thread::fits_x_limit(&root),
-            "{}",
-            crate::sources::tweet_thread::x_weighted_len(&root)
-        );
-        assert!(
-            crate::sources::tweet_thread::fits_x_limit(&reply),
-            "{}",
-            crate::sources::tweet_thread::x_weighted_len(&reply)
-        );
+        assert!(ship_texts(body)
+            .unwrap_err()
+            .to_string()
+            .contains("two complete tweets"));
     }
 
     #[test]
@@ -907,12 +1009,10 @@ Link: 1
 1. https://alsaecas.dev/projects/cspr-agentpay-guard
 
 Written by AI - ITCy - model ollama/qwen3:8b - tokens in:6146 out:123";
-        let texts = tweet_texts_for_api(body);
-        assert_eq!(texts.len(), 2, "{texts:?}");
-        let (root, reply) = ship_texts(body).expect("ship texts");
-        let reply = reply.expect("reply");
-        assert_eq!(texts[0], root);
-        assert_eq!(texts[1], reply);
+        assert_eq!(
+            tweet_texts_for_api(body).unwrap_err().to_string(),
+            ship_texts(body).unwrap_err().to_string()
+        );
     }
 
     #[test]

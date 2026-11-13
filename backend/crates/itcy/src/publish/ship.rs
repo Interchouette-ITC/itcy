@@ -36,6 +36,9 @@ pub async fn ship_company_post(
         None => resolve_publish_mode_agile(mode_fallback)?,
     };
     request.body = linkedin_text_for_api(&request.body);
+    if crate::llm::prose::normalize_publication_prose(&request.body) != request.body {
+        return Err(PublishError::Other("draft needs punctuation/paragraph rework before publishing; approved prose was not changed".into()));
+    }
     info!(
         mode = mode.as_str(),
         draft_id = request.draft_id.as_deref().unwrap_or(""),

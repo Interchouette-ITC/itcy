@@ -3,6 +3,8 @@
 
 //! Sanitize model / draft text for `ITCy` hard rules (no em dash, etc.).
 
+use unicode_segmentation::UnicodeSegmentation;
+
 /// Unicode em dash (U+2014) - forbidden in `ITCy` artifacts.
 pub const EM_DASH: char = '\u{2014}';
 
@@ -75,23 +77,46 @@ pub fn strip_spurious_period_after_emoji(body: &str) -> String {
     if !has_emoji_dot_glue(body) {
         return body.to_string();
     }
-    let mut out = String::with_capacity(body.len());
-    let mut chars = body.chars().peekable();
-    while let Some(c) = chars.next() {
-        if char_is_emoji_like(c) {
-            out.push(c);
-            if chars.peek() == Some(&'.') {
-                chars.next();
-                if chars.peek() == Some(&' ') {
-                    out.push(' ');
-                    chars.next();
-                } else if chars.peek().is_some() {
-                    out.push(' ');
-                }
-                continue;
-            }
+    let glyphs: Vec<&str> = body.graphemes(true).collect();
+    let mut out = String::new();
+    let mut i = 0;
+    let mut in_code = false;
+    while i < glyphs.len() {
+        let glyph = glyphs[i];
+        if glyph == "`" {
+            in_code = !in_code;
         }
-        out.push(c);
+        let in_url = out
+            .split_whitespace()
+            .next_back()
+            .is_some_and(|s| s.contains("://"));
+        if !in_code
+            && !in_url
+            && crate::llm::prose::is_emoji(glyph)
+            && glyphs.get(i + 1) == Some(&".")
+        {
+            let mut end = out.len();
+            for (offset, prior) in out.grapheme_indices(true).rev() {
+                if crate::llm::prose::is_emoji(prior) || prior.chars().all(char::is_whitespace) {
+                    end = offset;
+                } else {
+                    break;
+                }
+            }
+            let prose = &out[..end];
+            if !prose.is_empty()
+                && !prose
+                    .trim_end_matches(['"', '\'', '\u{2019}', '\u{201d}'])
+                    .ends_with(['.', '?', '!'])
+            {
+                out.insert(end, '.');
+            }
+            out.push_str(glyph);
+            i += 2;
+        } else {
+            out.push_str(glyph);
+            i += 1;
+        }
     }
     out
 }

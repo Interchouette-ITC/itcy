@@ -4,7 +4,8 @@
 //! Submit / retry BAT for Post PRs (`<POST-id>/` on the posts branch) and org drafts mirror.
 
 use crate::bat::github::{
-    post_pr_body, xpost_pr_body, BatGithubConfig, GithubClient, GithubError, OpenedPr, RepoFile,
+    bat_pr_title, post_pr_body, xpost_pr_body, BatGithubConfig, GithubClient, GithubError,
+    OpenedPr, RepoFile,
 };
 use crate::bat::pack::{
     branch_name_for_post, branch_name_for_xpost, draft_id_to_post_id, pack_post_files,
@@ -135,6 +136,24 @@ fn gate_accept_draft(draft_id: &str, draft: &StoredDraft) -> Result<(), BatSubmi
     Ok(())
 }
 
+fn validate_surface_text(draft: &StoredDraft, surface: &BatSurface) -> Result<(), BatSubmitError> {
+    match surface {
+        BatSurface::Tweet => {
+            crate::publish::tweet_texts_for_api(&draft.body)
+                .map_err(|e| BatSubmitError::Gate(e.to_string()))?;
+        }
+        BatSurface::LinkedIn => {
+            let prose = crate::publish::linkedin_text_for_api(&draft.body);
+            if crate::llm::prose::normalize_publication_prose(&prose) != prose {
+                return Err(BatSubmitError::Gate(
+                    "draft needs punctuation/paragraph rework before BAT".into(),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 async fn accept_surface(
     db_path: &Path,
     draft_id: &str,
@@ -142,6 +161,7 @@ async fn accept_surface(
 ) -> Result<BatSubmitResult, BatSubmitError> {
     let draft = load_draft(db_path, draft_id)?;
     gate_accept_draft(draft_id, &draft)?;
+    validate_surface_text(&draft, &surface)?;
     if let Err(reason) = match surface {
         BatSurface::LinkedIn => {
             crate::sources::publisher_url::require_ship_cite_reachable(
@@ -169,7 +189,7 @@ async fn accept_surface(
             let post_id =
                 draft_id_to_post_id(&files.draft_id).unwrap_or_else(|| files.draft_id.clone());
             let branch = branch_name_for_post(&post_id);
-            let title = format!("Post: {} ({})", draft.subject, post_id);
+            let title = bat_pr_title("Post", &draft.subject, &post_id);
             let pr_body = post_pr_body(&draft.subject, &files.draft_id, &post_id);
             (files, branch, title, pr_body, cfg.posts_owner.clone())
         }
@@ -178,7 +198,7 @@ async fn accept_surface(
             let xpost_id =
                 tweet_id_to_xpost_id(&files.draft_id).unwrap_or_else(|| files.draft_id.clone());
             let branch = branch_name_for_xpost(&xpost_id);
-            let title = format!("XPOST: {} ({})", draft.subject, xpost_id);
+            let title = bat_pr_title("XPOST", &draft.subject, &xpost_id);
             let pr_body = xpost_pr_body(&draft.subject, &files.draft_id, &xpost_id);
             (files, branch, title, pr_body, cfg.tweet_posts_owner.clone())
         }

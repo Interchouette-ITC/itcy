@@ -3,6 +3,25 @@
 
 /** Pure helpers for Brave X ship URL resolve (unit-tested). */
 
+/** Compare the complete composer payload, including paragraph breaks and code punctuation. */
+export function composerTextMatches(got, wanted) {
+  const normalize = (value) => String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .replace(/\u200b/g, "")
+    .trim();
+  return normalize(wanted).length > 0 && normalize(got) === normalize(wanted);
+}
+
+/** Read both files before connecting to the browser or posting a root. */
+export function readShipPayloads(readText, rootFile, replyFile) {
+  const text = readText(rootFile).trim();
+  if (!text) throw new Error("empty tweet text");
+  const replyText = replyFile ? readText(replyFile).trim() : null;
+  if (replyFile && !replyText) throw new Error("overflow reply file empty");
+  return { text, replyText };
+}
+
 export function statusFromHref(href) {
   if (!href) return null;
   const path = String(href).split("?")[0];

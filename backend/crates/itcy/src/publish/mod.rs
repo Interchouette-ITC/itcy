@@ -29,7 +29,8 @@ pub use mcp_status::{
 pub use mock::PlaygroundPublisher;
 pub use ship::{draft_id_from_body, ship_company_post, ShipOptions};
 pub use x::{
-    resolve_x_publish_mode, ship_x_post, tweet_text_for_api, tweet_texts_for_api, XPublishRequest,
+    resolve_x_publish_mode, ship_x_post, tweet_preview_for_operator, tweet_text_for_api,
+    tweet_texts_for_api, XPublishRequest,
 };
 
 use async_trait::async_trait;

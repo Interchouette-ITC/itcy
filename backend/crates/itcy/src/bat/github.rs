@@ -12,6 +12,27 @@ use thiserror::Error;
 use tracing::warn;
 
 const DEFAULT_REVIEWER: &str = "gRoussac";
+const PR_TITLE_MAX_CHARS: usize = 80;
+
+pub(crate) fn bat_pr_title(kind: &str, subject: &str, publication_id: &str) -> String {
+    let subject = subject.split_whitespace().collect::<Vec<_>>().join(" ");
+    let prefix = format!("{kind}: ");
+    let suffix = format!(" ({publication_id})");
+    let budget = PR_TITLE_MAX_CHARS - prefix.chars().count() - suffix.chars().count();
+    let subject = if subject.chars().count() > budget {
+        warn!(
+            publication_id,
+            "Shortening BAT PR title subject to fit GitHub limit"
+        );
+        format!(
+            "{}...",
+            subject.chars().take(budget - 3).collect::<String>()
+        )
+    } else {
+        subject
+    };
+    format!("{prefix}{subject}{suffix}")
+}
 
 #[derive(Deserialize)]
 struct ContentMeta {
@@ -855,7 +876,7 @@ impl GithubClient {
             self.update_draft_pr_files(&org, &branch, &files).await?;
             return Ok(Some(existing));
         }
-        let title = format!("Draft: {subject} ({draft_id})");
+        let title = bat_pr_title("Draft", subject, draft_id);
         let body = org_draft_pr_body(draft_id, subject);
         let pr = self
             .open_pr_into(&org, &base, &branch, &title, &body, &files)
@@ -1909,6 +1930,49 @@ fn push_toml_string_token(part: &str, out: &mut Vec<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bat_pr_title_preserves_short_subject_and_publication_id() {
+        assert_eq!(
+            bat_pr_title("XPOST", "Systemd welcomes Rust", "XPOST-20261109-000227"),
+            "XPOST: Systemd welcomes Rust (XPOST-20261109-000227)"
+        );
+    }
+
+    #[test]
+    fn bat_pr_title_enforces_total_limit_for_all_surfaces() {
+        for (kind, id) in [
+            ("XPOST", "XPOST-20261109-000227"),
+            ("Post", "POST-20261109-000227"),
+            ("Draft", "DRAFT-20261109-000227"),
+        ] {
+            let overhead = format!("{kind}:  ({id})").chars().count();
+            for total in [79, 80, 81, 255, 256, 257, 1000] {
+                for character in ['a', 'é', '🦉'] {
+                    let subject = character.to_string().repeat(total - overhead);
+                    let title = bat_pr_title(kind, &subject, id);
+                    assert_eq!(title.chars().count(), total.min(PR_TITLE_MAX_CHARS));
+                    assert!(title.starts_with(&format!("{kind}: ")));
+                    assert!(title.ends_with(&format!(" ({id})")));
+                    if total <= PR_TITLE_MAX_CHARS {
+                        assert_eq!(title, format!("{kind}: {subject} ({id})"));
+                    } else {
+                        assert!(title.ends_with(&format!("... ({id})")));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn bat_pr_title_normalizes_multiline_subject_without_changing_original() {
+        let subject = "  Systemd\n\nwelcomes\tRust  ";
+        assert_eq!(
+            bat_pr_title("XPOST", subject, "XPOST-20261109-000227"),
+            "XPOST: Systemd welcomes Rust (XPOST-20261109-000227)"
+        );
+        assert_eq!(subject, "  Systemd\n\nwelcomes\tRust  ");
+    }
 
     #[test]
     fn org_draft_pr_body_mentions_production_drafts() {

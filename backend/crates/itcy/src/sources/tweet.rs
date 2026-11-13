@@ -18,9 +18,9 @@ use crate::sources::rag::{
     resolve_session_draft_id, run_load_phase, GroundedDraft, RagError,
 };
 use crate::sources::tweet_footer::{
-    aerate_tweet_commentary, coerce_tweet_body, compose_tweet_message, ensure_tweet_cite_line,
-    extract_brief_cite, in_tweet_publisher_url, operator_https_urls, pick_tweet_cite_options,
-    search_keywords, strip_brand_org_at_handles, tweet_body_exploded,
+    aerate_tweet_commentary, compose_tweet_message, ensure_tweet_cite_line, extract_brief_cite,
+    in_tweet_publisher_url, operator_https_urls, pick_tweet_cite_options, search_keywords,
+    strip_brand_org_at_handles, tweet_body_exploded,
 };
 use crate::sources::tweet_load::run_short_cite_load;
 use crate::sources::url_hygiene::is_x_status_url;
@@ -79,11 +79,21 @@ pub async fn build_grounded_tweet(
         }
     }
 
+    // Choose the final cite pool before validating/retrying the writer's full payload.
+    let refill_pool = crate::sources::rag::draft_link_refill_pool(tools, &pack_urls).await;
+    let pack_for_links = crate::sources::publisher_url::cap_publisher_urls_by_domain(
+        pack_urls
+            .iter()
+            .chain(refill_pool.iter())
+            .chain(operator_https_urls(subject).iter())
+            .cloned(),
+        crate::sources::publisher_url::LINK_OPTIONS_CAP,
+    );
     let (tweet_body, tweet_trace) = run_tweet_phase(
         router,
         subject,
         &research_pack,
-        &pack_urls,
+        &pack_for_links,
         subject_https,
         session_dir.as_ref(),
         tools,
@@ -96,8 +106,6 @@ pub async fn build_grounded_tweet(
     );
 
     let tweet_id = resolve_session_draft_id(tools, db_path).await;
-    // Capture before end_session clears EXTRACTED (same timing bug as draft Link refill).
-    let refill_pool = crate::sources::rag::draft_link_refill_pool(tools, &pack_urls).await;
     end_session_best_effort(
         tools,
         session_dir.as_ref(),
@@ -114,15 +122,8 @@ pub async fn build_grounded_tweet(
         tweet_trace.model_label()
     );
     let tweet_body = ensure_tweet_handles_from_pack(tools, &tweet_body, &research_pack);
-    let pack_for_links = crate::sources::publisher_url::cap_publisher_urls_by_domain(
-        pack_urls
-            .iter()
-            .chain(refill_pool.iter())
-            .chain(operator_https_urls(subject).iter())
-            .cloned(),
-        crate::sources::publisher_url::LINK_OPTIONS_CAP,
-    );
     let (body, link_options) = attach_tweet_cites(&tweet_body, &pack_for_links, &tweet_id, subject);
+    crate::publish::tweet_texts_for_api(&body).map_err(|e| RagError::Store(e.to_string()))?;
     crate::sources::publisher_url::require_tweet_link_options_floor(subject, &link_options)
         .map_err(RagError::Store)?;
     info!(
@@ -200,6 +201,7 @@ pub async fn build_grounded_tweet_from_pack(
     .await;
     let tweet_body = ensure_tweet_handles_from_pack(tools, &tweet_body, &research_pack);
     let (body, link_options) = attach_tweet_cites(&tweet_body, &urls, &tweet_id, subject);
+    crate::publish::tweet_texts_for_api(&body).map_err(|e| RagError::Store(e.to_string()))?;
     crate::sources::publisher_url::require_tweet_link_options_floor(subject, &link_options)
         .map_err(RagError::Store)?;
     Ok(GroundedDraft {
@@ -251,21 +253,31 @@ async fn run_tweet_phase(
         extra_pack_note: None,
     };
     let (content, mut trace) = complete_tweet_writer(&base).await?;
-    let mut body = match finalize_tweet_writer_body(&content, subject) {
+    let mut body = match finalize_tweet_candidate(&content, &base) {
         Ok(body) => body,
         Err(first_err) => {
             warn!(error = %first_err, "load_tweet: scrub failed; retrying writer once");
+            let retry_note = format!("{TWEET_SCRUB_RETRY_NOTE}\nLength/layout error: {first_err}. Rewrite shorter complete sentences. Maximum two tweets of 280 weighted characters each, including handles, hashtags and URLs. Never clip a sentence.");
             let retry_ctx = TweetWriterCtx {
-                extra_pack_note: Some(TWEET_SCRUB_RETRY_NOTE),
+                extra_pack_note: Some(&retry_note),
                 ..base
             };
             let (retry_content, retry_trace) = complete_tweet_writer(&retry_ctx).await?;
             trace = trace.clone().accumulate(&retry_trace);
-            finalize_tweet_writer_body(&retry_content, subject)?
+            finalize_tweet_candidate(&retry_content, &retry_ctx)?
         }
     };
     body = enforce_required_quotes_on_tweet(&base, subject, body, &mut trace).await?;
+    body = finalize_tweet_candidate(&body, &base)?;
     Ok((body, trace))
+}
+
+fn finalize_tweet_candidate(content: &str, ctx: &TweetWriterCtx<'_>) -> Result<String, RagError> {
+    let body = finalize_tweet_writer_body(content, ctx.subject)?;
+    let body = ensure_tweet_handles_from_pack(ctx.tools, &body, ctx.research_pack);
+    let (assembled, _) = attach_tweet_cites(&body, ctx.pack_urls, "TWEET-validation", ctx.subject);
+    crate::publish::tweet_texts_for_api(&assembled).map_err(|e| RagError::Store(e.to_string()))?;
+    Ok(body)
 }
 
 async fn enforce_required_quotes_on_tweet(
@@ -343,14 +355,9 @@ async fn complete_tweet_writer(
 fn finalize_tweet_writer_body(content: &str, subject: &str) -> Result<String, RagError> {
     let body = scrub_and_validate_tweet_body(content)?;
     if tweet_body_exploded(&body) {
-        warn!("load_tweet: writer dump coerced to tweet shape (no retry)");
-        let coerced = coerce_tweet_body(&body, subject);
-        if !tweet_names_subject_entity(&coerced, subject) {
-            return Err(RagError::Store(
-                "writer dropped the subject entity name from the tweet".into(),
-            ));
-        }
-        return Ok(coerced);
+        return Err(RagError::Store(
+            "writer returned an essay; rewrite shorter complete tweets without clipping".into(),
+        ));
     }
     if !tweet_names_subject_entity(&body, subject) {
         return Err(RagError::Store(
@@ -484,6 +491,67 @@ fn ensure_tweet_handles_from_pack(tools: Option<&ItcyTools>, body: &str, pack: &
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llm::{ChainCandidate, LlmClient, LlmError, LlmResponse, LlmToolDef, TaskChains};
+    use std::collections::{HashMap, VecDeque};
+    use std::sync::{Arc, Mutex};
+
+    struct SequenceWriter(Mutex<VecDeque<String>>);
+
+    #[async_trait::async_trait]
+    impl LlmClient for SequenceWriter {
+        fn provider_id(&self) -> &'static str {
+            "fixture"
+        }
+
+        async fn chat(
+            &self,
+            _: &[LlmMessage],
+            _: &str,
+            _: Option<&[LlmToolDef]>,
+        ) -> Result<LlmResponse, LlmError> {
+            let content = self
+                .0
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("bounded writer calls");
+            Ok(LlmResponse {
+                message: LlmMessage::assistant(content),
+                finish_reason: "stop".into(),
+                usage: None,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_generated_tweet_is_retried_once_and_never_clipped() {
+        for recover in [true, false] {
+            let long = "Rust tooling with no complete sentence ".repeat(20);
+            let short =
+                "Rust makes builds predictable. 🦀\n\nBuilders inspect the change. 🦉\n\n#Rust";
+            let client = Arc::new(SequenceWriter(Mutex::new(VecDeque::from([
+                long.clone(),
+                if recover { short.to_string() } else { long },
+            ]))));
+            let clients: HashMap<String, Arc<dyn LlmClient>> =
+                HashMap::from([("fixture".to_string(), client.clone() as Arc<dyn LlmClient>)]);
+            let router = FailoverRouter::new(
+                clients,
+                TaskChains::new().with_chain(
+                    TaskKind::Draft,
+                    vec![ChainCandidate::new("fixture", "fixture")],
+                ),
+            );
+            let result =
+                run_tweet_phase(&router, "Rust", "Rust tooling", &[], false, None, None).await;
+            if recover {
+                assert_eq!(result.unwrap().0, short);
+            } else {
+                assert!(result.is_err());
+            }
+            assert!(client.0.lock().unwrap().is_empty(), "exactly two attempts");
+        }
+    }
 
     #[test]
     fn scrub_and_validate_refuses_empty_paren_cite_hole() {

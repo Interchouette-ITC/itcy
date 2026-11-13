@@ -150,12 +150,12 @@ pub async fn build_itcy_self_tweet(
         t.set_draft_policy(&pack_urls).await;
     }
     log_pipeline_banner("SELF-INTRO TWEET (X writer)");
-    // Identity pack is static; writer must not tool-drift or essay-retry.
-    let messages = vec![
+    // Identity pack is static; length retries never use research tools.
+    let mut messages = vec![
         LlmMessage::system(self_tweet_system_prompt()),
         LlmMessage::user(self_user_message("x", instructions)),
     ];
-    let (response, trace) = match router
+    let (response, mut trace) = match router
         .complete_with_tools(TaskKind::Draft, &messages, None, 0)
         .await
     {
@@ -170,26 +170,46 @@ pub async fn build_itcy_self_tweet(
             return Err(e.into());
         }
     };
-    let mut body = crate::sources::tweet::scrub_and_validate_tweet_body(&response.message.content)?;
-    if tweet_body_exploded(&body) {
-        warn!("self_tweet: writer dump coerced to tweet shape (no retry)");
-        body = coerce_tweet_body(&body, subject);
-    }
     let tweet_id = resolve_session_draft_id(tools, db_path).await;
+    let finalize = |raw: &str, trace: &CompletionTrace| -> Result<GroundedDraft, RagError> {
+        let body = crate::sources::tweet::scrub_and_validate_tweet_body(raw)?;
+        let body = if tweet_body_exploded(&body) {
+            coerce_tweet_body(&body, subject).map_err(RagError::Store)?
+        } else {
+            body
+        };
+        let draft = assemble_tweet_draft(
+            subject,
+            &body,
+            trace,
+            tweet_id.clone(),
+            pack_urls.clone(),
+            research_pack.clone(),
+        );
+        crate::publish::tweet_texts_for_api(&draft.body)
+            .map_err(|e| RagError::Store(e.to_string()))?;
+        Ok(draft)
+    };
+    let draft = match finalize(&response.message.content, &trace) {
+        Ok(draft) => draft,
+        Err(err) => {
+            warn!(error = %err, "self tweet: invalid layout; retrying writer once");
+            messages.push(LlmMessage::assistant(response.message.content));
+            messages.push(LlmMessage::user(format!("Rewrite shorter complete sentences. Maximum two tweets of 280 weighted characters including all hashtags and links. Preserve identity and operator instructions. Previous error: {err}")));
+            let (response, retry_trace) = router
+                .complete_with_tools(TaskKind::Draft, &messages, None, 0)
+                .await?;
+            trace = trace.accumulate(&retry_trace);
+            finalize(&response.message.content, &trace)?
+        }
+    };
     end_session_best_effort(
         tools,
         session_dir.as_ref(),
         &session_note(session_dir.as_ref()),
     )
     .await;
-    Ok(assemble_tweet_draft(
-        subject,
-        &body,
-        &trace,
-        tweet_id,
-        pack_urls,
-        research_pack,
-    ))
+    Ok(draft)
 }
 
 fn assemble_tweet_draft(

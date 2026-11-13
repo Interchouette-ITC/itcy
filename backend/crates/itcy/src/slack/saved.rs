@@ -134,6 +134,14 @@ impl SlackRuntime {
                         } else {
                             format!("{fenced}\n\n{disclosure}")
                         }
+                    } else if row.draft_id.starts_with("TWEET-") {
+                        let original =
+                            crate::sources::draft_footer::slack_highlight_active_link(&restored);
+                        let preview = match crate::publish::tweet_preview_for_operator(&restored) {
+                            Ok(preview) => preview,
+                            Err(err) => format!("Layout blocked; /rework before publishing: {err}"),
+                        };
+                        format!("{original}\n\nChecked layout of stored text (not proof of published text):\n{preview}")
                     } else {
                         crate::sources::draft_footer::slack_highlight_active_link(&restored)
                     };

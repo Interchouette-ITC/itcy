@@ -7,6 +7,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   asOurPostedStatus,
+  composerTextMatches,
+  readShipPayloads,
   detectPostRejectReason,
   pickLatestOwnPost,
   resolvePostedStatus,
@@ -14,6 +16,27 @@ import {
   statusIdNewer,
   stripQuotedStatusUrl,
 } from "./x-ship-resolve.mjs";
+
+test("composer must match the complete text and paragraph breaks", () => {
+  const expected = "A sufficiently long matching prefix.\n\nFilename `chat_template.jinja`. ☕️";
+  assert.equal(composerTextMatches(expected, expected), true);
+  assert.equal(composerTextMatches(expected.slice(0, 24), expected), false);
+  assert.equal(composerTextMatches(expected.replace("jinja", " jinja"), expected), false);
+  assert.equal(composerTextMatches(expected.replace("\n\n", " "), expected), false);
+  assert.equal(composerTextMatches(expected.replace(/☕️$/, ""), expected), false);
+  assert.equal(composerTextMatches("", ""), false);
+});
+
+test("all payload files are read before any publishing", () => {
+  const read = (file) => {
+    if (file === "root") return "Root.";
+    throw new Error("reply missing");
+  };
+  assert.throws(() => readShipPayloads(read, "root", "reply"), /reply missing/);
+  assert.throws(() => readShipPayloads(() => " ", "root", ""), /empty tweet/);
+  assert.deepEqual(readShipPayloads((file) => `${file}.`, "root", "reply"),
+    { text: "root.", replyText: "reply." });
+});
 
 test("detectPostRejectReason catches duplicate-post copy", () => {
   const t =
@@ -45,7 +68,9 @@ test("XPOST-095 first pass: one Brave session, root tab then reply tab (no CDP c
   // CDP Playwright teardown mid-run kills Brave; exit after ok so shell trap cleans up.
   assert.equal((src.match(/browser\.close\(/g) || []).length, 0);
   assert.match(src, /process\.exit\(0\)/);
-  assert.match(src, /overflow reply file empty/);
+  assert.match(src, /readShipPayloads/);
+  assert.ok(src.indexOf("readShipPayloads(\n") < src.indexOf("connectOverCDP"),
+    "read all payload files before touching the browser");
   assert.equal(/findOwnPostMatchingText|findTimelineRoot|timelineLooksLikeRoot|ALREADY_SAID/.test(src), false);
   assert.match(src, /prepareRootTab/);
   assert.match(src, /replyPage = await context\.newPage\(\)/);

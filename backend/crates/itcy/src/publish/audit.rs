@@ -107,6 +107,30 @@ pub enum PublishAuditError {
 }
 
 impl PublishAuditStore {
+    /// Find a previously posted root whose reply failed, to prevent blind root retries.
+    ///
+    /// # Errors
+    ///
+    /// Returns a database error if the persisted guard cannot be checked.
+    pub fn incomplete_x_thread(
+        &self,
+        draft_id: Option<&str>,
+        body: &str,
+    ) -> Result<Option<String>, PublishAuditError> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT error FROM publish_audit
+             WHERE mode = 'production' AND status = 'error'
+             AND (draft_id = ?1 OR body_sha256 = ?2)
+             AND error LIKE '%partial X thread:%'
+             ORDER BY id DESC LIMIT 1",
+                params![draft_id, body_sha256(body)],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
     /// Opens (or creates) the DB and ensures `publish_audit` exists.
     ///
     /// # Errors

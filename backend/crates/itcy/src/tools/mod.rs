@@ -32,9 +32,9 @@ use tracing::{info, warn};
 /// Combined tool provider used by Slack freeform + draft.
 pub struct ItcyTools {
     state_db: PathBuf,
-    corpus: CorpusSearch,
+    corpus: Arc<CorpusSearch>,
     handles: Arc<RwLock<HandlesIndex>>,
-    host_browser: Mutex<Option<Arc<HostBrowser>>>,
+    host_browser: Arc<Mutex<Option<Arc<HostBrowser>>>>,
     host_browser_cmd: PathBuf,
     session: Mutex<Option<ResearchSession>>,
     policy: Mutex<ToolPolicy>,
@@ -46,10 +46,24 @@ impl ItcyTools {
         let handles = crate::sources::handles::load_handles().unwrap_or_default();
         Self {
             state_db: db_path.clone(),
-            corpus: CorpusSearch::new(db_path, embed),
+            corpus: Arc::new(CorpusSearch::new(db_path, embed)),
             handles: Arc::new(RwLock::new(handles)),
-            host_browser: Mutex::new(None),
+            host_browser: Arc::new(Mutex::new(None)),
             host_browser_cmd,
+            session: Mutex::new(None),
+            policy: Mutex::new(ToolPolicy::default()),
+        }
+    }
+
+    /// Share long-lived resources, but never a command's research identity or tool policy.
+    #[must_use]
+    pub fn for_operation(&self) -> Self {
+        Self {
+            state_db: self.state_db.clone(),
+            corpus: Arc::clone(&self.corpus),
+            handles: Arc::clone(&self.handles),
+            host_browser: Arc::clone(&self.host_browser),
+            host_browser_cmd: self.host_browser_cmd.clone(),
             session: Mutex::new(None),
             policy: Mutex::new(ToolPolicy::default()),
         }
@@ -93,7 +107,7 @@ impl ItcyTools {
     }
 
     /// Start one folder for the whole load→draft research run under `pw/screenshots/<draft_id>/`.
-    /// Reuses an existing open session (idempotent) so Slack can open it before LOAD.
+    /// Reuses only the same draft's session so Slack can open it before LOAD.
     ///
     /// # Errors
     ///
@@ -103,19 +117,31 @@ impl ItcyTools {
         subject: &str,
         draft_id: &str,
     ) -> Result<PathBuf, LlmError> {
-        {
-            let guard = self.session.lock().await;
-            if let Some(ref s) = *guard {
+        self.begin_research_session_at(&browse::resolve_pw_screenshots_dir_pub(), subject, draft_id)
+            .await
+    }
+
+    async fn begin_research_session_at(
+        &self,
+        root: &std::path::Path,
+        subject: &str,
+        draft_id: &str,
+    ) -> Result<PathBuf, LlmError> {
+        let mut guard = self.session.lock().await;
+        if let Some(ref s) = *guard {
+            if s.draft_id == draft_id {
                 return Ok(s.root.clone());
             }
         }
-        let root = browse::resolve_pw_screenshots_dir_pub();
-        let _ = std::fs::create_dir_all(&root);
-        let sess = ResearchSession::start(&root, subject, draft_id)
+        if let Some(s) = guard.take() {
+            s.finish("research session superseded by the next draft");
+        }
+        let sess = ResearchSession::start(root, subject, draft_id)
             .map_err(|e| LlmError::ToolProvider(format!("research session start: {e}")))?;
         let dir = sess.root.clone();
-        *self.session.lock().await = Some(sess);
         *self.policy.lock().await = ToolPolicy::default();
+        *guard = Some(sess);
+        drop(guard);
         Ok(dir)
     }
 
@@ -653,6 +679,95 @@ impl ToolProvider for ItcyTools {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn draft_lifecycle_operations_isolate_ids_policy_and_research() {
+        use crate::sources::embed::MockEmbedClient;
+        use crate::sources::rag::resolve_session_draft_id;
+
+        let dir = tempfile::tempdir().unwrap();
+        let tools = ItcyTools::new(
+            dir.path().join("runtime.db"),
+            Arc::new(MockEmbedClient),
+            PathBuf::from("/bin/false"),
+        );
+        let tweet_id = "TWEET-20261109-000224";
+        tools
+            .begin_research_session_at(dir.path(), "old tweet", tweet_id)
+            .await
+            .unwrap();
+        tools.set_subject_https_writer_policy().await;
+        tools
+            .session_record_extracted_urls(&["https://example.com/old".into()])
+            .await;
+
+        let draft_tools = tools.for_operation();
+        let tweet_tools = tools.for_operation();
+        assert!(draft_tools.session_draft_id().await.is_none());
+        assert!(draft_tools.session_extracted_urls().await.is_empty());
+        assert!(draft_tools.policy.lock().await.allow_web_search);
+        assert!(Arc::ptr_eq(&tools.host_browser, &draft_tools.host_browser));
+        assert!(Arc::ptr_eq(&tools.handles, &draft_tools.handles));
+        assert!(Arc::ptr_eq(&tools.corpus, &draft_tools.corpus));
+
+        let draft_id = "DRAFT-20261109-000225";
+        let other_tweet_id = "TWEET-20261109-000226";
+        draft_tools
+            .begin_research_session_at(dir.path(), "draft", draft_id)
+            .await
+            .unwrap();
+        tweet_tools
+            .begin_research_session_at(dir.path(), "tweet", other_tweet_id)
+            .await
+            .unwrap();
+        let (draft, tweet) = tokio::join!(
+            resolve_session_draft_id(Some(&draft_tools), &tools.state_db),
+            resolve_session_draft_id(Some(&tweet_tools), &tools.state_db)
+        );
+        assert_eq!(draft, draft_id);
+        assert_eq!(tweet, other_tweet_id);
+        draft_tools.end_research_session("done").await;
+        assert_eq!(
+            tweet_tools.session_draft_id().await.as_deref(),
+            Some(other_tweet_id)
+        );
+        assert_eq!(tools.session_draft_id().await.as_deref(), Some(tweet_id));
+        tweet_tools.end_research_session("done").await;
+        tools.end_research_session("done").await;
+    }
+
+    #[tokio::test]
+    async fn draft_lifecycle_session_reuses_only_the_same_draft() {
+        let dir = tempfile::tempdir().unwrap();
+        let tools = ItcyTools::new(
+            dir.path().join("runtime.db"),
+            Arc::new(crate::sources::embed::MockEmbedClient),
+            PathBuf::from("/bin/false"),
+        );
+        let tweet_id = "TWEET-20261109-000224";
+        let first = tools
+            .begin_research_session_at(dir.path(), "tweet", tweet_id)
+            .await
+            .unwrap();
+        tools.set_subject_https_writer_policy().await;
+        let reused = tools
+            .begin_research_session_at(dir.path(), "tweet", tweet_id)
+            .await
+            .unwrap();
+        assert_eq!(first, reused);
+        assert!(!tools.policy.lock().await.allow_web_search);
+
+        let draft_id = "DRAFT-20261109-000225";
+        let next = tools
+            .begin_research_session_at(dir.path(), "draft", draft_id)
+            .await
+            .unwrap();
+        assert_eq!(next, dir.path().join(draft_id));
+        assert_ne!(first, next);
+        assert_eq!(tools.session_draft_id().await.as_deref(), Some(draft_id));
+        assert!(tools.policy.lock().await.allow_web_search);
+        tools.end_research_session("done").await;
+    }
 
     #[test]
     fn parse_url_ok() {
