@@ -11,7 +11,7 @@ use itcy::paths::product_join;
 use itcy::sources::{SourceDb, SourceListFilter};
 use rmcp::{
     handler::server::tool::ToolRouter,
-    model::{CallToolResult, ContentBlock, ServerCapabilities, ServerInfo},
+    model::{CallToolResult, ContentBlock, ServerCapabilities, ServerConfig},
     tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler, ServiceExt,
 };
 use schemars::JsonSchema;
@@ -316,8 +316,8 @@ impl LinkedinGrMcp {
 #[allow(clippy::unused_async_trait_impl)]
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for LinkedinGrMcp {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
             "linkedin-itcy-GR: operator personal LinkedIn corpus (export + Portability). Use linkedin_stats, linkedin_posts, linkedin_comments, linkedin_reposts, linkedin_profile, linkedin_search, linkedin_enrich_status. Reactions are out of scope. Not company page CM.",
         )
     }
