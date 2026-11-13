@@ -218,18 +218,14 @@ impl ItcyTools {
 
     pub async fn session_browsed_urls(&self) -> Vec<String> {
         let guard = self.session.lock().await;
-        guard
-            .as_ref()
-            .map(ResearchSession::browsed_urls)
-            .unwrap_or_default()
+        guard.as_ref().map_or_default(ResearchSession::browsed_urls)
     }
 
     pub async fn session_extracted_urls(&self) -> Vec<String> {
         let guard = self.session.lock().await;
         guard
             .as_ref()
-            .map(ResearchSession::extracted_urls)
-            .unwrap_or_default()
+            .map_or_default(ResearchSession::extracted_urls)
     }
 
     /// Merge URLs into the active research session EXTRACTED list (refill after probe).
@@ -244,8 +240,7 @@ impl ItcyTools {
         let guard = self.session.lock().await;
         guard
             .as_ref()
-            .map(ResearchSession::browse_excerpts)
-            .unwrap_or_default()
+            .map_or_default(ResearchSession::browse_excerpts)
     }
 
     /// Browse one URL into the active research session (LOAD fallback when the model skipped browse).
@@ -704,7 +699,10 @@ mod tests {
         let draft_tools = tools.for_operation();
         let tweet_tools = tools.for_operation();
         assert!(draft_tools.session_draft_id().await.is_none());
-        assert!(draft_tools.session_extracted_urls().await.is_empty());
+        assert_eq!(
+            draft_tools.session_extracted_urls().await,
+            Vec::<String>::new()
+        );
         assert!(draft_tools.policy.lock().await.allow_web_search);
         assert!(Arc::ptr_eq(&tools.host_browser, &draft_tools.host_browser));
         assert!(Arc::ptr_eq(&tools.handles, &draft_tools.handles));

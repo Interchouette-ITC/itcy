@@ -458,10 +458,7 @@ fn is_usable_blurb(s: &str) -> bool {
         "cookie",
         "enable javascript",
     ];
-    if junk.iter().any(|j| l.contains(j)) {
-        return false;
-    }
-    true
+    !junk.iter().any(|j| l.contains(j))
 }
 
 fn first_sentences(text: &str, max_chars: usize) -> String {

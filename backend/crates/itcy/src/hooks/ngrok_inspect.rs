@@ -88,7 +88,7 @@ async fn poll_once(
             Some(ref id) if !id.is_empty() && !seen.contains(id) => id.clone(),
             _ => continue,
         };
-        new_ids.push(rid.clone());
+        new_ids.push(rid);
 
         let method = r
             .request

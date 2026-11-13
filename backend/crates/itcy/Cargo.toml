@@ -19,7 +19,6 @@ emojis.workspace = true
 futures-util.workspace = true
 hex.workspace = true
 hmac.workspace = true
-regex.workspace = true
 reqwest.workspace = true
 rmcp.workspace = true
 rusqlite.workspace = true

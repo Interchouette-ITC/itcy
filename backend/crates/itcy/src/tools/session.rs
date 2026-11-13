@@ -174,10 +174,7 @@ Each step has its own subdir + screenshot. web_search writes ai_overview_*.txt +
     }
 
     pub fn extracted_urls(&self) -> Vec<String> {
-        self.extracted_urls
-            .lock()
-            .map(|g| g.clone())
-            .unwrap_or_default()
+        self.extracted_urls.lock().map_or_default(|g| g.clone())
     }
 
     pub fn record_browse(&self, final_url: Option<&str>) {
@@ -197,10 +194,7 @@ Each step has its own subdir + screenshot. web_search writes ai_overview_*.txt +
     }
 
     pub fn browsed_urls(&self) -> Vec<String> {
-        self.browsed_urls
-            .lock()
-            .map(|g| g.clone())
-            .unwrap_or_default()
+        self.browsed_urls.lock().map_or_default(|g| g.clone())
     }
 
     pub fn record_browse_excerpt(&self, url: &str, text: &str) {
@@ -218,10 +212,7 @@ Each step has its own subdir + screenshot. web_search writes ai_overview_*.txt +
     }
 
     pub fn browse_excerpts(&self) -> Vec<(String, String)> {
-        self.browse_excerpts
-            .lock()
-            .map(|g| g.clone())
-            .unwrap_or_default()
+        self.browse_excerpts.lock().map_or_default(|g| g.clone())
     }
 
     pub fn web_search_count(&self) -> u32 {
