@@ -67,8 +67,11 @@ pub fn num_ctx() -> u32 {
 
 fn parse_num_ctx(raw: Option<&str>) -> u32 {
     const DEFAULT: u32 = 16_384;
-    raw.and_then(|s| s.trim().parse().ok())
-        .filter(|&n| n >= 2048)
+    const MIN: u32 = 2_048;
+    const MAX: u32 = 262_144;
+
+    raw.and_then(|s| s.trim().parse::<u32>().ok())
+        .filter(|&n| (MIN..=MAX).contains(&n))
         .unwrap_or(DEFAULT)
 }
 

@@ -687,7 +687,9 @@ pub async fn rework_stored_tweet(
         instructions = %instructions,
         "rework: tweet start"
     );
-    match classify_rework_mode(instructions) {
+    let deterministic = matches!(classify_rework_mode(instructions), ReworkMode::Replace)
+        || crate::sources::draft_footer::rework_instructions_are_keyword_edits_only(instructions);
+    let first = match classify_rework_mode(instructions) {
         ReworkMode::Replace => {
             let body = rework_replacement_body(instructions);
             if body.trim().is_empty() {
@@ -726,6 +728,40 @@ pub async fn rework_stored_tweet(
             )
             .await
         }
+    };
+    let validate = |out: ReworkedDraft| {
+        crate::publish::tweet_texts_for_api(&out.body)
+            .map_err(|e| ReworkError::Operator(e.to_string()))?;
+        Ok(out)
+    };
+    match first.and_then(validate) {
+        Ok(out) => Ok(out),
+        Err(err) if !deterministic => {
+            warn!(error = %err, "rework: invalid tweet; retrying shorter complete sentences once");
+            let retry = format!("{instructions}\n\nRewrite shorter complete sentences. Maximum two tweets of 280 weighted characters including all hashtags, handles and links. Previous error: {err}");
+            let out = rework_stored_tweet_llm(
+                router,
+                TweetReworkLlmArgs {
+                    stored,
+                    instructions: &retry,
+                    tools,
+                    handles,
+                    current: &current,
+                    farce,
+                    refresh: false,
+                },
+            )
+            .await?;
+            let required = rework_required_quoted_spans(instructions);
+            let missing = missing_required_quoted_spans(&out.body, &required);
+            if !missing.is_empty() {
+                return Err(ReworkError::Operator(
+                    crate::sources::draft_footer::missing_quotes_operator_error(&missing),
+                ));
+            }
+            validate(out)
+        }
+        Err(err) => Err(err),
     }
 }
 
@@ -1030,7 +1066,7 @@ async fn run_tweet_rework_llm(
     let body = scrub_rework_tweet_body(&response.message.content, subject)?;
     if tweet_body_exploded(&body) {
         warn!("rework: tweet writer dump coerced to tweet shape (no retry)");
-        let coerced = coerce_tweet_body(&body, subject);
+        let coerced = coerce_tweet_body(&body, subject).map_err(ReworkError::Operator)?;
         if !crate::sources::tweet::tweet_names_subject_entity(&coerced, subject) {
             return Err(ReworkError::Operator(
                 "rework dropped the subject name; keep the product/entity words from the brief"

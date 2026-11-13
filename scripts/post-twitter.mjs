@@ -9,6 +9,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   detectPostRejectReason,
+  composerTextMatches,
+  readShipPayloads,
   normalizeShipText,
   resolvePostedStatus,
   statusIdNewer,
@@ -28,6 +30,7 @@ const textFile = process.env.ITCY_TWITTER_POST_TEXT_FILE || "";
 const quoteId = (process.env.ITCY_TWITTER_QUOTE_STATUS_ID || "").trim();
 const replyFile = (process.env.ITCY_TWITTER_REPLY_TEXT_FILE || "").trim();
 const inReplyToId = (process.env.ITCY_TWITTER_IN_REPLY_TO_STATUS_ID || "").trim();
+let pendingThreadRoot = null;
 
 function looksLoggedOut(url, html) {
   const u = (url || "").toLowerCase();
@@ -49,6 +52,9 @@ function looksLoggedOut(url, html) {
 }
 
 function fail(detail) {
+  if (pendingThreadRoot && !String(detail).includes("partial X thread:")) {
+    detail = `partial X thread: root=${pendingThreadRoot.id} url=${pendingThreadRoot.url}; ${detail}; do not repost root`;
+  }
   process.stdout.write(JSON.stringify({ ok: false, detail: String(detail) }) + "\n");
   process.exit(1);
 }
@@ -65,12 +71,7 @@ function ok(statusId, url, detail, reply) {
 }
 
 async function composerLooksLike(box, text) {
-  const got = normalizeShipText(
-    (await box.innerText()).replace(/\u200b/g, "")
-  );
-  const want = normalizeShipText(text);
-  const needle = want.slice(0, Math.min(24, want.length));
-  return needle.length > 0 && got.includes(needle);
+  return composerTextMatches(await box.innerText(), text);
 }
 
 function looksQuotePaywall(html) {
@@ -494,6 +495,7 @@ async function postRootTweet(rootPage, text, quoteId, excludeIds, beforeId) {
     rootToastHref = await clickPost(scope);
   }
 
+  pendingThreadRoot = { id: "unresolved", url: rootToastHref || "unresolved" };
   const found = await resolveAfterPost(
     rootPage,
     excludeIds,
@@ -515,8 +517,11 @@ async function postRootTweet(rootPage, text, quoteId, excludeIds, beforeId) {
 async function main() {
   if (!textFile) fail("ITCY_TWITTER_POST_TEXT_FILE unset");
   let text;
+  let replyText;
   try {
-    text = fs.readFileSync(textFile, "utf8").trim();
+    ({ text, replyText } = readShipPayloads(
+      (file) => fs.readFileSync(file, "utf8"), textFile, replyFile
+    ));
   } catch (e) {
     fail(`read tweet file: ${e}`);
   }
@@ -574,27 +579,24 @@ async function main() {
 
     let replyFound = null;
     if (replyFile) {
-      let replyText = "";
-      try {
-        replyText = fs.readFileSync(replyFile, "utf8").trim();
-      } catch (e) {
-        fail(`read reply file: ${e}`);
-      }
-      if (!replyText) {
-        fail("overflow reply file empty (root would ship without tags/URL)");
-      }
+      pendingThreadRoot = found;
       replyPage = await context.newPage();
-      replyFound = await postReply(replyPage, replyText, found, excludeIds);
+      try {
+        replyFound = await postReply(replyPage, replyText, found, excludeIds);
+      } catch (e) {
+        fail(`partial X thread: root=${found.id} url=${found.url}; reply failed: ${e}; do not repost root`);
+      }
       if (!replyFound) {
         const cap = await captureOverlay(replyPage, "reply-resolve-miss");
         fail(
-          `root ${found.id} live but overflow reply did not resolve. screenshot=${relArtifact(cap.png)}`
+          `partial X thread: root=${found.id} url=${found.url}; overflow reply did not resolve; do not repost root. screenshot=${relArtifact(cap.png)}`
         );
       }
     }
     await closeShipTabs(rootPage, replyPage);
     rootPage = null;
     replyPage = null;
+    pendingThreadRoot = null;
     ok(
       found.id,
       found.url,

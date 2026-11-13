@@ -85,6 +85,13 @@ pub struct SlackRuntime {
 }
 
 impl SlackRuntime {
+    fn for_operation(&self) -> Self {
+        Self {
+            tools: Arc::new(self.tools.for_operation()),
+            ..self.clone()
+        }
+    }
+
     /// Opens memory/sources. `tools` must already own a long-lived host browser (binary boot).
     ///
     /// # Errors
@@ -191,6 +198,16 @@ impl SlackRuntime {
     /// Used by `POST /e2e/message` (localhost). Bot self-posts are ignored by Socket Mode
     /// (`bot_id` filter in `events.rs`), so agents must inject here instead of messaging as the bot.
     pub async fn handle_operator_text(&self, text: &str) -> String {
+        let runtime = self.for_operation();
+        let reply = runtime.handle_operator_text_inner(text).await;
+        runtime
+            .tools
+            .end_research_session("operator message complete")
+            .await;
+        reply
+    }
+
+    async fn handle_operator_text_inner(&self, text: &str) -> String {
         let preview: String = text.chars().take(240).collect();
         crate::sources::rag::log_pipeline_banner("E2E inject");
         info!(text = %preview, "e2e: injected operator message");
@@ -223,6 +240,16 @@ impl SlackRuntime {
 
     /// Inject a slash command (localhost `POST /entrypoint/slash` only). Logs as inject, not Slack.
     pub async fn handle_operator_slash(&self, command: &str, text: &str) -> SlashCommandOutcome {
+        let runtime = self.for_operation();
+        let outcome = runtime.handle_operator_slash_inner(command, text).await;
+        runtime
+            .tools
+            .end_research_session("operator slash complete")
+            .await;
+        outcome
+    }
+
+    async fn handle_operator_slash_inner(&self, command: &str, text: &str) -> SlashCommandOutcome {
         crate::sources::rag::log_pipeline_banner("inject slash");
         info!(command = %command, text = %text.chars().take(200).collect::<String>(), "inject: slash command");
         match parse_slash_command(command, text) {
@@ -327,6 +354,15 @@ impl SlackRuntime {
 
     /// Handles one parsed, allowlisted event.
     pub async fn handle_event(&self, event: ParsedEvent) {
+        let runtime = self.for_operation();
+        runtime.handle_event_inner(event).await;
+        runtime
+            .tools
+            .end_research_session("Slack event complete")
+            .await;
+    }
+
+    async fn handle_event_inner(&self, event: ParsedEvent) {
         match event {
             ParsedEvent::MemberJoined {
                 channel_id,
@@ -760,8 +796,9 @@ Try `/draft_about` with an explicit topic, or `/propose_draft N` from the digest
                         "Writer abandoned corpus subject `{topic}` (draft `{draft_id}` discarded)."
                     ));
                 }
-                if let Err(e) = self.persist_grounded_draft(&draft) {
+                if let Err(e) = self.persist_grounded_draft(&draft_id, &draft) {
                     error!(error = %e, "slack draft store failed");
+                    return Err(e);
                 }
                 Ok(format!(
                     "{body}\n\n\
@@ -829,8 +866,9 @@ Try `/draft_about` with an explicit topic, or `/propose_draft N` from the digest
         {
             Ok(mut draft) => {
                 draft.subject = topic.trim().to_string();
-                if let Err(e) = self.persist_grounded_draft(&draft) {
+                if let Err(e) = self.persist_grounded_draft(&draft_id, &draft) {
                     error!(error = %e, "slack draft store failed");
+                    return e;
                 }
                 format!(
                     "{body}\n\n\
@@ -925,8 +963,9 @@ Draft `{draft_id}` marked failed"
         {
             Ok(mut draft) => {
                 draft.subject = subject;
-                if let Err(e) = self.persist_grounded_draft(&draft) {
+                if let Err(e) = self.persist_grounded_draft(&draft_id, &draft) {
                     error!(error = %e, "slack draft store failed");
+                    return e;
                 }
                 format!(
                     "{body}\n\n\
@@ -990,8 +1029,9 @@ Draft `{draft_id}` marked failed"
         {
             Ok(mut draft) => {
                 draft.subject = subject.to_string();
-                if let Err(e) = self.persist_grounded_draft(&draft) {
+                if let Err(e) = self.persist_grounded_draft(&draft_id, &draft) {
                     error!(error = %e, "slack self-intro draft store failed");
+                    return e;
                 }
                 format!(
                     "{body}\n\n\
@@ -1231,10 +1271,23 @@ Status: **published**.",
 
     pub(crate) fn persist_grounded_draft(
         &self,
+        expected_id: &str,
         draft: &crate::sources::GroundedDraft,
     ) -> Result<(), String> {
-        let store = DraftStore::open(&self.config.state_db_path).map_err(|e| e.to_string())?;
-        let prior = store.get(&draft.draft_id).map_err(|e| e.to_string())?;
+        let save_error = |e| {
+            format!("Could not save `{expected_id}` as an open draft: {e}. No acceptance action is available.")
+        };
+        if draft.draft_id != expected_id {
+            return Err(save_error(format!(
+                "writer returned a different draft ID `{}`",
+                draft.draft_id
+            )));
+        }
+        let store =
+            DraftStore::open(&self.config.state_db_path).map_err(|e| save_error(e.to_string()))?;
+        let prior = store
+            .get(expected_id)
+            .map_err(|e| save_error(e.to_string()))?;
         let mut row = stored_from_payload(DraftPayload {
             draft_id: draft.draft_id.clone(),
             subject: draft.subject.clone(),
@@ -1251,7 +1304,7 @@ Status: **published**.",
             row.fork_pr_number = p.fork_pr_number;
             row.fork_pr_url = p.fork_pr_url;
         }
-        store.upsert(&row).map_err(|e| e.to_string())
+        store.upsert(&row).map_err(|e| save_error(e.to_string()))
     }
 
     fn status_reply(&self) -> String {
@@ -1578,7 +1631,9 @@ fn paste_block_for_draft(db_path: &std::path::Path, draft_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{format_linkedin_accept_slack, looks_like_draft_status_ask};
-    use crate::bat::store::{stored_from_payload, DraftPayload, DraftStore};
+    use crate::bat::store::{
+        status, stored_building_stub, stored_from_payload, DraftPayload, DraftStore,
+    };
     use crate::bat::submit::BatSubmitResult;
     use crate::llm::client::{LlmClient, LlmError, LlmMessage, LlmResponse, LlmRole, LlmToolDef};
     use crate::llm::router::{ChainCandidate, FailoverRouter, TaskChains, TaskKind};
@@ -1690,6 +1745,84 @@ mod tests {
             linkedin_export_dir: export,
         };
         SlackRuntime::new(cfg, router, embed, tools).expect("runtime")
+    }
+
+    fn test_grounded_draft(id: &str) -> crate::sources::GroundedDraft {
+        crate::sources::GroundedDraft {
+            draft_id: id.into(),
+            subject: "Systemd finally lets Rust in".into(),
+            body: "A LinkedIn draft, not a tweet.".into(),
+            model: "test".into(),
+            tokens_in: 1,
+            tokens_out: 1,
+            source_labels: Vec::new(),
+            link_options: Vec::new(),
+            research_pack: String::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn draft_lifecycle_save_rejects_another_commands_tweet_id_without_overwriting_it() {
+        let rt = test_runtime(Arc::new(CountingLlm {
+            calls: AtomicUsize::new(0),
+            reply: "unused".into(),
+        }));
+        let draft_id = "DRAFT-20261109-000225";
+        let tweet_id = "TWEET-20261109-000224";
+        let store = DraftStore::open(&rt.config.state_db_path).unwrap();
+        let mut tweet = stored_building_stub(tweet_id, "previous tweet");
+        tweet.status = status::FAILED.into();
+        store.upsert(&tweet).unwrap();
+        let tweet = store.get(tweet_id).unwrap().unwrap();
+        store
+            .upsert(&stored_building_stub(draft_id, "new draft"))
+            .unwrap();
+
+        let error = rt
+            .persist_grounded_draft(draft_id, &test_grounded_draft(tweet_id))
+            .unwrap_err();
+        assert!(error.contains("different draft ID"), "{error}");
+        assert!(!error.contains("Saved as open"), "{error}");
+        assert_eq!(store.get(tweet_id).unwrap().unwrap(), tweet);
+        assert_eq!(
+            store.get(draft_id).unwrap().unwrap().status,
+            status::BUILDING
+        );
+
+        rt.persist_grounded_draft(draft_id, &test_grounded_draft(draft_id))
+            .unwrap();
+        let saved = store.get(draft_id).unwrap().unwrap();
+        assert_eq!(saved.status, status::OPEN);
+        assert_eq!(saved.body, test_grounded_draft(draft_id).body);
+        assert_eq!(store.get(tweet_id).unwrap().unwrap(), tweet);
+    }
+
+    #[tokio::test]
+    async fn draft_lifecycle_save_surfaces_database_and_tweet_validation_failures() {
+        let mut rt = test_runtime(Arc::new(CountingLlm {
+            calls: AtomicUsize::new(0),
+            reply: "unused".into(),
+        }));
+        let tweet_id = "TWEET-20261109-000224";
+        let mut tweet = test_grounded_draft(tweet_id);
+        tweet.body = "An oversized tweet must not be reported as saved. ".repeat(30);
+        let error = rt.persist_grounded_draft(tweet_id, &tweet).unwrap_err();
+        assert!(error.contains("Could not save"), "{error}");
+        assert!(error.contains("No acceptance action"), "{error}");
+        assert!(DraftStore::open(&rt.config.state_db_path)
+            .unwrap()
+            .get(tweet_id)
+            .unwrap()
+            .is_none());
+
+        let dir = tempfile::tempdir().unwrap();
+        rt.config.state_db_path = dir.path().to_path_buf();
+        let draft_id = "DRAFT-20261109-000225";
+        let error = rt
+            .persist_grounded_draft(draft_id, &test_grounded_draft(draft_id))
+            .unwrap_err();
+        assert!(error.contains("Could not save"), "{error}");
+        assert!(!error.contains("Saved as open"), "{error}");
     }
 
     #[tokio::test]

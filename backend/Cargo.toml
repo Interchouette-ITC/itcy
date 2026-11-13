@@ -13,15 +13,21 @@ anyhow = "1"
 async-trait = "0.1"
 axum = "0.8"
 base64 = "0.23"
-chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+chrono = { version = "0.4", default-features = false, features = [
+  "clock",
+  "std",
+] }
 csv = "1"
 dotenvy = "0.15"
 emojis = "0.9"
 futures-util = "0.3"
 hex = "0.4"
 hmac = "0.13"
-regex = "1"
-reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "socks"] }
+reqwest = { version = "0.13", default-features = false, features = [
+  "json",
+  "rustls",
+  "socks",
+] }
 rmcp = { version = "3", default-features = false, features = [
   "server",
   "client",
@@ -29,7 +35,7 @@ rmcp = { version = "3", default-features = false, features = [
   "transport-child-process",
   "macros",
 ] }
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite = { version = "0.42", features = ["bundled"] }
 schemars = "1"
 rustls = { version = "0.23", features = ["ring"] }
 sha2 = "0.11"
@@ -37,13 +43,28 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
 thiserror = "2"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "time", "process"] }
+tokio = { version = "1", features = [
+  "macros",
+  "rt-multi-thread",
+  "net",
+  "signal",
+  "time",
+  "process",
+] }
 tokio-tungstenite = { version = "0.30", features = ["rustls-tls-native-roots"] }
 toml = "1"
 tower = { version = "0.5", features = ["util"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "ansi", "chrono"] }
+tracing-subscriber = { version = "0.3", features = [
+  "env-filter",
+  "fmt",
+  "ansi",
+  "chrono",
+] }
 zip = { version = "9", default-features = false, features = ["deflate"] }
+unicode-segmentation = "1"
+twitter-text = "0.3.1"
+twitter_text_config = "0.3.1"
 
 [profile.release]
 lto = "thin"

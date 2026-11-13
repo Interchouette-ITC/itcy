@@ -12,6 +12,7 @@ pub mod gemini;
 pub mod ollama;
 pub mod openai_compat;
 pub mod prompt_dump;
+pub mod prose;
 pub mod registry;
 pub mod router;
 pub mod sanitize;

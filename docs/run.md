@@ -72,6 +72,20 @@ ITCy listens on `POST /hooks/github` (loopback). Point a GitHub webhook at your 
 
 Socket Mode. Channel and bot tokens via `.env` as named in `[slack]`. Without them, HTTP still runs.
 
+`/draft_about` creates a LinkedIn `DRAFT-` reference; `/tweet_about` creates an X
+`TWEET-` reference. `/accept` routes by that reference, not by the word "draft"
+in the message. Each command has isolated research identity and tool policy,
+including concurrent Slack events and localhost injections. A new item in a
+digest batch cannot reuse the previous item's session ID. "Saved as open" and
+acceptance hints appear only after persistence succeeds with the allocated ID;
+save errors are returned explicitly instead.
+
+BAT PR titles stay within 80 characters, including the prefix and publication ID
+(well below GitHub's 256-character limit). Long subjects are shortened only in the
+PR title; the full subject and publication body are preserved. If `/accept`
+previously failed because the title was too long, retry `/accept` with the same
+reference after updating ITCy.
+
 ## X
 
 Digest pulse and production ship use Brave against a local profile (`scripts/fetch-twitter-pulse.sh`, `scripts/post-twitter.sh`, `scripts/open-twitter-login.sh`). Optional Bearer API when `TWITTER_BEARER` is set.

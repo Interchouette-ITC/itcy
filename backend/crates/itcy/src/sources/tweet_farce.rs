@@ -143,7 +143,7 @@ pub async fn build_farce_tweet(
     let body = ensure_farce_mentions(&scrub_farce_body(&body_raw));
     let body = if tweet_body_exploded(&body) {
         warn!("farce: writer dump coerced to tweet shape (no retry)");
-        ensure_farce_mentions(&coerce_tweet_body(&body, &subject))
+        ensure_farce_mentions(&coerce_tweet_body(&body, &subject).map_err(RagError::Store)?)
     } else {
         body
     };
@@ -160,6 +160,7 @@ pub async fn build_farce_tweet(
     .await;
     let link_options: Vec<String> = Vec::new();
     let composed = compose_tweet_message(&body, &tweet_id, &link_options);
+    crate::publish::tweet_texts_for_api(&composed).map_err(|e| RagError::Store(e.to_string()))?;
     info!(tweet_id = %tweet_id, "farce: tweet open");
     Ok(GroundedDraft {
         subject,
@@ -182,11 +183,11 @@ async fn run_farce_phase(
 ) -> Result<(String, CompletionTrace), RagError> {
     crate::sources::rag::log_pipeline_banner("TWEET FARCE (writer)");
     let user = tweet_farce_user_message(theme);
-    let messages = vec![
+    let mut messages = vec![
         LlmMessage::system(farce_system_prompt()),
         LlmMessage::user(user.clone()),
     ];
-    let (response, trace) = match router
+    let (response, mut trace) = match router
         .complete_with_tools(TaskKind::Draft, &messages, None, 0)
         .await
     {
@@ -196,12 +197,29 @@ async fn run_farce_phase(
             return Err(e.into());
         }
     };
-    let body = scrub_farce_body(&response.message.content);
-    if tweet_body_exploded(&body) {
-        warn!("farce: writer dump coerced (no retry)");
-        return Ok((coerce_tweet_body(&body, theme), trace));
+    let finalize = |raw: &str| -> Result<String, RagError> {
+        let body = ensure_farce_mentions(&scrub_farce_body(raw));
+        let body = if tweet_body_exploded(&body) {
+            coerce_tweet_body(&body, theme).map_err(RagError::Store)?
+        } else {
+            body
+        };
+        crate::publish::tweet_texts_for_api(&body).map_err(|e| RagError::Store(e.to_string()))?;
+        Ok(body)
+    };
+    match finalize(&response.message.content) {
+        Ok(body) => Ok((body, trace)),
+        Err(err) => {
+            warn!(error = %err, "farce: invalid layout; retrying writer once");
+            messages.push(LlmMessage::assistant(response.message.content));
+            messages.push(LlmMessage::user(format!("Rewrite shorter complete sentences, preserving the joke. Maximum two tweets of 280 weighted characters including mentions and tags. Previous error: {err}")));
+            let (response, retry_trace) = router
+                .complete_with_tools(TaskKind::Draft, &messages, None, 0)
+                .await?;
+            trace = trace.accumulate(&retry_trace);
+            Ok((finalize(&response.message.content)?, trace))
+        }
     }
-    Ok((body, trace))
 }
 
 /// True when a stored tweet was built by `/tweet_farce` (pack stamp or handles).

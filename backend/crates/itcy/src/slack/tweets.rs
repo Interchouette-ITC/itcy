@@ -62,8 +62,9 @@ impl SlackRuntime {
         .await
         {
             Ok(draft) => {
-                if let Err(e) = self.persist_grounded_draft(&draft) {
+                if let Err(e) = self.persist_grounded_draft(&tweet_id, &draft) {
                     error!(error = %e, "slack farce tweet store failed");
+                    return e;
                 }
                 format!(
                     "{body}\n\n\
@@ -173,8 +174,9 @@ impl SlackRuntime {
         {
             Ok(mut draft) => {
                 draft.subject = subject;
-                if let Err(e) = self.persist_grounded_draft(&draft) {
+                if let Err(e) = self.persist_grounded_draft(&tweet_id, &draft) {
                     error!(error = %e, "slack tweet store failed");
+                    return e;
                 }
                 format!(
                     "{body}\n\n\
@@ -238,8 +240,9 @@ impl SlackRuntime {
         {
             Ok(mut draft) => {
                 draft.subject = subject.to_string();
-                if let Err(e) = self.persist_grounded_draft(&draft) {
+                if let Err(e) = self.persist_grounded_draft(&tweet_id, &draft) {
                     error!(error = %e, "slack self-intro tweet store failed");
+                    return e;
                 }
                 format!(
                     "{body}\n\n\
@@ -336,8 +339,9 @@ Try `/tweet_about` with an explicit topic, or `/propose_tweet N` from the digest
                         "Writer abandoned corpus subject `{topic}` (tweet `{tweet_id}` discarded)."
                     ));
                 }
-                if let Err(e) = self.persist_grounded_draft(&draft) {
+                if let Err(e) = self.persist_grounded_draft(&tweet_id, &draft) {
                     error!(error = %e, "slack tweet store failed");
+                    return Err(e);
                 }
                 Ok(format!(
                     "{body}\n\n\
@@ -403,8 +407,9 @@ Try `/tweet_about` with an explicit topic, or `/propose_tweet N` from the digest
         {
             Ok(mut draft) => {
                 draft.subject = topic.trim().to_string();
-                if let Err(e) = self.persist_grounded_draft(&draft) {
+                if let Err(e) = self.persist_grounded_draft(&tweet_id, &draft) {
                     error!(error = %e, "slack tweet store failed");
+                    return e;
                 }
                 format!(
                     "{body}\n\n\

@@ -218,6 +218,7 @@ fn link_index(options: &[String], url: &str) -> Option<usize> {
 #[must_use]
 pub fn compose_tweet_message(body: &str, tweet_id: &str, cites: &[String]) -> String {
     let body = crate::sources::draft_url::strip_sources_section(body);
+    let body = crate::llm::prose::normalize_publication_prose(&body);
     let in_tweet = crate::sources::draft_url::extract_in_post_url(&body);
     let mut out = format!("Tweet ID: {tweet_id}\n\n");
     out.push_str(body.trim());
@@ -249,6 +250,7 @@ pub fn compose_tweet_message(body: &str, tweet_id: &str, cites: &[String]) -> St
 #[must_use]
 pub fn compose_self_intro_tweet_message(body: &str, tweet_id: &str) -> String {
     let body = crate::sources::draft_url::strip_sources_section(body);
+    let body = crate::llm::prose::normalize_publication_prose(&body);
     format!("Tweet ID: {tweet_id}\n\n{}", body.trim())
 }
 
@@ -280,6 +282,7 @@ pub fn apply_change_tweet_url(
     match picked {
         crate::sources::draft_url::UrlChoice::Clear => {
             let body = ensure_tweet_cite_line(head, None);
+            crate::publish::tweet_texts_for_api(&body).map_err(|e| e.to_string())?;
             Ok((compose_tweet_message(&body, tweet_id, &options), options))
         }
         crate::sources::draft_url::UrlChoice::Url(new_url) => {
@@ -289,6 +292,7 @@ pub fn apply_change_tweet_url(
             crate::sources::draft_url::promote_link_option(&mut options, &new_url);
             // Operator pick is the in-tweet link (publisher or X status). One https line.
             let body = ensure_tweet_cite_line(head, Some(new_url.as_str()));
+            crate::publish::tweet_texts_for_api(&body).map_err(|e| e.to_string())?;
             Ok((compose_tweet_message(&body, tweet_id, &options), options))
         }
     }
@@ -503,7 +507,9 @@ pub fn x_search_query(brief: &str) -> String {
 #[must_use]
 pub fn tweet_body_exploded(raw: &str) -> bool {
     let text = crate::publish::tweet_text_for_api(raw);
-    if text.chars().count() > 500 {
+    if crate::sources::tweet_thread::x_weighted_len(&text)
+        > 2 * crate::sources::tweet_thread::X_CHAR_LIMIT + 2
+    {
         return true;
     }
     let nonempty = text.lines().filter(|l| !l.trim().is_empty()).count();
@@ -522,28 +528,16 @@ pub fn tweet_body_exploded(raw: &str) -> bool {
         || text.starts_with("### ")
 }
 
-const COERCE_MAX_CHARS: usize = 420;
-const COERCE_MAX_BEATS: usize = 4;
-
-/// Soft-recover an essay / FAQ dump into a short X-shaped commentary (no LLM retry).
+/// Remove essay chrome only if all remaining commentary fits complete tweets.
 ///
-/// Strips markdown headings and FAQ chrome, keeps leading beats under a char budget,
-/// and falls back to a subject-locked stub when nothing usable remains.
-#[must_use]
-pub fn coerce_tweet_body(raw: &str, subject: &str) -> String {
+/// # Errors
+///
+/// Returns an actionable rewrite error instead of clipping prose or inventing a stub.
+pub fn coerce_tweet_body(raw: &str, _subject: &str) -> Result<String, String> {
     let scrubbed = strip_essay_chrome(raw);
     let aerated = aerate_tweet_commentary(&scrubbed);
-    let clipped = clip_tweet_beats(&aerated, COERCE_MAX_BEATS, COERCE_MAX_CHARS);
-    if !clipped.trim().is_empty() && !tweet_body_exploded(&clipped) {
-        return clipped;
-    }
-    if !clipped.trim().is_empty() {
-        let tighter = clip_tweet_beats(&clipped, 3, 280);
-        if !tighter.trim().is_empty() {
-            return tighter;
-        }
-    }
-    stub_tweet_from_subject(subject)
+    crate::sources::tweet_thread::layout_x_thread(&aerated).map_err(|e| e.to_string())?;
+    Ok(aerated)
 }
 
 fn strip_essay_chrome(raw: &str) -> String {
@@ -586,75 +580,10 @@ fn strip_essay_chrome(raw: &str) -> String {
     cleaned.join("\n")
 }
 
-fn clip_tweet_beats(text: &str, max_beats: usize, max_chars: usize) -> String {
-    let beats: Vec<&str> = text
-        .split("\n\n")
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .collect();
-    if beats.is_empty() {
-        // Single-newline dense dump: take first lines as beats.
-        let lines: Vec<&str> = text
-            .lines()
-            .map(str::trim)
-            .filter(|s| !s.is_empty() && !s.starts_with('#'))
-            .take(max_beats)
-            .collect();
-        let joined = lines.join("\n\n");
-        return trim_chars(&joined, max_chars);
-    }
-    let mut kept = Vec::new();
-    let mut chars = 0usize;
-    for beat in beats.into_iter().take(max_beats) {
-        let add = beat.chars().count();
-        if !kept.is_empty() && chars + add > max_chars {
-            break;
-        }
-        kept.push(beat);
-        chars += add;
-        if chars >= max_chars {
-            break;
-        }
-    }
-    trim_chars(&kept.join("\n\n"), max_chars)
-}
-
-fn trim_chars(text: &str, max_chars: usize) -> String {
-    if text.chars().count() <= max_chars {
-        return text.to_string();
-    }
-    let mut out = String::new();
-    for ch in text.chars() {
-        if out.chars().count() + 1 > max_chars {
-            break;
-        }
-        out.push(ch);
-    }
-    out.trim_end().to_string()
-}
-
-fn stub_tweet_from_subject(subject: &str) -> String {
-    let topic = subject
-        .split_whitespace()
-        .filter(|w| !w.starts_with("http"))
-        .take(12)
-        .collect::<Vec<_>>()
-        .join(" ");
-    let topic = if topic.is_empty() {
-        "this tooling story".to_string()
-    } else {
-        topic
-    };
-    format!(
-        "Builders should watch how {topic} lands in real repos. 🤖\n\n\
-Worth tracking as the stack keeps moving. 🦉\n\n\
-#AI #DevTools #Builders"
-    )
-}
-
 /// Blank line between sentence beats when the writer returned one dense line.
 #[must_use]
 pub fn aerate_tweet_commentary(text: &str) -> String {
+    let text = crate::llm::prose::normalize_publication_prose(text);
     let text = join_soft_wrap_lines(text.trim());
     if text.is_empty() || text.contains('\n') {
         return text;
@@ -858,7 +787,7 @@ https://blog.dante.company/en/articles/github-models-retirement-migration-2026-0
         assert!(!out.contains("1/2"));
         assert!(!out.contains("2/2"));
         assert!(out.contains("Link: 1"));
-        let texts = crate::publish::tweet_texts_for_api(&out);
+        let texts = crate::publish::tweet_texts_for_api(&out).expect("valid complete tweets");
         assert_eq!(texts.len(), 2);
         assert!(crate::sources::tweet_thread::fits_x_limit(&texts[0]));
         assert!(crate::sources::tweet_thread::fits_x_limit(&texts[1]));
@@ -879,29 +808,9 @@ MVP, not production custody. But if you're building on Casper, this is your guar
 #CSPR #AgentPay #OnChain #AI";
         let cite = "https://alsaecas.dev/projects/cspr-agentpay-guard";
         let out = compose_tweet_message(body, "TWEET-20260822-000062", &[cite.into()]);
-        let texts = crate::publish::tweet_texts_for_api(&out);
-        assert_eq!(texts.len(), 2, "{texts:?}");
-        assert!(crate::sources::tweet_thread::fits_x_limit(&texts[0]));
-        assert!(crate::sources::tweet_thread::fits_x_limit(&texts[1]));
         assert!(
-            texts[0].starts_with('📜') && texts[0].contains("spending limits"),
-            "root forward from top: {}",
-            texts[0]
-        );
-        assert!(
-            texts[1].contains("Testnet proof") && texts[1].contains("#CSPR"),
-            "reply: {}",
-            texts[1]
-        );
-        assert!(
-            texts[1].contains("guardrail"),
-            "reply keeps tail: {}",
-            texts[1]
-        );
-        assert!(
-            !texts[0].trim_end().ends_with("building on"),
-            "no mid-cut root: {}",
-            texts[0]
+            crate::publish::tweet_texts_for_api(&out).is_err(),
+            "an impossible complete-sentence partition must require rework"
         );
         assert!(out.contains("alsaecas.dev"), "cite listed in footer: {out}");
     }
@@ -1198,7 +1107,7 @@ Amp by Sourcegraph runs on your repo. 🤖\n\n\
 It is more agent than autocomplete. 🦉\n\n\
 Builders should watch the independence move. 🚀\n\n\
 What should you do next? Read more.";
-        let out = coerce_tweet_body(essay, "Amp Sourcegraph agent");
+        let out = coerce_tweet_body(essay, "Amp Sourcegraph agent").expect("short complete prose");
         assert!(!out.to_ascii_lowercase().contains("researchpack"), "{out}");
         assert!(
             !out.to_ascii_lowercase().contains("what should you do next"),
@@ -1212,14 +1121,12 @@ What should you do next? Read more.";
     }
 
     #[test]
-    fn coerce_tweet_body_stub_when_empty_after_strip() {
+    fn coerce_tweet_body_refuses_empty_instead_of_inventing_stub() {
         let out = coerce_tweet_body(
             "## Only a heading\n\nBased on the information provided",
             "Amp by Sourcegraph",
         );
-        assert_ne!(out.len(), 0);
-        assert!(!tweet_body_exploded(&out), "{out}");
-        assert!(out.contains("Amp") || out.contains("Sourcegraph"), "{out}");
+        assert!(out.is_err());
     }
 
     #[test]

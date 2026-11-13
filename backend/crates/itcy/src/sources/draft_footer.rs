@@ -123,6 +123,7 @@ pub fn ensure_primary_link_line(body: &str, primary: Option<&str>) -> String {
 #[must_use]
 pub fn compose_draft_message(body: &str, draft_id: &str, links: &[String]) -> String {
     let body = crate::sources::draft_url::strip_sources_section(body);
+    let body = crate::llm::prose::normalize_publication_prose(&body);
     let in_post = crate::sources::draft_url::extract_in_post_url(&body);
     let mut out = format!("Draft ID: {draft_id}\n\n");
     out.push_str(body.trim());
@@ -354,6 +355,7 @@ pub fn slack_paste_safe_reply_body(reply: &str) -> String {
 #[must_use]
 pub fn compose_self_intro_draft_message(body: &str, draft_id: &str) -> String {
     let body = crate::sources::draft_url::strip_sources_section(body);
+    let body = crate::llm::prose::normalize_publication_prose(&body);
     format!("Draft ID: {draft_id}\n\n{}", body.trim())
 }
 
@@ -394,6 +396,7 @@ pub fn draft_prose_for_rework(body: &str) -> String {
 /// context glyph.
 #[must_use]
 pub fn aerate_linkedin_draft(text: &str) -> String {
+    let text = crate::llm::prose::normalize_publication_prose(text);
     let text = crate::sources::tweet_footer::join_soft_wrap_lines(text.trim());
     let text = weave_orphan_emoji_paragraphs_into_prose(&text);
     if text.is_empty() {
@@ -2807,7 +2810,7 @@ https://byteiota.com/astro-64-satteri-rust-markdown-plugin-tradeoff\n";
             blocks[0]
         );
         assert!(
-            blocks[1].contains("Firecracker") && blocks[1].contains("blueprint"),
+            blocks[1].contains("Firecracker") && blocks[2].contains("blueprint"),
             "middle development paragraph: {:?}",
             blocks[1]
         );
@@ -2910,12 +2913,9 @@ Still hooking with a second sentence before the technical turn. \
 Closing names why teams care about audit trails in production.";
         let out = aerate_linkedin_draft(wall);
         let blocks: Vec<&str> = out.split("\n\n").collect();
-        assert!(
-            blocks
-                .iter()
-                .any(|b| b.contains('🔧') && b.contains("Firecracker")),
-            "emoji-led development must stay in a dense block: {out:?}"
-        );
+        assert!(blocks[0].ends_with('🔧'), "{out:?}");
+        assert!(blocks[1].starts_with("Tooling detail"), "{out:?}");
+        assert!(blocks[1].contains("Firecracker"), "{out:?}");
     }
 
     #[test]

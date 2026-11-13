@@ -19,7 +19,6 @@ emojis.workspace = true
 futures-util.workspace = true
 hex.workspace = true
 hmac.workspace = true
-regex.workspace = true
 reqwest.workspace = true
 rmcp.workspace = true
 rusqlite.workspace = true
@@ -35,6 +34,9 @@ toml.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 zip.workspace = true
+unicode-segmentation.workspace = true
+twitter-text.workspace = true
+twitter_text_config.workspace = true
 
 [dev-dependencies]
 tower.workspace = true

@@ -294,8 +294,7 @@ fn handle_pull_request_review(
         .review
         .as_ref()
         .and_then(|r| r.user.as_ref())
-        .map(|u| u.login.clone())
-        .unwrap_or_default();
+        .map_or_default(|u| u.login.clone());
 
     if review_state != "approved" {
         return babysit_non_approved_review(
@@ -627,8 +626,7 @@ fn handle_review_comment(
         .comment
         .as_ref()
         .and_then(|c| c.user.as_ref())
-        .map(|u| u.login.clone())
-        .unwrap_or_default();
+        .map_or_default(|u| u.login.clone());
     let path = payload
         .comment
         .as_ref()
@@ -639,8 +637,7 @@ fn handle_review_comment(
         .comment
         .as_ref()
         .and_then(|c| c.body.as_deref())
-        .map(preview_text)
-        .unwrap_or_default();
+        .map_or_default(preview_text);
 
     info!(
         delivery = delivery.id,
@@ -705,15 +702,13 @@ async fn handle_issue_comment(
         .comment
         .as_ref()
         .and_then(|c| c.user.as_ref())
-        .map(|u| u.login.clone())
-        .unwrap_or_default();
+        .map_or_default(|u| u.login.clone());
     let comment_id = payload.comment.as_ref().and_then(|c| c.id).unwrap_or(0);
     let preview = payload
         .comment
         .as_ref()
         .and_then(|c| c.body.as_deref())
-        .map(preview_text)
-        .unwrap_or_default();
+        .map_or_default(preview_text);
 
     info!(
         delivery = delivery.id,

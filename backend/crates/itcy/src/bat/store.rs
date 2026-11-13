@@ -151,6 +151,12 @@ impl DraftStore {
     ///
     /// Returns [`DraftStoreError`] on `SQLite` failure.
     pub fn upsert(&self, draft: &StoredDraft) -> Result<(), DraftStoreError> {
+        if draft.draft_id.starts_with("TWEET-")
+            && matches!(draft.status.as_str(), "" | status::OPEN | status::ACCEPTED)
+        {
+            crate::publish::tweet_texts_for_api(&draft.body)
+                .map_err(|e| DraftStoreError::Other(e.to_string()))?;
+        }
         let now = Local::now().to_rfc3339();
         let created = if draft.created_at.is_empty() {
             now.clone()

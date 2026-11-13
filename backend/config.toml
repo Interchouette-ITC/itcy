@@ -24,19 +24,9 @@ linkedin_export_dir = "../linkedin-export"
 # Pool = providers named in any route. Future: LLM_BALANCER_ROUTE (elect writer).
 [llm]
 # Freeform = independent Slack chat. Load = research pack. Draft = LinkedIn writer.
-freeform_route = [
-  "ollama:llama3.1:8b",
-  "ollama:gemma3:4b",
-]
-load_route = [
-  "ollama:llama3.1:8b",
-  "ollama:qwen3.5:9b",
-]
-draft_route = [
-  "ollama:llama3.1:8b",
-  "ollama:qwen3.5:9b",
-  "ollama:gemma4:12b",
-]
+freeform_route = ["ollama:llama3.1:8b", "ollama:gemma3:4b"]
+load_route = ["ollama:llama3.1:8b", "ollama:qwen3.5:9b"]
+draft_route = ["ollama:llama3.1:8b", "ollama:qwen3.5:9b", "ollama:gemma4:12b"]
 
 # After BAT. playground = fork + soft ship. production = org + real LinkedIn via MCP.
 # Live cutover: set ITCY_LINKEDIN_PUBLISH_MODE / ITCY_X_PUBLISH_MODE in gitignored `.env`.
