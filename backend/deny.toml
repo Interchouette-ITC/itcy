@@ -6,7 +6,9 @@ all-features = false
 
 [advisories]
 yanked = "warn"
-unmaintained = "workspace"
+ignore = [
+    { id = "RUSTSEC-2026-0543", reason = "chrono is currently pulled in transitively by rmcp and schemars; no safe upgrade is available. Revisit when upstream dependencies replace it." },
+]
 
 [licenses]
 unused-allowed-license = "allow"
