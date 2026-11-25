@@ -9,6 +9,7 @@ import {
   composerBox,
   composerText,
   profilePostButton,
+  scanProfileTimeline,
   submitPostButton,
 } from "./x-ship-ui.mjs";
 
@@ -90,6 +91,29 @@ test("legacy and redesigned X controls", {
       const dialog = page.locator('[role="dialog"]').filter({ has: composerBox(page) });
       assert.equal(await submitPostButton(dialog).innerText(), "Reply");
     });
+    await t.test("live redesigned reply label works without root-post placeholder or test IDs", async () => {
+      await page.setContent(`
+        <textarea aria-label="Post your reply" placeholder="Post your reply" rows="1"></textarea>
+        <button disabled>Reply</button>
+        <div role="dialog">
+          <textarea aria-label="Post your reply" aria-multiline="true"
+            placeholder="Post your reply" rows="4"></textarea>
+          <button disabled>Reply</button>
+        </div>
+        <script>
+          document.querySelector('[role="dialog"] textarea').addEventListener("input", (event) => {
+            document.querySelector('[role="dialog"] button').disabled = !event.target.value.trim();
+          });
+        </script>
+      `);
+      const scope = await activeComposerScope(page);
+      assert.notEqual(scope, page, "reply dialog must be recognized");
+      const payload = "Full second tweet.\n\nReply with \u{1f989} and \`code\`.";
+      await composerBox(scope).fill(payload);
+      assert.equal(await composerText(composerBox(scope)), payload);
+      assert.equal(await page.locator("body > textarea").inputValue(), "");
+      assert.equal(await submitPostButton(scope).isEnabled(), true);
+    });
     for (const legacy of [false, true]) {
       await t.test(`reply scopes text and submit together (${legacy ? "legacy" : "redesigned"})`, async () => {
         const composer = legacy
@@ -140,6 +164,23 @@ test("legacy and redesigned X controls", {
       await composerBox(scope).fill("Inline reply.");
       assert.equal(await composerText(composerBox(scope)), "Inline reply.");
       assert.equal(await submitPostButton(scope).isEnabled(), true);
+    });
+    await t.test("redesigned timeline pairs full body with permalink, not analytics or link card", async () => {
+      await page.setContent(`
+        <article>
+          <a href="/Interchouette/status/123">1h</a>
+          <div dir="auto" lang="en">Complete reply.
+
+#Rust
+
+<a href="https://t.co/abc" title="https://example.com/full-article">example.com/full…</a></div>
+          <a href="/Interchouette/status/123/analytics">20 Views</a>
+          <div>Unrelated link card preview text.</div>
+        </article>
+      `);
+      const scan = await scanProfileTimeline(page);
+      assert.deepEqual(scan.articles[0].statusHrefs, ["/Interchouette/status/123"]);
+      assert.equal(scan.articles[0].text, "Complete reply.\n\n#Rust\n\nhttps://example.com/full-article");
     });
   } finally {
     await browser.close();

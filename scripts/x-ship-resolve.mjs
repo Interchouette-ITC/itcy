@@ -115,6 +115,22 @@ function ownStatusFromHrefs(hrefs) {
   return null;
 }
 
+export function postedTextMatches(got, wanted) {
+  const prose = (text) => normalizeShipText(String(text || "").replace(/https?:\/\/\S+/g, ""));
+  return prose(wanted).length > 0 && prose(got) === prose(wanted);
+}
+
+export function replyHasParent(scan, replyId, parentId) {
+  let preceding = null;
+  for (const article of scan.articles || []) {
+    const status = ownStatusFromHrefs(article.statusHrefs);
+    if (!status) continue;
+    if (status.id === replyId) return preceding === parentId;
+    preceding = status.id;
+  }
+  return false;
+}
+
 /**
  * Prefer Post-click toast href (captured before profile navigation destroys it).
  * Profile timeline scan is fallback only.
@@ -122,7 +138,7 @@ function ownStatusFromHrefs(hrefs) {
  * Root ship: beforeId = newest own post before click.
  * Reply ship: beforeId = parent root id; excludeIds includes parent + cited quote.
  */
-export function resolvePostedStatus({ toastHref, scan, excludeIds, beforeId }) {
+export function resolvePostedStatus({ toastHref, scan, excludeIds, beforeId, expectedText }) {
   const skip = new Set((excludeIds || []).map(String));
   const fromToast = asOurPostedStatus(statusFromHref(toastHref));
   if (fromToast && !skip.has(fromToast.id)) {
@@ -130,31 +146,35 @@ export function resolvePostedStatus({ toastHref, scan, excludeIds, beforeId }) {
       return { ...fromToast, via: "toast" };
     }
   }
-  const fromScan = pickLatestOwnPost(scan, excludeIds, beforeId);
+  const fromScan = pickLatestOwnPost(scan, excludeIds, beforeId, expectedText);
   if (!fromScan) return null;
   return { ...fromScan, via: fromScan.via || "profile" };
 }
 
 /**
- * Profile Posts: skip pinned, take our newest card (DOM order = newest first).
+ * Profile Posts: skip pinned and choose the highest status ID, not DOM order.
  * Optional beforeId: must be strictly newer (so a failed Post does not claim an old tweet).
  * excludeIds: never return these (e.g. cited status id).
  */
-export function pickLatestOwnPost(scan, excludeIds, beforeId) {
+export function pickLatestOwnPost(scan, excludeIds, beforeId, expectedText) {
   const skip = new Set((excludeIds || []).map(String));
   const toast = asOurPostedStatus(statusFromHref(scan && scan.toast));
-  if (toast && !skip.has(toast.id)) {
+  if (!expectedText && toast && !skip.has(toast.id)) {
     if (!beforeId || statusIdNewer(toast.id, beforeId)) {
       return { ...toast, via: "toast" };
     }
   }
 
+  let latest = null;
   for (const art of (scan && scan.articles) || []) {
     if (art.pinned) continue;
     const own = ownStatusFromHrefs(art.statusHrefs);
     if (!own || skip.has(own.id)) continue;
     if (beforeId && !statusIdNewer(own.id, beforeId)) continue;
-    return { ...own, snippet: art.snippet || "", via: "profile" };
+    if (expectedText && !postedTextMatches(art.text, expectedText)) continue;
+    if (!latest || statusIdNewer(own.id, latest.id)) {
+      latest = { ...own, snippet: art.snippet || "", via: "profile" };
+    }
   }
-  return null;
+  return latest;
 }

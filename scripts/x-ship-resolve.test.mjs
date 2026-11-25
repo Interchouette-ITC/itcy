@@ -11,6 +11,8 @@ import {
   readShipPayloads,
   detectPostRejectReason,
   pickLatestOwnPost,
+  postedTextMatches,
+  replyHasParent,
   resolvePostedStatus,
   statusFromHref,
   statusIdNewer,
@@ -51,7 +53,7 @@ test("XPOST-094 clickPost must not re-submit root after Control+Enter", () => {
     "utf8"
   );
   const m = src.match(
-    /async function clickPost\([\s\S]*?\nasync function scanProfileTimeline/
+    /async function clickPost\([\s\S]*?\nasync function latestOwnOnProfile/
   );
   assert.ok(m, "clickPost missing");
   const body = m[0];
@@ -162,7 +164,7 @@ test("stripQuotedStatusUrl drops only the cited id line", () => {
   assert.ok(!out.includes("2089661151529574481"));
 });
 
-test("pickLatestOwnPost takes first non-pinned own card (no text search)", () => {
+test("pickLatestOwnPost takes newest non-pinned own card", () => {
   const before = "2090000000000000000";
   const ours = "2091000000000000000";
   const cited = "2089661151529574481";
@@ -194,6 +196,61 @@ test("pickLatestOwnPost takes first non-pinned own card (no text search)", () =>
     before
   );
   assert.equal(found.id, ours);
+});
+
+test("newest baseline includes replies after their older root in DOM order", () => {
+  const scan = {
+    articles: [
+      { statusHrefs: ["/Interchouette/status/2125586638105362678"] },
+      { statusHrefs: ["/Interchouette/status/2125586702689284353"] },
+    ],
+  };
+  assert.equal(pickLatestOwnPost(scan, [], "").id, "2125586702689284353");
+});
+
+test("Relate root resolution cannot select Cisco reply or unrelated newer posts", () => {
+  const root = "The new Relate arrives in Rust 🦀, giving AI agents sub-millisecond reads that feel less like querying and more like remembering context. 🤖";
+  const scan = {
+    toast: null,
+    articles: [
+      { text: "No downtime means less frantic maintenance on Monday morning. 👀",
+        statusHrefs: ["/Interchouette/status/2125586702689284353"] },
+      { text: root, statusHrefs: ["/Interchouette/status/2125592539680174343"] },
+      { text: "An unrelated new post.", statusHrefs: ["/Interchouette/status/2125604580897804462"] },
+    ],
+  };
+  assert.equal(
+    pickLatestOwnPost(scan, [], "2125586638105362678", root).id,
+    "2125592539680174343"
+  );
+  assert.equal(pickLatestOwnPost(scan, [], "", "Missing tweet."), null);
+});
+
+test("posted text matching tolerates URL cards but never a missing prose sentence", () => {
+  const prose = "A complete reply.\n\n#Rust";
+  assert.ok(postedTextMatches(prose, `${prose}\n\nhttps://example.com/article`));
+  assert.ok(postedTextMatches(`${prose}\n\nhttps://t.co/123`, `${prose}\n\nhttps://example.com/article`));
+  assert.equal(postedTextMatches("A complete", prose), false);
+});
+
+test("Relate reply under Cisco cannot be confirmed as a successful Relate thread", () => {
+  const scan = {
+    articles: [
+      { statusHrefs: ["/Interchouette/status/2125586638105362678"] },
+      { statusHrefs: ["/Interchouette/status/2125586702689284353"] },
+      { statusHrefs: ["/Interchouette/status/2125592580473651283"] },
+    ],
+  };
+  assert.equal(replyHasParent(scan, "2125592580473651283", "2125592539680174343"), false);
+  assert.equal(replyHasParent(scan, "2125592580473651283", "2125586702689284353"), true);
+  assert.equal(replyHasParent({ articles: [scan.articles[2]] }, "2125592580473651283", "2125592539680174343"), false);
+  const repaired = {
+    articles: [
+      { statusHrefs: ["/Interchouette/status/2125592539680174343"] },
+      scan.articles[2],
+    ],
+  };
+  assert.equal(replyHasParent(repaired, "2125592580473651283", "2125592539680174343"), true);
 });
 
 test("pickLatestOwnPost refuses old timeline when Post did not create a newer id", () => {
