@@ -37,6 +37,10 @@ pub(crate) fn bat_pr_title(kind: &str, subject: &str, publication_id: &str) -> S
 #[derive(Deserialize)]
 struct ContentMeta {
     sha: String,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    encoding: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -476,33 +480,58 @@ impl GithubClient {
         head_branch: &str,
     ) -> Result<Option<OpenedPr>, GithubError> {
         let url = format!(
-            "https://api.github.com/repos/{}/{}/pulls?state=open&per_page=50",
-            owner, self.cfg.repo
+            "https://api.github.com/repos/{owner}/{}/pulls",
+            self.cfg.repo
         );
-        let resp = self
+        Ok(self
+            .find_open_pr_at(&url, owner, head_branch, None)
+            .await?
+            .map(|pr| OpenedPr {
+                number: pr.number,
+                html_url: pr.html_url,
+                branch: head_branch.to_string(),
+            }))
+    }
+
+    async fn find_open_pr_at(
+        &self,
+        url: &str,
+        owner: &str,
+        head_branch: &str,
+        base: Option<&str>,
+    ) -> Result<Option<PullResponse>, GithubError> {
+        let mut url = reqwest::Url::parse(url)
+            .map_err(|error| GithubError::Api(format!("invalid pulls URL: {error}")))?;
+        url.query_pairs_mut()
+            .append_pair("state", "open")
+            .append_pair("head", &format!("{owner}:{head_branch}"))
+            .append_pair("per_page", "100");
+        if let Some(base) = base {
+            url.query_pairs_mut().append_pair("base", base);
+        }
+        let request = self
             .http
-            .get(&url)
+            .get(url)
             .header(AUTHORIZATION, format!("Bearer {}", self.cfg.token))
-            .header(ACCEPT, "application/vnd.github+json")
-            .send()
-            .await?;
-        if !resp.status().is_success() {
+            .header(ACCEPT, "application/vnd.github+json");
+        let response = send_contents_request(request).await?;
+        if !response.status().is_success() {
             return Err(GithubError::Api(format!(
-                "list pulls: {}",
-                resp.text().await.unwrap_or_default()
+                "find open pull for {head_branch}: {}",
+                contents_response_error(response).await
             )));
         }
-        let pulls: Vec<PullListItem> = resp.json().await?;
-        for p in pulls {
-            if p.head.as_ref().is_some_and(|h| h.ref_ == head_branch) {
-                return Ok(Some(OpenedPr {
-                    number: p.number,
-                    html_url: p.html_url,
-                    branch: head_branch.to_string(),
-                }));
-            }
-        }
-        Ok(None)
+        let pulls: Vec<PullListItem> = response.json().await?;
+        Ok(pulls.into_iter().find_map(|pr| {
+            pr.head
+                .as_ref()
+                .is_some_and(|head| head.ref_ == head_branch)
+                .then_some(PullResponse {
+                    number: pr.number,
+                    html_url: pr.html_url,
+                    state: "open".into(),
+                })
+        }))
     }
 
     /// After BAT Approve: squash-merge the Post/XPOST PR, then ship.
@@ -1117,75 +1146,107 @@ impl GithubClient {
         branch: &str,
         file: &RepoFile,
     ) -> Result<(), GithubError> {
-        const SHA_RETRY_ATTEMPTS: u32 = 3;
         let encoded_path = github_contents_path(&file.path);
         let url = format!(
             "https://api.github.com/repos/{}/{}/contents/{}",
             owner, self.cfg.repo, encoded_path
         );
+        self.put_file_at(&url, branch, file).await
+    }
+
+    async fn put_file_at(
+        &self,
+        url: &str,
+        branch: &str,
+        file: &RepoFile,
+    ) -> Result<(), GithubError> {
+        const UPLOAD_ATTEMPTS: u32 = 5;
         let b64 = base64::engine::general_purpose::STANDARD.encode(file.content.as_bytes());
         let mut last_body = String::new();
-        for attempt in 0..SHA_RETRY_ATTEMPTS {
+        for attempt in 0..UPLOAD_ATTEMPTS {
             let mut payload = json!({
                 "message": format!("ITCy: {}", file.path),
                 "content": b64,
                 "branch": branch,
             });
-            if let Some(sha) = self.existing_file_sha(owner, branch, &file.path).await? {
-                payload["sha"] = json!(sha);
+            if let Some(existing) = self.existing_file(url, branch, &file.path).await? {
+                if contents_match(&existing, &b64) {
+                    return Ok(());
+                }
+                payload["sha"] = json!(existing.sha);
             }
-            let resp = self
+            let request = self
                 .http
-                .put(&url)
+                .put(url)
                 .header(AUTHORIZATION, format!("Bearer {}", self.cfg.token))
-                .json(&payload)
-                .send()
-                .await?;
+                .json(&payload);
+            let resp = match request.send().await {
+                Ok(response) => response,
+                Err(error) => {
+                    if !(error.is_timeout() || error.is_connect() || error.is_request()) {
+                        return Err(error.into());
+                    }
+                    last_body = format!("transport failure: {error}");
+                    if attempt + 1 < UPLOAD_ATTEMPTS {
+                        warn!(attempt = attempt + 1, %error, "github: upload transport failure; refreshing contents before retry");
+                        tokio::time::sleep(upload_retry_delay(attempt)).await;
+                        continue;
+                    }
+                    break;
+                }
+            };
             if resp.status().is_success() {
                 return Ok(());
             }
-            last_body = resp.text().await.unwrap_or_default();
-            if contents_put_sha_retryable(&last_body) && attempt + 1 < SHA_RETRY_ATTEMPTS {
+            let status = resp.status();
+            last_body = contents_response_error(resp).await;
+            let transient = status.is_server_error()
+                || (status == reqwest::StatusCode::CONFLICT
+                    && contents_put_rule_timed_out(&last_body));
+            if (contents_put_sha_retryable(&last_body) || transient)
+                && attempt + 1 < UPLOAD_ATTEMPTS
+            {
+                warn!(attempt = attempt + 1, error = %last_body, "github: upload failed; refreshing contents before retry");
+                tokio::time::sleep(upload_retry_delay(attempt)).await;
                 continue;
             }
-            return Err(GithubError::Api(format_contents_put_error(
-                &file.path, &last_body,
-            )));
+            break;
+        }
+        if let Some(existing) = self.existing_file(url, branch, &file.path).await? {
+            if contents_match(&existing, &b64) {
+                return Ok(());
+            }
         }
         Err(GithubError::Api(format_contents_put_error(
             &file.path, &last_body,
         )))
     }
 
-    async fn existing_file_sha(
+    async fn existing_file(
         &self,
-        owner: &str,
+        url: &str,
         branch: &str,
         path: &str,
-    ) -> Result<Option<String>, GithubError> {
-        let encoded_path = github_contents_path(path);
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/contents/{}?ref={}",
-            owner, self.cfg.repo, encoded_path, branch
-        );
-        let resp = self
+    ) -> Result<Option<ContentMeta>, GithubError> {
+        let mut url = reqwest::Url::parse(url)
+            .map_err(|error| GithubError::Api(format!("invalid Contents API URL: {error}")))?;
+        url.query_pairs_mut().append_pair("ref", branch);
+        let request = self
             .http
-            .get(&url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.cfg.token))
-            .send()
-            .await?;
+            .get(url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.cfg.token));
+        let resp = send_contents_request(request).await?;
         if resp.status().as_u16() == 404 {
             return Ok(None);
         }
         if !resp.status().is_success() {
-            let body = resp.text().await.unwrap_or_default();
+            let body = contents_response_error(resp).await;
             return Err(GithubError::Api(format!(
-                "get contents sha {path} on {owner}/{}:{branch}: {body}",
-                self.cfg.repo
+                "get contents sha {path} on branch {branch}: {body}"
             )));
         }
         let meta: ContentMeta = resp.json().await?;
-        Ok(Some(meta.sha))
+        Ok(Some(meta))
     }
 
     async fn create_pull_same_repo(
@@ -1200,25 +1261,71 @@ impl GithubClient {
             "https://api.github.com/repos/{}/{}/pulls",
             owner, self.cfg.repo
         );
-        let resp = self
-            .http
-            .post(&url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.cfg.token))
-            .json(&json!({
-                "title": title,
-                "body": body,
-                "head": head_branch,
-                "base": base,
-            }))
-            .send()
-            .await?;
-        if !resp.status().is_success() {
-            return Err(GithubError::Api(format!(
-                "create pull: {}",
-                resp.text().await.unwrap_or_default()
-            )));
+        self.create_pull_at(
+            &url,
+            owner,
+            &json!({"title": title, "body": body, "head": head_branch, "base": base}),
+        )
+        .await
+    }
+
+    async fn create_pull_at(
+        &self,
+        url: &str,
+        owner: &str,
+        payload: &serde_json::Value,
+    ) -> Result<PullResponse, GithubError> {
+        let head = payload["head"]
+            .as_str()
+            .ok_or_else(|| GithubError::Api("create pull: missing head branch".into()))?;
+        let base = payload["base"]
+            .as_str()
+            .ok_or_else(|| GithubError::Api("create pull: missing base branch".into()))?;
+        let mut last_error = String::new();
+        for attempt in 0..5_u32 {
+            if let Some(pr) = self.find_open_pr_at(url, owner, head, Some(base)).await? {
+                return Ok(pr);
+            }
+            let response = self
+                .http
+                .post(url)
+                .header(AUTHORIZATION, format!("Bearer {}", self.cfg.token))
+                .json(payload)
+                .send()
+                .await;
+            let retryable = match response {
+                Ok(response) if response.status().is_success() => {
+                    let status = response.status();
+                    match response.json::<PullResponse>().await {
+                        Ok(pr) => return Ok(pr),
+                        Err(error) => {
+                            last_error = format!("HTTP {status}: invalid PR confirmation: {error}");
+                            true
+                        }
+                    }
+                }
+                Ok(response) => {
+                    let status = response.status();
+                    last_error = contents_response_error(response).await;
+                    status.is_server_error()
+                }
+                Err(error) => {
+                    let retryable = error.is_timeout() || error.is_connect() || error.is_request();
+                    last_error = format!("transport failure: {error}");
+                    retryable
+                }
+            };
+            // A failed response can still mean GitHub created the PR.
+            if let Some(pr) = self.find_open_pr_at(url, owner, head, Some(base)).await? {
+                return Ok(pr);
+            }
+            if !retryable || attempt == 4 {
+                break;
+            }
+            warn!(attempt = attempt + 1, error = %last_error, "github: create pull failed; checking existing PR before retry");
+            tokio::time::sleep(upload_retry_delay(attempt)).await;
         }
-        Ok(resp.json().await?)
+        Err(GithubError::Api(format!("create pull: {last_error}")))
     }
 
     async fn request_reviewer_on(&self, owner: &str, number: u64) -> Result<(), GithubError> {
@@ -1625,6 +1732,75 @@ pub fn reviewer_request_failure_is_soft(err: &str) -> bool {
         && (e.contains("validation failed")
             || e.contains("could not add requested reviewers")
             || e.contains("\"status\":\"422\""))
+}
+
+fn contents_match(existing: &ContentMeta, expected_base64: &str) -> bool {
+    existing.encoding.as_deref() == Some("base64")
+        && existing.content.as_ref().is_some_and(|content| {
+            content
+                .chars()
+                .filter(|c| !c.is_ascii_whitespace())
+                .eq(expected_base64.chars())
+        })
+}
+
+const fn upload_retry_delay(attempt: u32) -> std::time::Duration {
+    std::time::Duration::from_secs(1 << attempt)
+}
+
+fn contents_put_rule_timed_out(body: &str) -> bool {
+    body.contains("Repository rule violations found")
+        && body.contains("The rule did not run because of a timeout")
+}
+
+async fn send_contents_request(
+    request: reqwest::RequestBuilder,
+) -> Result<reqwest::Response, GithubError> {
+    for attempt in 0..3_u32 {
+        let next = request.try_clone().ok_or_else(|| {
+            GithubError::Api("Contents API request body cannot be retried".into())
+        })?;
+        match next.send().await {
+            Ok(response) => {
+                if !response.status().is_server_error() || attempt == 2 {
+                    return Ok(response);
+                }
+                warn!(
+                    status = %response.status(),
+                    attempt = attempt + 1,
+                    "github: transient Contents API failure; retrying"
+                );
+            }
+            Err(error) => {
+                if attempt == 2 || !(error.is_timeout() || error.is_connect() || error.is_request())
+                {
+                    return Err(error.into());
+                }
+                warn!(
+                    %error,
+                    attempt = attempt + 1,
+                    "github: Contents API transport failure; retrying"
+                );
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250 << attempt)).await;
+    }
+    unreachable!("bounded retry loop returns on its final attempt")
+}
+
+async fn contents_response_error(response: reqwest::Response) -> String {
+    let status = response.status();
+    let request_id = response
+        .headers()
+        .get("x-github-request-id")
+        .and_then(|value| value.to_str().ok())
+        .map_or_else(String::new, |value| format!("; request_id={value}"));
+    let body = match response.text().await {
+        Ok(body) if body.trim().is_empty() => "empty response body".into(),
+        Ok(body) => body,
+        Err(error) => format!("could not read response body: {error}"),
+    };
+    format!("HTTP {status}{request_id}: {body}")
 }
 
 /// True when GitHub Contents API refused a direct put because the branch requires a PR.
@@ -2053,6 +2229,246 @@ mod tests {
             "2026/09/01/DRAFT-20260901-000141/meta.toml"
         );
         assert_eq!(github_contents_path("a b/c"), "a%20b/c");
+    }
+
+    #[tokio::test]
+    async fn create_pull_recovers_ambiguous_responses_without_duplicate_prs() {
+        use axum::{http::StatusCode, routing::get, Json, Router};
+        use std::sync::{atomic::AtomicUsize, atomic::Ordering, Arc};
+
+        for (first_status, committed, expected_posts, should_succeed) in [
+            (StatusCode::BAD_GATEWAY, false, 2, true),
+            (StatusCode::INTERNAL_SERVER_ERROR, true, 1, true),
+            (StatusCode::UNPROCESSABLE_ENTITY, false, 1, false),
+            (StatusCode::SERVICE_UNAVAILABLE, false, 5, false),
+        ] {
+            let posts = Arc::new(AtomicUsize::new(0));
+            let reads = posts.clone();
+            let writes = posts.clone();
+            let app = Router::new().route(
+                "/pulls",
+                get(move |uri: axum::http::Uri| {
+                    let reads = reads.clone();
+                    async move {
+                        let url = reqwest::Url::parse(&format!("http://localhost{uri}")).unwrap();
+                        let query = url.query_pairs().collect::<std::collections::HashMap<_, _>>();
+                        assert_eq!(query.get("head").unwrap(), "test:post/POST-20261125-000330");
+                        assert_eq!(query.get("base").unwrap(), "posts");
+                        let prs = if committed && reads.load(Ordering::SeqCst) > 0 {
+                            json!([{"number": 330, "html_url": "https://github.com/test/repo/pull/330",
+                                "head": {"ref": "post/POST-20261125-000330"}}])
+                        } else {
+                            json!([])
+                        };
+                        Json(prs)
+                    }
+                })
+                .post(move |Json(payload): Json<serde_json::Value>| {
+                    let writes = writes.clone();
+                    async move {
+                        assert_eq!(payload["head"], "post/POST-20261125-000330");
+                        let count = writes.fetch_add(1, Ordering::SeqCst);
+                        if count > 0 && first_status == StatusCode::BAD_GATEWAY {
+                            (
+                                StatusCode::CREATED,
+                                [("x-github-request-id", "create-test")],
+                                json!({"number": 330, "html_url": "https://github.com/test/repo/pull/330",
+                                    "state": "open"}).to_string(),
+                            )
+                        } else {
+                            (first_status, [("x-github-request-id", "create-test")], String::new())
+                        }
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}/pulls", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let result = GithubClient::new(fork_playground_bat_cfg())
+                .unwrap()
+                .create_pull_at(
+                    &url,
+                    "test",
+                    &json!({"title": "Post", "body": "body", "head": "post/POST-20261125-000330",
+                        "base": "posts"}),
+                )
+                .await;
+            server.abort();
+            assert_eq!(posts.load(Ordering::SeqCst), expected_posts);
+            if should_succeed {
+                assert_eq!(result.unwrap().number, 330);
+            } else {
+                let error = result.unwrap_err().to_string();
+                assert!(error.contains(&format!("HTTP {first_status}")), "{error}");
+                assert!(error.contains("request_id=create-test"), "{error}");
+                assert!(error.contains("empty response body"), "{error}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn contents_upload_recovers_transient_failure_and_refreshes_sha() {
+        use axum::{http::StatusCode, routing::get, Json, Router};
+        use std::sync::{atomic::AtomicUsize, atomic::Ordering, Arc};
+
+        let puts = Arc::new(AtomicUsize::new(0));
+        let reads = puts.clone();
+        let writes = puts.clone();
+        let app = Router::new().route(
+            "/body.md",
+            get(move || {
+                let reads = reads.clone();
+                async move {
+                    if reads.load(Ordering::SeqCst) == 0 {
+                        (StatusCode::NOT_FOUND, Json(json!({})))
+                    } else {
+                        (StatusCode::OK, Json(json!({"sha": "committed-sha"})))
+                    }
+                }
+            })
+            .put(move |Json(payload): Json<serde_json::Value>| {
+                let writes = writes.clone();
+                async move {
+                    assert_eq!(payload["branch"], "post/POST-20261125-000330");
+                    assert_eq!(payload["content"], "Ym9keQ==");
+                    match writes.fetch_add(1, Ordering::SeqCst) {
+                        0 => (StatusCode::BAD_GATEWAY, Json(json!({}))),
+                        1 => (
+                            StatusCode::UNPROCESSABLE_ENTITY,
+                            Json(json!({"status": "422", "message": "\"sha\" wasn't supplied"})),
+                        ),
+                        _ => {
+                            assert_eq!(payload["sha"], "committed-sha");
+                            (StatusCode::OK, Json(json!({})))
+                        }
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/body.md", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let result = GithubClient::new(fork_playground_bat_cfg())
+            .unwrap()
+            .put_file_at(
+                &url,
+                "post/POST-20261125-000330",
+                &RepoFile {
+                    path: "2026/11/25/POST-20261125-000330/body.md".into(),
+                    content: "body".into(),
+                },
+            )
+            .await;
+        server.abort();
+        result.unwrap();
+        assert_eq!(puts.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn contents_upload_reports_empty_http_failure_after_bounded_retries() {
+        use axum::{http::StatusCode, routing::get, Router};
+        use std::sync::{atomic::AtomicUsize, atomic::Ordering, Arc};
+
+        let puts = Arc::new(AtomicUsize::new(0));
+        let writes = puts.clone();
+        let app = Router::new().route(
+            "/body.md",
+            get(|| async { StatusCode::NOT_FOUND }).put(move || {
+                let writes = writes.clone();
+                async move {
+                    writes.fetch_add(1, Ordering::SeqCst);
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        [("x-github-request-id", "test-request")],
+                        "",
+                    )
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/body.md", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let error = GithubClient::new(fork_playground_bat_cfg())
+            .unwrap()
+            .put_file_at(
+                &url,
+                "post/POST-20261125-000330",
+                &RepoFile {
+                    path: "2026/11/25/POST-20261125-000330/body.md".into(),
+                    content: "body".into(),
+                },
+            )
+            .await
+            .unwrap_err();
+        server.abort();
+        let message = error.to_string();
+        assert!(
+            message.contains("HTTP 503 Service Unavailable"),
+            "{message}"
+        );
+        assert!(message.contains("request_id=test-request"), "{message}");
+        assert!(message.contains("empty response body"), "{message}");
+        assert_eq!(puts.load(Ordering::SeqCst), 5);
+    }
+
+    #[tokio::test]
+    async fn contents_upload_recovers_rule_timeout_and_recognizes_committed_500() {
+        use axum::{http::StatusCode, routing::get, Json, Router};
+        use std::sync::{atomic::AtomicUsize, atomic::Ordering, Arc};
+
+        let puts = Arc::new(AtomicUsize::new(0));
+        let reads = puts.clone();
+        let writes = puts.clone();
+        let app = Router::new().route(
+            "/meta.toml",
+            get(move || {
+                let reads = reads.clone();
+                async move {
+                    if reads.load(Ordering::SeqCst) < 2 {
+                        (StatusCode::NOT_FOUND, Json(json!({})))
+                    } else {
+                        (
+                            StatusCode::OK,
+                            Json(json!({"sha": "committed", "encoding": "base64", "content": "Ym9k\neQ==\n"})),
+                        )
+                    }
+                }
+            })
+            .put(move || {
+                let writes = writes.clone();
+                async move {
+                    if writes.fetch_add(1, Ordering::SeqCst) == 0 {
+                        (
+                            StatusCode::CONFLICT,
+                            "Repository rule violations found\nThe rule did not run because of a timeout.",
+                        )
+                    } else {
+                        (StatusCode::INTERNAL_SERVER_ERROR, "")
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/meta.toml", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let client = GithubClient::new(fork_playground_bat_cfg()).unwrap();
+        let file = RepoFile {
+            path: "2026/11/25/POST-20261125-000330/meta.toml".into(),
+            content: "body".into(),
+        };
+        let result = client
+            .put_file_at(&url, "post/POST-20261125-000330", &file)
+            .await;
+        let repeated = client
+            .put_file_at(&url, "post/POST-20261125-000330", &file)
+            .await;
+        server.abort();
+        result.unwrap();
+        repeated.unwrap();
+        assert_eq!(puts.load(Ordering::SeqCst), 2);
+        assert!(!contents_put_rule_timed_out(
+            "Repository rule violations found: forbidden file"
+        ));
     }
 
     #[test]

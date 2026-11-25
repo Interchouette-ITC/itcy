@@ -338,52 +338,22 @@ async fn refill_link_options_from_pool(options: &mut Vec<String>, pool: &[String
     }
 }
 
-/// Gate BAT `/accept`: ship cite must exist and be reachable (not a 3-link build rule).
+/// Gate BAT `/accept`: a ship cite must exist, without probing the operator-selected URL.
 ///
 /// # Errors
 ///
-/// Returns operator-facing text when there is no cite, or the in-post / Link:1 URL is unreachable.
-pub async fn require_ship_cite_reachable(
-    body: &str,
-    link_options: &[String],
-) -> Result<(), String> {
-    require_ship_cite_url_reachable(body, link_options).await
-}
-
-/// Tweet BAT accept: same ship-cite gate as [`require_ship_cite_reachable`] (no link count).
-///
-/// # Errors
-///
-/// Same as [`require_ship_cite_reachable`].
-pub async fn require_tweet_ship_cite_reachable(
-    _brief: &str,
-    body: &str,
-    link_options: &[String],
-) -> Result<(), String> {
-    require_ship_cite_url_reachable(body, link_options).await
-}
-
-async fn require_ship_cite_url_reachable(
-    body: &str,
-    link_options: &[String],
-) -> Result<(), String> {
+/// Returns operator-facing text when there is no in-post / Link:1 URL.
+pub fn require_ship_cite(body: &str, link_options: &[String]) -> Result<(), String> {
     let url = extract_in_post_url(body)
         .or_else(|| link_options.first().cloned())
         .filter(|u| !u.trim().is_empty());
-    let Some(url) = url else {
+    if url.is_none() {
         return Err(
             "No publisher Link to ship. Pick Link:1 with `/change_url`, or `/rework` with a cite."
                 .into(),
         );
-    };
-    if skip_publisher_url_probe(&url) {
-        return Ok(());
     }
-    probe_publisher_url(&url).await.map_err(|e| {
-        format!(
-            "Link not reachable: {url} ({e}). Fix with `/change_url` or `/rework`, then `/accept`."
-        )
-    })
+    Ok(())
 }
 
 /// Refuse drafts/tweets with no reachable publisher Link (`Link:0`).
@@ -740,24 +710,62 @@ Corpus grounding:\ncontext quality mush";
         assert!(require_link_options_floor(&extracted).is_err());
     }
 
-    #[tokio::test]
-    async fn require_ship_cite_rejects_empty_link_options() {
-        let err = require_ship_cite_reachable("Prose only.\n", &[])
-            .await
-            .expect_err("empty options must fail accept");
+    #[test]
+    fn require_ship_cite_rejects_empty_link_options() {
+        let err =
+            require_ship_cite("Prose only.\n", &[]).expect_err("empty options must fail accept");
         assert!(
             err.contains("No publisher Link") || err.contains("Link options"),
             "{err}"
         );
+        assert!(require_ship_cite("Prose only.\n", &["  ".into()]).is_err());
     }
 
-    #[tokio::test]
-    async fn accept_ship_one_x_link_option_without_three_in_pool() {
+    #[test]
+    fn accept_ship_one_x_link_option_without_three_in_pool() {
         let x = "https://x.com/nineshoot/status/2094567713113059575";
         let body = format!("Commentary beats.\n\n#Rust\n\n{x}\n");
         let opts = vec![x.to_string()];
-        require_ship_cite_reachable(&body, &opts)
+        require_ship_cite(&body, &opts).expect("accept only checks ship cite, not link count");
+    }
+
+    #[test]
+    fn require_ship_cite_accepts_operator_medium_url_without_link_options() {
+        let url = "https://medium.com/%40andrelgcclaudino/rust-onnx-zero-copy-inference-shipping-models-without-the-c-c-tax-04642dabdbd4";
+        let body = format!("Rust ONNX commentary.\n\n{url}\n");
+        require_ship_cite(&body, &[]).expect("operator cite must not require HTTP access");
+    }
+
+    #[tokio::test]
+    async fn require_ship_cite_does_not_probe_blocked_or_unreachable_links() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        let requests = Arc::new(AtomicUsize::new(0));
+        let observed = Arc::clone(&requests);
+        let app = Router::new().route(
+            "/blocked",
+            get(move || {
+                observed.fetch_add(1, Ordering::SeqCst);
+                async { axum::http::StatusCode::FORBIDDEN }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
-            .expect("accept only checks ship cite, not link count");
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve");
+        });
+        let url = format!("http://{addr}/blocked");
+        require_ship_cite("Commentary.\n", std::slice::from_ref(&url))
+            .expect("HTTP 403 must not veto acceptance");
+        assert_eq!(requests.load(Ordering::SeqCst), 0);
+        server.abort();
+        server.await.expect_err("server aborted");
+        require_ship_cite("Commentary.\n", &[url])
+            .expect("an unreachable cite must not veto acceptance");
     }
 }

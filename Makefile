@@ -25,7 +25,7 @@ lint: check-license-headers
 
 test:
 	cd backend && cargo test --workspace
-	node --test scripts/x-ship-resolve.test.mjs scripts/tweet-href-urls.test.mjs
+	node --test scripts/x-ship-resolve.test.mjs scripts/x-ship-ui.test.mjs scripts/tweet-href-urls.test.mjs
 
 ## Requires cargo-llvm-cov + llvm-tools-preview. Writes coverage/lcov.info.
 coverage:

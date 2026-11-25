@@ -1229,9 +1229,7 @@ Status: **published**.",
                 )
             }
             UrlChoice::Url(new_url) => {
-                // Operator override: set the URL as-is. Reachability stays an `/accept` gate
-                // (`require_ship_cite_reachable`). SPA shells (e.g. cranelift.dev) fail the
-                // article-body probe but are still valid cites the operator may lock.
+                // Operator override: neither URL changes nor acceptance probe this cite.
                 info!(
                     draft_id = %draft_id,
                     choice = %choice,
@@ -1981,8 +1979,7 @@ mod tests {
     }
 
     /// `/change_url` must lock the operator URL without HTTP/article-body probe.
-    /// SPA landing pages (e.g. cranelift.dev) fail `evaluate_publisher_probe` but are
-    /// still valid cites; reachability stays an `/accept` gate.
+    /// Acceptance also trusts the selected cite without a reachability probe.
     #[tokio::test]
     async fn change_url_sets_operator_https_without_reachability_probe() {
         use crate::bat::store::status;

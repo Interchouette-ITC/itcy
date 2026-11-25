@@ -12,10 +12,20 @@ import {
   composerTextMatches,
   readShipPayloads,
   normalizeShipText,
+  postedTextMatches,
+  replyHasParent,
   resolvePostedStatus,
   statusIdNewer,
   stripQuotedStatusUrl,
 } from "./x-ship-resolve.mjs";
+import {
+  activeComposerScope,
+  composerBox,
+  composerText,
+  profilePostButton,
+  scanProfileTimeline,
+  submitPostButton,
+} from "./x-ship-ui.mjs";
 
 const requireFrom = process.env.PLAYWRIGHT_REQUIRE_FROM;
 if (!requireFrom) {
@@ -71,7 +81,7 @@ function ok(statusId, url, detail, reply) {
 }
 
 async function composerLooksLike(box, text) {
-  return composerTextMatches(await box.innerText(), text);
+  return composerTextMatches(await composerText(box), text);
 }
 
 function looksQuotePaywall(html) {
@@ -161,7 +171,7 @@ async function goProfile(page) {
 }
 
 async function clickProfilePost(page) {
-  const postBtn = page.locator('[data-testid="SideNav_NewTweet_Button"]').first();
+  const postBtn = profilePostButton(page);
   try {
     await postBtn.waitFor({ state: "visible", timeout: 20000 });
   } catch {
@@ -177,9 +187,23 @@ async function clickProfilePost(page) {
 
 async function fillComposer(page, text, root) {
   const scope = root || page;
-  const box = scope.locator('[data-testid="tweetTextarea_0"]').first();
-  await box.waitFor({ state: "visible", timeout: 30000 });
+  const box = composerBox(scope);
+  try {
+    await box.waitFor({ state: "visible", timeout: 30000 });
+  } catch (e) {
+    const cap = await captureOverlay(page, "composer-missing");
+    fail(
+      `composer missing: ${e.message}. screenshot=${relArtifact(cap.png)} html=${relArtifact(cap.html)}`
+    );
+  }
   await clickOrDump(page, box, "composer");
+  if (await box.evaluate((el) => el.tagName === "TEXTAREA")) {
+    await box.fill(text);
+    if (!(await composerLooksLike(box, text))) {
+      fail("composer did not accept tweet text (textarea fill failed)");
+    }
+    return;
+  }
   // keyboard.type() sends key events and mangles supplementary-plane emoji.
   await page.keyboard.press("Control+A");
   await page.keyboard.insertText(text);
@@ -215,7 +239,7 @@ async function quoteComposerScope(page, qid) {
   if (isStatusPermalink(page.url())) {
     fail("compose landed on a status permalink; refusing to type into that reply box");
   }
-  const box = page.locator('[data-testid="tweetTextarea_0"]').first();
+  const box = composerBox(page);
   await box.waitFor({ state: "visible", timeout: 15000 });
   const html = await page.content();
   if (!html.includes(`/status/${qid}`)) {
@@ -224,14 +248,7 @@ async function quoteComposerScope(page, qid) {
       `compose opened without the cited tweet attached. screenshot=${relArtifact(cap.png)} html=${relArtifact(cap.html)}`
     );
   }
-  const dialog = page
-    .locator('[role="dialog"]')
-    .filter({ has: page.locator('[data-testid="tweetTextarea_0"]') })
-    .first();
-  if (await dialog.isVisible().catch(() => false)) {
-    return dialog;
-  }
-  return page;
+  return activeComposerScope(page);
 }
 
 async function openQuoteComposer(page, qid) {
@@ -277,29 +294,25 @@ async function findPostButton(scope) {
   if (await inline.isVisible().catch(() => false)) {
     return inline;
   }
-  return scope
-    .locator('[data-testid="tweetButton"], [data-testid="tweetButtonInline"]')
-    .first();
+  return submitPostButton(scope);
 }
 
 async function waitPostButtonEnabled(btn, waitPage) {
   for (let i = 0; i < 40; i++) {
-    const disabled = await btn.getAttribute("aria-disabled");
-    if (disabled !== "true") return;
+    if (await btn.isEnabled()) return;
     await waitPage.waitForTimeout(250);
   }
-  const disabled = await btn.getAttribute("aria-disabled");
-  if (disabled === "true") {
+  if (!(await btn.isEnabled())) {
+    await failIfRejected(waitPage, "post-disabled-rejected");
+    const cap = await captureOverlay(waitPage, "post-disabled");
     fail(
-      "Post button stayed disabled (composer rejected the text; often over 280 weighted characters)"
+      `Post/Reply button stayed disabled in active composer. screenshot=${relArtifact(cap.png)} html=${relArtifact(cap.html)}`
     );
   }
 }
 
 async function composerStillOpen(scope) {
-  return scope
-    .locator('[data-testid="tweetTextarea_0"]')
-    .first()
+  return composerBox(scope)
     .isVisible()
     .catch(() => false);
 }
@@ -327,7 +340,7 @@ async function clickPost(scope) {
   await btn.waitFor({ state: "visible", timeout: 15000 });
   await waitPostButtonEnabled(btn, waitPage);
 
-  const box = scope.locator('[data-testid="tweetTextarea_0"]').first();
+  const box = composerBox(scope);
   await box.click({ timeout: 8000 }).catch(() => {});
   // Native X shortcut - more reliable than force-clicking a covered Post button.
   await waitPage.keyboard.press("Control+Enter");
@@ -367,38 +380,15 @@ async function clickPost(scope) {
   return null;
 }
 
-async function scanProfileTimeline(page) {
-  return page.evaluate(() => {
-    const toastEl = document.querySelector(
-      '[data-testid="toast"] a[href*="/status/"]'
-    );
-    const articles = [...document.querySelectorAll("article")].map((art) => {
-      const raw = (art.innerText || "").replace(/\s+/g, " ").trim();
-      const head = raw.slice(0, 96);
-      const pinned = /pinned|épinglé/i.test(head);
-      const statusHrefs = [
-        ...art.querySelectorAll('a[href*="/status/"]'),
-      ].map((a) => a.getAttribute("href"));
-      return {
-        pinned,
-        statusHrefs,
-        snippet: raw.slice(0, 280),
-      };
-    });
-    return {
-      toast: toastEl ? toastEl.getAttribute("href") : null,
-      articles,
-    };
-  });
-}
-
-async function latestOwnOnProfile(page, excludeIds, beforeId) {
+async function latestOwnOnProfile(page, excludeIds, beforeId, expectedText) {
   const scan = await scanProfileTimeline(page);
+  scan.toast = null;
   return resolvePostedStatus({
     toastHref: null,
     scan,
     excludeIds,
     beforeId: beforeId || "",
+    expectedText,
   });
 }
 
@@ -406,14 +396,19 @@ async function latestOwnOnProfile(page, excludeIds, beforeId) {
  * Prefer toast href from clickPost. Profile poll is fallback (reload, longer wait).
  * @param {string|null} toastHref
  */
-async function resolveAfterPost(page, excludeIds, beforeId, toastHref) {
+async function resolveAfterPost(page, excludeIds, beforeId, toastHref, expectedText) {
   const fromToast = resolvePostedStatus({
     toastHref,
     scan: { toast: null, articles: [] },
     excludeIds,
     beforeId: beforeId || "",
   });
-  if (fromToast) return fromToast;
+  if (fromToast) {
+    await page.goto(fromToast.url, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.waitForTimeout(1000);
+    const confirmed = await latestOwnOnProfile(page, excludeIds, beforeId, expectedText);
+    if (confirmed && confirmed.id === fromToast.id) return confirmed;
+  }
 
   for (let i = 0; i < 30; i++) {
     if (i === 0 || i % 5 === 0) {
@@ -423,7 +418,7 @@ async function resolveAfterPost(page, excludeIds, beforeId, toastHref) {
       });
       await page.waitForTimeout(900);
     }
-    const found = await latestOwnOnProfile(page, excludeIds, beforeId);
+    const found = await latestOwnOnProfile(page, excludeIds, beforeId, expectedText);
     if (found) return found;
     await page.waitForTimeout(1000);
   }
@@ -439,14 +434,40 @@ async function postReply(replyPage, replyText, parent, excludeIds) {
   if (looksLoggedOut(replyPage.url(), await replyPage.content())) {
     fail("logged out on reply status page");
   }
-  const btn = replyPage.locator('[data-testid="reply"]').first();
+  if (parent.text) {
+    const scan = await scanProfileTimeline(replyPage);
+    const matched = scan.articles.some((art) =>
+      art.statusHrefs.some((href) => href.endsWith(`/status/${parent.id}`)) &&
+      postedTextMatches(art.text, parent.text)
+    );
+    if (!matched) fail(`reply parent ${parent.id} does not match the published root text`);
+  }
+  const btn = replyPage.locator(
+    `a[href="/compose/post?in_reply_to=${parent.id}"]:visible`
+  ).or(
+    replyPage.locator("article")
+      .filter({ has: replyPage.locator(`a[href$="/status/${parent.id}"]`) })
+      .locator('[data-testid="reply"]:visible')
+  ).first();
   await btn.waitFor({ state: "visible", timeout: 20000 });
   await btn.click();
   await replyPage.waitForTimeout(800);
-  await fillComposer(replyPage, replyText);
-  const toastHref = await clickPost(replyPage);
+  const scope = await activeComposerScope(replyPage);
+  await fillComposer(replyPage, replyText, scope);
+  const toastHref = await clickPost(scope);
   const skip = excludeIds.concat([parent.id]);
-  return resolveAfterPost(replyPage, skip, parent.id, toastHref);
+  const found = await resolveAfterPost(replyPage, skip, parent.id, toastHref, replyText);
+  if (!found) return null;
+  await replyPage.goto(found.url, { waitUntil: "domcontentloaded", timeout: 60000 });
+  for (let i = 0; i < 40; i++) {
+    const scan = await scanProfileTimeline(replyPage);
+    if (replyHasParent(scan, found.id, parent.id)) return found;
+    await replyPage.waitForTimeout(250);
+  }
+  const cap = await captureOverlay(replyPage, "reply-parent-mismatch");
+  fail(
+    `reply ${found.id} could not be confirmed under parent ${parent.id}. screenshot=${relArtifact(cap.png)} html=${relArtifact(cap.html)}`
+  );
 }
 
 /** One root tab; close stray CDP tabs from profile restore. */
@@ -484,13 +505,7 @@ async function postRootTweet(rootPage, text, quoteId, excludeIds, beforeId) {
         "compose landed on a status permalink; refusing to type into that reply box"
       );
     }
-    const dialog = rootPage
-      .locator('[role="dialog"]')
-      .filter({ has: rootPage.locator('[data-testid="tweetTextarea_0"]') })
-      .first();
-    const scope = (await dialog.isVisible().catch(() => false))
-      ? dialog
-      : rootPage;
+    const scope = await activeComposerScope(rootPage);
     await fillComposer(rootPage, text, scope);
     rootToastHref = await clickPost(scope);
   }
@@ -500,7 +515,8 @@ async function postRootTweet(rootPage, text, quoteId, excludeIds, beforeId) {
     rootPage,
     excludeIds,
     beforeId,
-    rootToastHref
+    rootToastHref,
+    text
   );
   if (!found) {
     const cap = await captureOverlay(rootPage, "resolve-miss");
@@ -511,7 +527,7 @@ async function postRootTweet(rootPage, text, quoteId, excludeIds, beforeId) {
   if (!statusIdNewer(found.id, beforeId)) {
     fail(`resolve picked non-newer id ${found.id} (before=${beforeId})`);
   }
-  return found;
+  return { ...found, text };
 }
 
 async function main() {
@@ -542,7 +558,9 @@ async function main() {
 
   try {
     await goProfile(rootPage);
+    await rootPage.locator("article").first().waitFor({ state: "visible", timeout: 20000 });
     const before = await latestOwnOnProfile(rootPage, [], "");
+    if (!before) fail("cannot establish newest own status before publishing");
     const beforeId = before && before.id ? before.id : "0";
 
     if (inReplyToId) {

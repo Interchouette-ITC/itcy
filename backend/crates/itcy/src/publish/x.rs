@@ -74,18 +74,6 @@ pub async fn ship_x_post(
     );
     let audit = PublishAuditStore::open(state_db_path.as_ref())
         .map_err(|e| PublishError::Other(e.to_string()))?;
-    if mode == PublishMode::Production
-        && trim_opt_id(request.in_reply_to_tweet_id.as_deref()).is_none()
-    {
-        if let Some(detail) = audit
-            .incomplete_x_thread(request.tweet_id.as_deref(), &request.body)
-            .map_err(|e| PublishError::Other(e.to_string()))?
-        {
-            return Err(PublishError::Other(format!(
-                "refusing to duplicate a root from an incomplete thread; recover its reply explicitly: {detail}"
-            )));
-        }
-    }
     let linkedin_req = PublishRequest {
         draft_id: request.tweet_id.clone(),
         pubs_pr_number: request.pubs_pr_number,
@@ -714,6 +702,42 @@ fn pct(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn partial_thread_audit_does_not_block_production_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("publish.db");
+        let request = XPublishRequest {
+            tweet_id: Some("TWEET-20261125-000263".into()),
+            pubs_pr_number: None,
+            body: "x".repeat(600),
+            quote_tweet_id: None,
+            in_reply_to_tweet_id: None,
+        };
+        let audit = PublishAuditStore::open(&db_path).unwrap();
+        audit
+            .insert(&PublishAuditWrite::from_err(
+                &PublishRequest {
+                    draft_id: request.tweet_id.clone(),
+                    pubs_pr_number: None,
+                    body: request.body.clone(),
+                },
+                PublishMode::Production,
+                &PublishError::Other("partial X thread: root=123; reply failed".into()),
+            ))
+            .unwrap();
+        // Invalid text reaches normal validation without making a real post.
+        let expected = ship_texts(&request.body).unwrap_err().to_string();
+        let error = ship_x_post(
+            &db_path,
+            "production",
+            request,
+            Some(PublishMode::Production),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.to_string(), expected);
+    }
 
     fn ship_text_has_x_status(body: &str) -> bool {
         tweet_text_for_api(body)
