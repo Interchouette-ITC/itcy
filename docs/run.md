@@ -86,6 +86,26 @@ PR title; the full subject and publication body are preserved. If `/accept`
 previously failed because the title was too long, retry `/accept` with the same
 reference after updating ITCy.
 
+`/accept` trusts the selected publisher URL for both LinkedIn drafts and tweets:
+it does not fetch the article or block acceptance on HTTP errors, bot walls, or
+network failures. A cite is still required. Research/SERP link filtering remains
+unchanged; `/change_url` can override its selection before acceptance.
+
 ## X
+
+X ship supports both the legacy test-ID controls and the redesigned
+`/compose/post` sidebar link, textarea, and dialog Post/Reply buttons. It checks
+both native and ARIA disabled states before submitting. A missing control does
+not by itself mean the account is logged out; failure screenshots and HTML are
+saved under `pw/screenshots/x-ship/`.
+
+Offline browser fixtures (no login or publishing) can be run with the existing
+Playwright installation:
+
+```bash
+PLAYWRIGHT_REQUIRE_FROM=/absolute/path/to/playwright/package.json \
+ITCY_BROWSER_EXECUTABLE=/usr/bin/brave-browser \
+node --test scripts/x-ship-ui.test.mjs
+```
 
 Digest pulse and production ship use Brave against a local profile (`scripts/fetch-twitter-pulse.sh`, `scripts/post-twitter.sh`, `scripts/open-twitter-login.sh`). Optional Bearer API when `TWITTER_BEARER` is set.

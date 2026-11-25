@@ -162,25 +162,8 @@ async fn accept_surface(
     let draft = load_draft(db_path, draft_id)?;
     gate_accept_draft(draft_id, &draft)?;
     validate_surface_text(&draft, &surface)?;
-    if let Err(reason) = match surface {
-        BatSurface::LinkedIn => {
-            crate::sources::publisher_url::require_ship_cite_reachable(
-                &draft.body,
-                &draft.link_options,
-            )
-            .await
-        }
-        BatSurface::Tweet => {
-            crate::sources::publisher_url::require_tweet_ship_cite_reachable(
-                &draft.subject,
-                &draft.body,
-                &draft.link_options,
-            )
-            .await
-        }
-    } {
-        return Err(BatSubmitError::Gate(reason));
-    }
+    crate::sources::publisher_url::require_ship_cite(&draft.body, &draft.link_options)
+        .map_err(BatSubmitError::Gate)?;
     let cfg = BatGithubConfig::from_env()?;
     let client = GithubClient::new(cfg.clone())?;
     let (files, branch, title, pr_body, bat_owner) = match surface {

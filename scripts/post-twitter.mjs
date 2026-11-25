@@ -16,6 +16,12 @@ import {
   statusIdNewer,
   stripQuotedStatusUrl,
 } from "./x-ship-resolve.mjs";
+import {
+  composerBox,
+  composerText,
+  profilePostButton,
+  submitPostButton,
+} from "./x-ship-ui.mjs";
 
 const requireFrom = process.env.PLAYWRIGHT_REQUIRE_FROM;
 if (!requireFrom) {
@@ -71,7 +77,7 @@ function ok(statusId, url, detail, reply) {
 }
 
 async function composerLooksLike(box, text) {
-  return composerTextMatches(await box.innerText(), text);
+  return composerTextMatches(await composerText(box), text);
 }
 
 function looksQuotePaywall(html) {
@@ -161,7 +167,7 @@ async function goProfile(page) {
 }
 
 async function clickProfilePost(page) {
-  const postBtn = page.locator('[data-testid="SideNav_NewTweet_Button"]').first();
+  const postBtn = profilePostButton(page);
   try {
     await postBtn.waitFor({ state: "visible", timeout: 20000 });
   } catch {
@@ -177,9 +183,16 @@ async function clickProfilePost(page) {
 
 async function fillComposer(page, text, root) {
   const scope = root || page;
-  const box = scope.locator('[data-testid="tweetTextarea_0"]').first();
+  const box = composerBox(scope);
   await box.waitFor({ state: "visible", timeout: 30000 });
   await clickOrDump(page, box, "composer");
+  if (await box.evaluate((el) => el.tagName === "TEXTAREA")) {
+    await box.fill(text);
+    if (!(await composerLooksLike(box, text))) {
+      fail("composer did not accept tweet text (textarea fill failed)");
+    }
+    return;
+  }
   // keyboard.type() sends key events and mangles supplementary-plane emoji.
   await page.keyboard.press("Control+A");
   await page.keyboard.insertText(text);
@@ -215,7 +228,7 @@ async function quoteComposerScope(page, qid) {
   if (isStatusPermalink(page.url())) {
     fail("compose landed on a status permalink; refusing to type into that reply box");
   }
-  const box = page.locator('[data-testid="tweetTextarea_0"]').first();
+  const box = composerBox(page);
   await box.waitFor({ state: "visible", timeout: 15000 });
   const html = await page.content();
   if (!html.includes(`/status/${qid}`)) {
@@ -226,7 +239,7 @@ async function quoteComposerScope(page, qid) {
   }
   const dialog = page
     .locator('[role="dialog"]')
-    .filter({ has: page.locator('[data-testid="tweetTextarea_0"]') })
+    .filter({ has: composerBox(page) })
     .first();
   if (await dialog.isVisible().catch(() => false)) {
     return dialog;
@@ -277,19 +290,15 @@ async function findPostButton(scope) {
   if (await inline.isVisible().catch(() => false)) {
     return inline;
   }
-  return scope
-    .locator('[data-testid="tweetButton"], [data-testid="tweetButtonInline"]')
-    .first();
+  return submitPostButton(scope);
 }
 
 async function waitPostButtonEnabled(btn, waitPage) {
   for (let i = 0; i < 40; i++) {
-    const disabled = await btn.getAttribute("aria-disabled");
-    if (disabled !== "true") return;
+    if (await btn.isEnabled()) return;
     await waitPage.waitForTimeout(250);
   }
-  const disabled = await btn.getAttribute("aria-disabled");
-  if (disabled === "true") {
+  if (!(await btn.isEnabled())) {
     fail(
       "Post button stayed disabled (composer rejected the text; often over 280 weighted characters)"
     );
@@ -297,9 +306,7 @@ async function waitPostButtonEnabled(btn, waitPage) {
 }
 
 async function composerStillOpen(scope) {
-  return scope
-    .locator('[data-testid="tweetTextarea_0"]')
-    .first()
+  return composerBox(scope)
     .isVisible()
     .catch(() => false);
 }
@@ -327,7 +334,7 @@ async function clickPost(scope) {
   await btn.waitFor({ state: "visible", timeout: 15000 });
   await waitPostButtonEnabled(btn, waitPage);
 
-  const box = scope.locator('[data-testid="tweetTextarea_0"]').first();
+  const box = composerBox(scope);
   await box.click({ timeout: 8000 }).catch(() => {});
   // Native X shortcut - more reliable than force-clicking a covered Post button.
   await waitPage.keyboard.press("Control+Enter");
@@ -439,7 +446,9 @@ async function postReply(replyPage, replyText, parent, excludeIds) {
   if (looksLoggedOut(replyPage.url(), await replyPage.content())) {
     fail("logged out on reply status page");
   }
-  const btn = replyPage.locator('[data-testid="reply"]').first();
+  const btn = replyPage.locator(
+    `[data-testid="reply"]:visible, a[href="/compose/post?in_reply_to=${parent.id}"]:visible`
+  ).first();
   await btn.waitFor({ state: "visible", timeout: 20000 });
   await btn.click();
   await replyPage.waitForTimeout(800);
@@ -486,7 +495,7 @@ async function postRootTweet(rootPage, text, quoteId, excludeIds, beforeId) {
     }
     const dialog = rootPage
       .locator('[role="dialog"]')
-      .filter({ has: rootPage.locator('[data-testid="tweetTextarea_0"]') })
+      .filter({ has: composerBox(rootPage) })
       .first();
     const scope = (await dialog.isVisible().catch(() => false))
       ? dialog
