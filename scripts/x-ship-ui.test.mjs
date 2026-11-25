@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import test from "node:test";
 import {
+  activeComposerScope,
   composerBox,
   composerText,
   profilePostButton,
@@ -88,6 +89,57 @@ test("legacy and redesigned X controls", {
       `);
       const dialog = page.locator('[role="dialog"]').filter({ has: composerBox(page) });
       assert.equal(await submitPostButton(dialog).innerText(), "Reply");
+    });
+    for (const legacy of [false, true]) {
+      await t.test(`reply scopes text and submit together (${legacy ? "legacy" : "redesigned"})`, async () => {
+        const composer = legacy
+          ? '<div contenteditable="true" style="white-space: pre-wrap" data-testid="tweetTextarea_0"></div>'
+          : '<textarea placeholder="What\'s happening?"></textarea>';
+        await page.setContent(`
+          <section id="inline">
+            ${composer}
+            <button data-testid="tweetButtonInline" disabled>Reply</button>
+          </section>
+          <div role="dialog">
+            ${composer}
+            <button ${legacy ? 'data-testid="tweetButton"' : ""} disabled>Reply</button>
+          </div>
+          <script>
+            document.querySelector('[role="dialog"]').addEventListener("input", (event) => {
+              const text = event.target.value || event.target.innerText;
+              document.querySelector('[role="dialog"] button').disabled = !text.trim();
+            });
+          </script>
+        `);
+        const scope = await activeComposerScope(page);
+        assert.equal(await scope.getAttribute("role"), "dialog");
+        const payload = legacy
+          ? "Second tweet. Complete reply with \u{1f989} and \`code\`."
+          : "Second tweet.\n\nComplete reply with \u{1f989} and \`code\`.";
+        if (legacy) {
+          await composerBox(scope).click();
+          await page.keyboard.insertText(payload);
+        } else {
+          await composerBox(scope).fill(payload);
+        }
+        assert.equal(await composerText(composerBox(scope)), payload);
+        assert.equal(await composerText(composerBox(page.locator("#inline"))), "");
+        assert.equal(await submitPostButton(scope).isEnabled(), true);
+        assert.equal(await page.locator("#inline button").isEnabled(), false);
+      });
+    }
+    await t.test("inline reply remains available without a visible dialog", async () => {
+      await page.setContent(`
+        <textarea placeholder="What's happening?"></textarea><button>Reply</button>
+        <div role="dialog" hidden>
+          <textarea placeholder="What's happening?"></textarea><button disabled>Reply</button>
+        </div>
+      `);
+      const scope = await activeComposerScope(page);
+      assert.equal(scope, page);
+      await composerBox(scope).fill("Inline reply.");
+      assert.equal(await composerText(composerBox(scope)), "Inline reply.");
+      assert.equal(await submitPostButton(scope).isEnabled(), true);
     });
   } finally {
     await browser.close();

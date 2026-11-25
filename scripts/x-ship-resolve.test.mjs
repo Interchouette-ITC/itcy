@@ -81,6 +81,19 @@ test("XPOST-095 first pass: one Brave session, root tab then reply tab (no CDP c
   assert.ok(rootThenReply && replyCall > 0, "root Post then reply on separate tab");
 });
 
+test("XPOST-263 reply fills and submits the same active composer scope", () => {
+  const src = fs.readFileSync(
+    fileURLToPath(new URL("./post-twitter.mjs", import.meta.url)),
+    "utf8"
+  );
+  const reply = src.match(/async function postReply\([\s\S]*?\n\}/);
+  assert.ok(reply, "postReply missing");
+  assert.match(reply[0], /const scope = await activeComposerScope\(replyPage\)/);
+  assert.match(reply[0], /fillComposer\(replyPage, replyText, scope\)/);
+  assert.match(reply[0], /clickPost\(scope\)/);
+  assert.doesNotMatch(reply[0], /clickPost\(replyPage\)/);
+});
+
 test("brave lock clears stale file only when flock is free", () => {
   const src = fs.readFileSync(
     fileURLToPath(new URL("./lib/twitter-brave-lock.sh", import.meta.url)),

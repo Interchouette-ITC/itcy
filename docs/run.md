@@ -98,6 +98,11 @@ X ship supports both the legacy test-ID controls and the redesigned
 both native and ARIA disabled states before submitting. A missing control does
 not by itself mean the account is logged out; failure screenshots and HTML are
 saved under `pw/screenshots/x-ship/`.
+Root posts, overflow replies, and standalone replies use the visible composer
+dialog when present, keeping text entry and submission in the same scope rather
+than mixing the background inline reply box with the dialog's Reply button.
+Disabled-submit failures also save a screenshot and HTML; they do not assume the
+text exceeded the character limit.
 
 Offline browser fixtures (no login or publishing) can be run with the existing
 Playwright installation:

@@ -8,6 +8,14 @@ export function composerBox(scope) {
   return scope.locator(`:is(${COMPOSER_SELECTOR}):visible`).first();
 }
 
+export async function activeComposerScope(page) {
+  const dialog = page
+    .locator('[role="dialog"]:visible')
+    .filter({ has: composerBox(page) })
+    .first();
+  return (await dialog.isVisible()) ? dialog : page;
+}
+
 export async function composerText(box) {
   return box.evaluate((el) =>
     typeof el.value === "string" ? el.value : el.innerText

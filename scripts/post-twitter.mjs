@@ -17,6 +17,7 @@ import {
   stripQuotedStatusUrl,
 } from "./x-ship-resolve.mjs";
 import {
+  activeComposerScope,
   composerBox,
   composerText,
   profilePostButton,
@@ -237,14 +238,7 @@ async function quoteComposerScope(page, qid) {
       `compose opened without the cited tweet attached. screenshot=${relArtifact(cap.png)} html=${relArtifact(cap.html)}`
     );
   }
-  const dialog = page
-    .locator('[role="dialog"]')
-    .filter({ has: composerBox(page) })
-    .first();
-  if (await dialog.isVisible().catch(() => false)) {
-    return dialog;
-  }
-  return page;
+  return activeComposerScope(page);
 }
 
 async function openQuoteComposer(page, qid) {
@@ -299,8 +293,10 @@ async function waitPostButtonEnabled(btn, waitPage) {
     await waitPage.waitForTimeout(250);
   }
   if (!(await btn.isEnabled())) {
+    await failIfRejected(waitPage, "post-disabled-rejected");
+    const cap = await captureOverlay(waitPage, "post-disabled");
     fail(
-      "Post button stayed disabled (composer rejected the text; often over 280 weighted characters)"
+      `Post/Reply button stayed disabled in active composer. screenshot=${relArtifact(cap.png)} html=${relArtifact(cap.html)}`
     );
   }
 }
@@ -452,8 +448,9 @@ async function postReply(replyPage, replyText, parent, excludeIds) {
   await btn.waitFor({ state: "visible", timeout: 20000 });
   await btn.click();
   await replyPage.waitForTimeout(800);
-  await fillComposer(replyPage, replyText);
-  const toastHref = await clickPost(replyPage);
+  const scope = await activeComposerScope(replyPage);
+  await fillComposer(replyPage, replyText, scope);
+  const toastHref = await clickPost(scope);
   const skip = excludeIds.concat([parent.id]);
   return resolveAfterPost(replyPage, skip, parent.id, toastHref);
 }
@@ -493,13 +490,7 @@ async function postRootTweet(rootPage, text, quoteId, excludeIds, beforeId) {
         "compose landed on a status permalink; refusing to type into that reply box"
       );
     }
-    const dialog = rootPage
-      .locator('[role="dialog"]')
-      .filter({ has: composerBox(rootPage) })
-      .first();
-    const scope = (await dialog.isVisible().catch(() => false))
-      ? dialog
-      : rootPage;
+    const scope = await activeComposerScope(rootPage);
     await fillComposer(rootPage, text, scope);
     rootToastHref = await clickPost(scope);
   }
