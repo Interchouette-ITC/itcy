@@ -132,7 +132,7 @@ async fn playground_refuses_invalid_or_multi_post_replies_without_success_audit(
 }
 
 #[tokio::test]
-async fn partial_thread_audit_blocks_a_production_root_retry_before_network() {
+async fn partial_thread_audit_allows_retry_to_reach_validation_before_network() {
     use itcy::publish::{
         ship_x_post, PublishAuditStore, PublishAuditWrite, PublishError, PublishMode,
         PublishRequest, XPublishRequest,
@@ -140,7 +140,10 @@ async fn partial_thread_audit_blocks_a_production_root_retry_before_network() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("audit.db");
     let audit = PublishAuditStore::open(&db).unwrap();
-    let body = "A complete root.".to_string();
+    let body = "a".repeat(281);
+    let expected_error = itcy::publish::tweet_texts_for_api(&body)
+        .unwrap_err()
+        .to_string();
     let err = PublishError::Other(
         "partial X thread: root=123 url=https://x.com/Interchouette/status/123; reply failed"
             .into(),
@@ -169,10 +172,7 @@ async fn partial_thread_audit_blocks_a_production_root_retry_before_network() {
         Some(PublishMode::Production),
     )
     .await;
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("refusing to duplicate"));
+    assert_eq!(result.unwrap_err().to_string(), expected_error);
     assert!(audit
         .latest_ok(Some("XPOST-contract"), None)
         .unwrap()
