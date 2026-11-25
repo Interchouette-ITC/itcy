@@ -103,6 +103,9 @@ dialog when present, keeping text entry and submission in the same scope rather
 than mixing the background inline reply box with the dialog's Reply button.
 Disabled-submit failures also save a screenshot and HTML; they do not assume the
 text exceeded the character limit.
+Previous partial-thread failures remain in the audit log but do not block
+`/retry_bat`. A retry runs the normal publish flow and may create a new root
+tweet even if an earlier attempt already posted one.
 
 Offline browser fixtures (no login or publishing) can be run with the existing
 Playwright installation:
